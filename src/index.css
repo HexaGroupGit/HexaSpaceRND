@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+/* ── Mobile table scroll ──────────────────────────────────────────────────── */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Mobile padding override ──────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .p-8 { padding: 1rem !important; }
+  .px-8 { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .px-12 { padding-left: 1rem !important; padding-right: 1rem !important; }
+}
+
+/* ── Template HTML body (contract template view) ─────────────────────────── */
+.template-html-body h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-top: 1.2rem;
+  margin-bottom: 0.5rem;
+  color: #111;
+}
+
+.template-html-body h3 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  margin-top: 1rem;
+  margin-bottom: 0.35rem;
+  color: #1a1a1a;
+}
+
+.template-html-body p {
+  margin-bottom: 0.5rem;
+  color: #374151;
+  font-size: 0.8125rem;
+}
+
+.template-html-body strong {
+  font-weight: 600;
+  color: #111;
+}
+
+.template-html-body ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 0.4rem 0 0.75rem;
+}
+
+.template-html-body ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 0.4rem 0 0.75rem;
+}
+
+.template-html-body li {
+  margin: 0.25rem 0;
+  font-size: 0.8125rem;
+  color: #374151;
+}
+
+/* ── Rich Text Editor (TipTap / ProseMirror) ──────────────────────────────── */
+.rich-editor-content {
+  outline: none;
+  padding: 14px 16px;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: #1a1a1a;
+}
+
+.rich-editor-content > * + * {
+  margin-top: 0.5em;
+}
+
+.rich-editor-content h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-top: 1rem;
+  margin-bottom: 0.4rem;
+  color: #111;
+}
+
+.rich-editor-content h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-top: 0.9rem;
+  margin-bottom: 0.35rem;
+  color: #111;
+}
+
+.rich-editor-content h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-top: 0.75rem;
+  margin-bottom: 0.3rem;
+  color: #111;
+}
+
+.rich-editor-content p {
+  margin-top: 0.3rem;
+  margin-bottom: 0.3rem;
+  color: #374151;
+}
+
+.rich-editor-content strong {
+  font-weight: 600;
+}
+
+.rich-editor-content em {
+  font-style: italic;
+}
+
+.rich-editor-content u {
+  text-decoration: underline;
+}
+
+.rich-editor-content ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 0.4rem 0;
+}
+
+.rich-editor-content ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 0.4rem 0;
+}
+
+.rich-editor-content li {
+  margin: 0.2rem 0;
+}
+
+.rich-editor-content blockquote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 1rem;
+  color: #6b7280;
+  font-style: italic;
+  margin: 0.5rem 0;
+}
+
+.rich-editor-content p.is-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

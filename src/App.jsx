@@ -1,0 +1,110 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import Layout from './components/Layout.jsx'
+import Dashboard from './components/Dashboard.jsx'
+import Tenants from './components/Tenants.jsx'
+import Spaces from './components/Spaces.jsx'
+import Leases from './components/Leases.jsx'
+import AgreementGenerator from './components/AgreementGenerator.jsx'
+import Renewals from './components/Renewals.jsx'
+import Templates from './components/Templates.jsx'
+import Billing from './components/Billing.jsx'
+import Settings from './components/Settings.jsx'
+import Maintenance from './components/Maintenance.jsx'
+import Reports from './components/Reports.jsx'
+import Events from './components/Events.jsx'
+import Marketing from './components/Marketing.jsx'
+import EventBookings from './components/EventBookings.jsx'
+import AdminMessages from './components/AdminMessages.jsx'
+import Login from './components/Login.jsx'
+import SignPage from './components/SignPage.jsx'
+import EventBookingSignPage from './components/EventBookingSignPage.jsx'
+import ReferrerDashboard from './components/ReferrerDashboard.jsx'
+import PortalApp from './portal/PortalApp.jsx'
+import { useStore } from './store/useStore.js'
+import { supabase } from './lib/supabase.js'
+
+export default function App() {
+  // Member portal (via subdomain OR direct /portal path)
+  if (
+    window.location.hostname.startsWith('members.') ||
+    window.location.pathname.startsWith('/portal')
+  ) return <PortalApp />
+
+  // Public sign pages — no auth needed
+  const eventSignMatch = window.location.pathname.match(/^\/sign\/event\/([^/]+)/)
+  if (eventSignMatch) return <EventBookingSignPage token={eventSignMatch[1]} />
+
+  const signMatch = window.location.pathname.match(/^\/sign\/([^/]+)/)
+  if (signMatch) return <SignPage token={signMatch[1]} />
+
+  // Public referrer dashboard — magic link, no auth needed
+  const referMatch = window.location.pathname.match(/^\/refer\/([^/]+)/)
+  if (referMatch) return <ReferrerDashboard token={referMatch[1]} />
+
+  const store = useStore()
+  const [authed, setAuthed] = useState(false)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  useEffect(() => {
+    // Check existing session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthed(!!session)
+      setAuthLoading(false)
+    })
+    // Listen for sign in / sign out
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthed(!!session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-2xl font-black tracking-widest text-gray-900 mb-3">HEXAHUB</div>
+          <div className="text-sm text-gray-400">Loading...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!authed) {
+    return <Login onSuccess={() => setAuthed(true)} />
+  }
+
+  if (store.loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-2xl font-black tracking-widest text-gray-900 mb-3">HEXAHUB</div>
+          <div className="text-sm text-gray-400">Loading...</div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Layout store={store} onLogout={() => setAuthed(false)} />}>
+          <Route index element={<Dashboard />} />
+          <Route path="tenants" element={<Tenants />} />
+          <Route path="spaces" element={<Spaces />} />
+          <Route path="leases" element={<Leases />} />
+          <Route path="billing" element={<Billing />} />
+          <Route path="renewals" element={<Renewals />} />
+          <Route path="templates" element={<Templates />} />
+          <Route path="maintenance" element={<Maintenance />} />
+          <Route path="reports" element={<Reports />} />
+          <Route path="marketing" element={<Marketing />} />
+          <Route path="messages" element={<AdminMessages />} />
+          <Route path="events" element={<Events />} />
+          <Route path="event-bookings" element={<EventBookings />} />
+          <Route path="settings" element={<Settings />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  )
+}

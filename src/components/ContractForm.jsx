@@ -1,0 +1,850 @@
+import { useState, useEffect, useRef } from 'react'
+import { Plus, Trash2, Minus, ChevronDown, X, AlertCircle } from 'lucide-react'
+
+const FORM_SECTIONS = [
+  { id: 'company', label: 'Company Information' },
+  { id: 'duration', label: 'Duration' },
+  { id: 'items', label: 'Items' },
+  { id: 'terms', label: 'Terms & Conditions' },
+  { id: 'messages', label: 'System Messages (0)' },
+]
+
+const CONTRACT_TYPES = ['New', 'Renewal', 'Transfer', 'Amendment', 'Month-to-month']
+const DOCUMENT_TYPES = [
+  'License Agreement',
+  'Virtual Office Membership Agreement',
+  'Membership Agreement Month-to-month',
+  'Service Agreement',
+]
+const SIGNATURE_STATUSES = [
+  { value: 'not_signed',        label: 'Not Signed' },
+  { value: 'out_for_signature', label: 'Out For Signature' },
+  { value: 'manually_signed',   label: 'Manually Signed' },
+  { value: 'e_signed',          label: 'E Signed' },
+]
+const DISCOUNT_OPTIONS = ['5%', '10%', '15%', '20%', '25%', '30%']
+// AVAILABLE_TERMS is now driven by the templates store — see Terms tab render
+
+function generateContractNumber(leases) {
+  let template = 'CON-{{number}}'
+  try {
+    const s = JSON.parse(localStorage.getItem('hexahub_settings') || '{}')
+    template = s.contracts?.numberTemplate ?? template
+  } catch { /* use default */ }
+  const nums = leases
+    .map((l) => l.contractNumber)
+    .filter(Boolean)
+    .map((n) => parseInt(n.replace(/\D/g, ''), 10))
+    .filter((n) => !isNaN(n) && n > 0)
+  const max = nums.length > 0 ? Math.max(...nums) : 0
+  return template.replace('{{number}}', String(max + 1).padStart(3, '0'))
+}
+
+function initForm(editLease, leases) {
+  if (editLease) {
+    return {
+      tenantId: editLease.tenantId ?? '',
+      memberName: editLease.memberName ?? '',
+      contractType: editLease.contractType ?? 'New',
+      documentType: editLease.documentType ?? 'License Agreement',
+      signatureStatus: editLease.signatureStatus ?? 'not_signed',
+      contractNumber: editLease.contractNumber ?? generateContractNumber(leases),
+      startDate: editLease.startDate ?? '',
+      endDate: editLease.endDate ?? '',
+      noticePeriodMonths: editLease.noticePeriodMonths ?? 2,
+      status: editLease.status ?? 'active',
+      notes: editLease.notes ?? '',
+      contractTerms: editLease.contractTerms ?? ['tmpl1', 'tmpl2'],
+      items: editLease.items ?? [
+        {
+          spaceId: editLease.spaceId ?? '',
+          deposit: editLease.bondAmount ?? 0,
+          steps: [
+            {
+              startDate: editLease.startDate ?? '',
+              endDate: editLease.endDate ?? '',
+              listPrice: editLease.monthlyRent ?? 0,
+              discount: editLease.discount ?? '',
+            },
+          ],
+        },
+      ],
+    }
+  }
+  return {
+    tenantId: '',
+    memberName: '',
+    contractType: 'New',
+    documentType: 'License Agreement',
+    signatureStatus: 'not_signed',
+    contractNumber: generateContractNumber(leases),
+    startDate: '',
+    endDate: '',
+    noticePeriodMonths: 2,
+    status: 'active',
+    notes: '',
+    contractTerms: ['tmpl1', 'tmpl2'],
+    items: [
+      {
+        spaceId: '',
+        deposit: 0,
+        steps: [{ startDate: '', endDate: '', listPrice: 0, discount: '' }],
+      },
+    ],
+  }
+}
+
+// ── Small reusable controls ───────────────────────────────────────────────────
+
+function NumberStepper({ value, onChange, min = 0, step = 1 }) {
+  return (
+    <div className="flex items-center">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(min, Number(value) - step))}
+        className="w-8 h-8 flex items-center justify-center border border-gray-300 rounded-l bg-white hover:bg-gray-50 text-gray-500"
+      >
+        <Minus size={11} />
+      </button>
+      <input
+        type="number"
+        value={value}
+        min={min}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-16 h-8 border-t border-b border-gray-300 text-center text-sm focus:outline-none [appearance:textfield]"
+      />
+      <button
+        type="button"
+        onClick={() => onChange(Number(value) + step)}
+        className="w-8 h-8 flex items-center justify-center border border-gray-300 rounded-r bg-white hover:bg-gray-50 text-gray-500"
+      >
+        <Plus size={11} />
+      </button>
+    </div>
+  )
+}
+
+function Section({ title, children }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-md overflow-hidden mb-4">
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-200 bg-gray-50">
+        <ChevronDown size={13} className="text-gray-400" />
+        <span className="text-sm font-semibold text-gray-700">{title}</span>
+      </div>
+      <div className="px-5 py-5">{children}</div>
+    </div>
+  )
+}
+
+function Field({ label, required, error, children, className = '' }) {
+  return (
+    <div className={className}>
+      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      {children}
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+    </div>
+  )
+}
+
+const inputCls = (err) =>
+  `w-full border ${err ? 'border-red-400' : 'border-gray-300'} rounded px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500`
+
+const selectCls = (err) =>
+  `w-full border ${err ? 'border-red-400' : 'border-gray-300'} rounded px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500`
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export default function ContractForm({ editLease, leases, tenants, spaces, templates = [], onSave, onDiscard }) {
+  const [form, setForm] = useState(() => initForm(editLease, leases))
+  const [errors, setErrors] = useState({})
+
+  const sectionRefs = {
+    company: useRef(null),
+    duration: useRef(null),
+    items: useRef(null),
+    terms: useRef(null),
+    messages: useRef(null),
+  }
+
+  function scrollTo(id) {
+    sectionRefs[id]?.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const isEdit = !!editLease
+
+  // Sync first step dates when top-level dates change (mirrors OfficeRND behaviour)
+  useEffect(() => {
+    setForm((f) => ({
+      ...f,
+      items: f.items.map((item) => ({
+        ...item,
+        steps: item.steps.map((step, i) =>
+          i === 0
+            ? {
+                ...step,
+                startDate: step.startDate || f.startDate,
+                endDate: step.endDate || f.endDate,
+              }
+            : step
+        ),
+      })),
+    }))
+  }, [form.startDate, form.endDate]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Item helpers ─────────────────────────────────────────────────────────
+
+  function handleSpaceSelect(itemIdx, spaceId) {
+    const space = spaces.find((s) => s.id === spaceId)
+    setForm((f) => ({
+      ...f,
+      items: f.items.map((item, i) =>
+        i !== itemIdx
+          ? item
+          : {
+              ...item,
+              spaceId,
+              deposit: space ? space.monthlyRate * 2 : item.deposit,
+              steps: item.steps.map((step, si) =>
+                si === 0 ? { ...step, listPrice: space ? space.monthlyRate : step.listPrice } : step
+              ),
+            }
+      ),
+    }))
+  }
+
+  function updateItem(idx, updates) {
+    setForm((f) => ({
+      ...f,
+      items: f.items.map((item, i) => (i === idx ? { ...item, ...updates } : item)),
+    }))
+  }
+
+  function removeItem(idx) {
+    setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))
+  }
+
+  function addItem() {
+    setForm((f) => ({
+      ...f,
+      items: [
+        ...f.items,
+        {
+          spaceId: '',
+          deposit: 0,
+          steps: [{ startDate: f.startDate, endDate: f.endDate, listPrice: 0, discount: '' }],
+        },
+      ],
+    }))
+  }
+
+  function updateStep(itemIdx, stepIdx, updates) {
+    setForm((f) => ({
+      ...f,
+      items: f.items.map((item, i) =>
+        i !== itemIdx
+          ? item
+          : {
+              ...item,
+              steps: item.steps.map((step, si) => (si === stepIdx ? { ...step, ...updates } : step)),
+            }
+      ),
+    }))
+  }
+
+  function addStep(itemIdx) {
+    setForm((f) => ({
+      ...f,
+      items: f.items.map((item, i) =>
+        i !== itemIdx
+          ? item
+          : {
+              ...item,
+              steps: [
+                ...item.steps,
+                { startDate: '', endDate: f.endDate, listPrice: 0, discount: '' },
+              ],
+            }
+      ),
+    }))
+  }
+
+  function removeStep(itemIdx, stepIdx) {
+    setForm((f) => ({
+      ...f,
+      items: f.items.map((item, i) =>
+        i !== itemIdx
+          ? item
+          : { ...item, steps: item.steps.filter((_, si) => si !== stepIdx) }
+      ),
+    }))
+  }
+
+  // ── Terms helpers ────────────────────────────────────────────────────────
+
+  function removeTerm(term) {
+    setForm((f) => ({ ...f, contractTerms: f.contractTerms.filter((t) => t !== term) }))
+  }
+
+  function addTerm(term) {
+    if (!form.contractTerms.includes(term)) {
+      setForm((f) => ({ ...f, contractTerms: [...f.contractTerms, term] }))
+    }
+  }
+
+  // ── Submit ───────────────────────────────────────────────────────────────
+
+  function validate() {
+    const errs = {}
+    if (!form.tenantId) errs.tenantId = 'Company is required'
+    if (!form.startDate) errs.startDate = 'Start date is required'
+    if (!form.endDate) errs.endDate = 'End date is required'
+    if (form.items.some((item) => !item.spaceId)) errs.items = 'All items need a space selected'
+    setErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
+  function handleSubmit() {
+    if (!validate()) {
+      if (errors.tenantId) scrollTo('company')
+      else if (errors.startDate || errors.endDate) scrollTo('duration')
+      else if (errors.items) scrollTo('items')
+      return
+    }
+    const firstItem = form.items[0] ?? {}
+    const firstStep = firstItem.steps?.[0] ?? {}
+    onSave({
+      tenantId: form.tenantId,
+      spaceId: firstItem.spaceId,
+      startDate: form.startDate,
+      endDate: form.endDate,
+      monthlyRent: Number(firstStep.listPrice ?? 0),
+      bondAmount: Number(firstItem.deposit ?? 0),
+      status: form.status,
+      notes: form.notes,
+      contractNumber: form.contractNumber,
+      contractType: form.contractType,
+      documentType: form.documentType,
+      signatureStatus: form.signatureStatus,
+      memberName: form.memberName,
+      noticePeriodMonths: form.noticePeriodMonths,
+      contractTerms: form.contractTerms,
+      discount: firstStep.discount ?? '',
+      items: form.items,
+    })
+  }
+
+  // ── Derived ──────────────────────────────────────────────────────────────
+
+  const selectedTenant = tenants.find((t) => t.id === form.tenantId)
+  const depositHeld = leases
+    .filter(
+      (l) =>
+        l.tenantId === form.tenantId && l.status === 'active' && l.id !== editLease?.id
+    )
+    .reduce((sum, l) => sum + Number(l.bondAmount ?? 0), 0)
+
+  // ── Render ───────────────────────────────────────────────────────────────
+
+  return (
+    <div className="flex flex-col h-full bg-gray-50">
+      {/* ── Header with section anchors ── */}
+      <div className="bg-white border-b border-gray-200 px-8 pt-6 pb-0 shrink-0">
+        <h1 className="text-lg font-semibold text-gray-900 mb-4">
+          {isEdit ? `Edit Contract · ${form.contractNumber}` : 'New Contract'}
+        </h1>
+        <div className="flex">
+          {FORM_SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => scrollTo(s.id)}
+              className="px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors whitespace-nowrap"
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Scrollable content ── */}
+      <div className="flex-1 overflow-y-auto px-8 py-6">
+
+        {/* ─── Company Information ─── */}
+        <div ref={sectionRefs.company}>
+          <Section title="Company Information">
+            <div className="grid grid-cols-2 gap-6">
+              <Field label="Company" required error={errors.tenantId}>
+                <select
+                  value={form.tenantId}
+                  onChange={(e) => setForm({ ...form, tenantId: e.target.value, memberName: '' })}
+                  className={selectCls(errors.tenantId)}
+                >
+                  <option value="">Select company…</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.businessName}
+                    </option>
+                  ))}
+                </select>
+                {selectedTenant && depositHeld > 0 && (
+                  <div className="mt-2">
+                    <span className="inline-block bg-blue-50 text-blue-700 border border-blue-200 text-xs font-medium px-2.5 py-1 rounded">
+                      Deposit held: A${depositHeld.toLocaleString('en-AU')}
+                    </span>
+                  </div>
+                )}
+              </Field>
+
+              <Field label="Member">
+                <select
+                  value={form.memberName}
+                  onChange={(e) => setForm({ ...form, memberName: e.target.value })}
+                  className={selectCls()}
+                >
+                  <option value="">—</option>
+                  {selectedTenant?.contactName && (
+                    <option value={selectedTenant.contactName}>
+                      {selectedTenant.contactName}
+                    </option>
+                  )}
+                </select>
+              </Field>
+            </div>
+          </Section>
+        </div>
+
+        {/* ─── Duration ─── */}
+        <div ref={sectionRefs.duration}>
+          <Section title="Duration">
+            <div className="grid grid-cols-2 gap-6">
+              <Field label="Document Type">
+                <select
+                  value={form.documentType}
+                  onChange={(e) => setForm({ ...form, documentType: e.target.value })}
+                  className={selectCls()}
+                >
+                  {DOCUMENT_TYPES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Contract Type" required>
+                <select
+                  value={form.contractType}
+                  onChange={(e) => setForm({ ...form, contractType: e.target.value })}
+                  className={selectCls()}
+                >
+                  {CONTRACT_TYPES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Signature Status">
+                <select
+                  value={form.signatureStatus}
+                  onChange={(e) => setForm({ ...form, signatureStatus: e.target.value })}
+                  className={selectCls()}
+                >
+                  {SIGNATURE_STATUSES.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Number" required>
+                <input
+                  value={form.contractNumber}
+                  onChange={(e) => setForm({ ...form, contractNumber: e.target.value })}
+                  className={inputCls()}
+                />
+              </Field>
+
+              <Field label="Start Date" required error={errors.startDate}>
+                <input
+                  type="date"
+                  value={form.startDate}
+                  onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                  className={inputCls(errors.startDate)}
+                />
+              </Field>
+
+              <Field label="End Date" required error={errors.endDate}>
+                <input
+                  type="date"
+                  value={form.endDate}
+                  min={form.startDate || undefined}
+                  onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                  className={inputCls(errors.endDate)}
+                />
+                {form.endDate && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Earliest leave date for the tenant company
+                  </p>
+                )}
+              </Field>
+
+              <Field label="Notice Period" required>
+                <div className="flex items-center gap-2">
+                  <NumberStepper
+                    value={form.noticePeriodMonths}
+                    onChange={(v) => setForm({ ...form, noticePeriodMonths: v })}
+                    min={0}
+                  />
+                  <span className="text-sm text-gray-600 border border-gray-300 px-3 py-1.5 rounded bg-gray-50">
+                    Months
+                  </span>
+                </div>
+              </Field>
+
+              <Field label="Status">
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value })}
+                  className={selectCls()}
+                >
+                  <option value="active">Active</option>
+                  <option value="pending">Pending</option>
+                  <option value="expired">Expired</option>
+                </select>
+              </Field>
+            </div>
+          </Section>
+        </div>
+
+        {/* ─── Items ─── */}
+        <div ref={sectionRefs.items}>
+          <Section title="Items">
+            {errors.items && (
+              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2 mb-4">
+                <AlertCircle size={14} /> {errors.items}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              {form.items.map((item, itemIdx) => {
+                const itemSpace = spaces.find((s) => s.id === item.spaceId)
+                const typeLabel = itemSpace
+                  ? itemSpace.type.charAt(0).toUpperCase() + itemSpace.type.slice(1)
+                  : 'Space'
+
+                return (
+                  <div
+                    key={itemIdx}
+                    className="border border-gray-200 rounded-md bg-white overflow-hidden"
+                  >
+                    {/* Item header row */}
+                    <div className="flex items-center gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                          {typeLabel} *
+                        </span>
+                        <select
+                          value={item.spaceId}
+                          onChange={(e) => handleSpaceSelect(itemIdx, e.target.value)}
+                          className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
+                        >
+                          <option value="">Select Resource</option>
+                          {spaces
+                            .filter((s) => s.status === 'vacant' || s.id === item.spaceId)
+                            .map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.unitNumber} — {s.size}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-500 whitespace-nowrap">Deposit</span>
+                        <NumberStepper
+                          value={item.deposit}
+                          onChange={(v) => updateItem(itemIdx, { deposit: v })}
+                          step={500}
+                        />
+                        <span className="text-xs text-gray-500 border border-gray-300 px-2 py-1.5 rounded bg-white">
+                          AUD
+                        </span>
+                      </div>
+
+                      {form.items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeItem(itemIdx)}
+                          className="ml-auto p-1.5 text-gray-400 hover:text-red-500 rounded hover:bg-red-50"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Steps */}
+                    <div className="px-4 py-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                          Steps
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          ⓘ To add a step, move back the plan's end date
+                        </span>
+                      </div>
+
+                      {/* Column headers */}
+                      <div
+                        className="grid gap-3 text-xs font-medium text-gray-500 pb-2 border-b border-gray-100 mb-2"
+                        style={{ gridTemplateColumns: '24px 1fr 1fr 1fr 1fr 80px 14px' }}
+                      >
+                        <span />
+                        <span>Start Date *</span>
+                        <span>End Date *</span>
+                        <span>List Price</span>
+                        <span>Discount</span>
+                        <span />
+                        <span />
+                      </div>
+
+                      <div className="space-y-2">
+                        {item.steps.map((step, stepIdx) => (
+                          <div
+                            key={stepIdx}
+                            className="grid gap-3 items-center"
+                            style={{ gridTemplateColumns: '24px 1fr 1fr 1fr 1fr 80px 14px' }}
+                          >
+                            {/* Step badge */}
+                            <span className="w-5 h-5 rounded-full bg-gray-800 text-white text-xs flex items-center justify-center font-bold shrink-0">
+                              {stepIdx + 1}
+                            </span>
+
+                            <input
+                              type="date"
+                              value={step.startDate}
+                              min={form.startDate || undefined}
+                              max={form.endDate || undefined}
+                              onChange={(e) =>
+                                updateStep(itemIdx, stepIdx, { startDate: e.target.value })
+                              }
+                              className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 w-full"
+                            />
+                            <input
+                              type="date"
+                              value={step.endDate}
+                              min={step.startDate || form.startDate || undefined}
+                              max={form.endDate || undefined}
+                              onChange={(e) =>
+                                updateStep(itemIdx, stepIdx, { endDate: e.target.value })
+                              }
+                              className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 w-full"
+                            />
+
+                            <div className="flex items-center gap-1">
+                              <NumberStepper
+                                value={step.listPrice}
+                                onChange={(v) => updateStep(itemIdx, stepIdx, { listPrice: v })}
+                                step={100}
+                              />
+                              <span className="text-xs text-gray-500 border border-gray-300 px-1.5 py-1.5 rounded bg-white shrink-0">
+                                AUD
+                              </span>
+                            </div>
+
+                            <select
+                              value={step.discount}
+                              onChange={(e) =>
+                                updateStep(itemIdx, stepIdx, { discount: e.target.value })
+                              }
+                              className="border border-gray-300 rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 w-full"
+                            >
+                              <option value="">Select Discount</option>
+                              {DISCOUNT_OPTIONS.map((d) => (
+                                <option key={d} value={d}>
+                                  {d}
+                                </option>
+                              ))}
+                            </select>
+
+                            <button
+                              type="button"
+                              onClick={() => addStep(itemIdx)}
+                              className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+                            >
+                              Add Step
+                            </button>
+
+                            {item.steps.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeStep(itemIdx, stepIdx)}
+                                className="text-gray-300 hover:text-red-400"
+                              >
+                                <X size={13} />
+                              </button>
+                            )}
+                            {item.steps.length === 1 && <span />}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Add item row */}
+            <div className="mt-4 flex items-center gap-3 p-4 border border-dashed border-gray-300 rounded-md bg-white">
+              <button
+                type="button"
+                onClick={addItem}
+                className="text-sm text-gray-700 border border-gray-300 px-3 py-1.5 rounded hover:bg-gray-50"
+              >
+                + Add Space
+              </button>
+              <p className="text-xs text-gray-400 ml-auto">
+                To allow different types of items,{' '}
+                <span className="underline cursor-pointer hover:text-gray-600">
+                  edit contract type
+                </span>
+              </p>
+            </div>
+          </Section>
+        </div>
+
+        {/* ─── Terms & Conditions ─── */}
+        <div ref={sectionRefs.terms}>
+          <Section title="Terms & Conditions">
+            <Field label="Contract Terms">
+              {/* Selected templates as removable tags */}
+              <div className="border border-gray-300 rounded px-2 py-2 min-h-[44px] flex flex-wrap gap-2 bg-white">
+                {form.contractTerms.length === 0 && (
+                  <span className="text-xs text-gray-400 py-1 px-1">No documents attached</span>
+                )}
+                {form.contractTerms.map((tmplId) => {
+                  const tmpl = templates.find((t) => t.id === tmplId)
+                  const label = tmpl ? `${tmpl.name} · ${tmpl.version}` : tmplId
+                  return (
+                    <span
+                      key={tmplId}
+                      className="flex items-center gap-1.5 bg-blue-50 text-blue-800 border border-blue-200 text-xs font-medium px-2.5 py-1 rounded"
+                    >
+                      {label}
+                      <button
+                        type="button"
+                        onClick={() => removeTerm(tmplId)}
+                        className="text-blue-400 hover:text-blue-700"
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5">
+                Documents attached here will be included in the generated PDF agreement.
+              </p>
+            </Field>
+
+            {/* Available templates to add */}
+            {templates.length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs font-medium text-gray-600 mb-2">Available templates</p>
+                <div className="border border-gray-200 rounded-md divide-y divide-gray-100">
+                  {templates.map((tmpl) => {
+                    const isSelected = form.contractTerms.includes(tmpl.id)
+                    return (
+                      <div
+                        key={tmpl.id}
+                        className="flex items-center justify-between px-4 py-3 hover:bg-gray-50"
+                      >
+                        <div>
+                          <span className="text-sm font-medium text-gray-800">{tmpl.name}</span>
+                          <span className="text-xs text-gray-400 ml-2">{tmpl.version}</span>
+                          <span className="text-xs text-gray-400 ml-3">
+                            {tmpl.clauses?.length ?? 0} clause{tmpl.clauses?.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => (isSelected ? removeTerm(tmpl.id) : addTerm(tmpl.id))}
+                          className={`text-xs font-medium px-3 py-1.5 rounded border transition-colors ${
+                            isSelected
+                              ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                              : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {isSelected ? '✓ Attached' : '+ Attach'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {templates.length === 0 && (
+              <div className="mt-4 p-4 bg-gray-50 border border-dashed border-gray-300 rounded-md text-center">
+                <p className="text-sm text-gray-500">
+                  No templates yet.{' '}
+                  <a href="/templates" className="text-blue-600 hover:underline">
+                    Create templates
+                  </a>{' '}
+                  in the Templates section.
+                </p>
+              </div>
+            )}
+
+            <div className="mt-6 pt-6 border-t border-gray-100">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Addendum</label>
+              <button
+                type="button"
+                className="text-sm border border-gray-300 px-3 py-1.5 rounded hover:bg-gray-50 text-gray-600"
+              >
+                Add Addendum
+              </button>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-gray-100">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
+              <textarea
+                rows={3}
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                placeholder="Internal notes about this contract…"
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+            </div>
+          </Section>
+        </div>
+
+        {/* ─── System Messages ─── */}
+        <div ref={sectionRefs.messages}>
+          <Section title="System Messages">
+            <div className="py-10 text-center text-gray-400 text-sm">
+              No system messages for this contract.
+            </div>
+          </Section>
+        </div>
+      </div>
+
+      {/* ── Footer ── */}
+      <div className="shrink-0 border-t border-gray-200 bg-white px-8 py-4 flex justify-end gap-3">
+        <button
+          type="button"
+          onClick={onDiscard}
+          className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+        >
+          Discard
+        </button>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
+        >
+          {isEdit ? 'Save Changes' : 'Create'}
+        </button>
+      </div>
+    </div>
+  )
+}

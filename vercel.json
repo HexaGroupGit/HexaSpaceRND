@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/overdue-reminders",
+      "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/auto-billing",
+      "schedule": "0 0 1 * *"
+    },
+    {
+      "path": "/api/event-reminders",
+      "schedule": "0 22 * * *"
+    }
+  ]
+}

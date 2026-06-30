@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="black" stroke-linejoin="round" stroke-linecap="round">
+  <!-- Outer hexagon -->
+  <polygon points="50,3 92,26 92,74 50,97 8,74 8,26" stroke-width="7"/>
+  <!-- Inner hexagon -->
+  <polygon points="50,20 75,34.5 75,65.5 50,80 25,65.5 25,34.5" stroke-width="5"/>
+  <!-- Cube top face -->
+  <polygon points="50,35 65,43 50,51 35,43" stroke-width="4"/>
+  <!-- Cube left face -->
+  <polygon points="35,43 50,51 50,67 35,59" stroke-width="4"/>
+  <!-- Cube right face -->
+  <polygon points="65,43 50,51 50,67 65,59" stroke-width="4"/>
+</svg>
