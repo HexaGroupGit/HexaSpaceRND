@@ -7,7 +7,7 @@ const today = () => new Date().toISOString().split('T')[0]
 
 const EMPTY = {
   name: '', companyId: '', email: '', phone: '', twitter: '', bio: '',
-  startDate: today(), status: 'Auto',
+  startDate: today(), status: 'Auto', credits: 0,
   contactPerson: false, billingPerson: false, portalAccess: true, hideFromPortal: false,
   address: '', city: '', state: '', zip: '', country: 'Australia',
   billBusinessName: '', abn: '', currency: 'AUD', taxRate: 'GST 10%',
@@ -184,8 +184,11 @@ function MemberModal({ open, editId, form, setForm, tenants, onClose, onSubmit }
                 <F label="Start Date" required><input type="date" value={form.startDate} onChange={up('startDate')} className={ic} /></F>
               </div>
               <F label="Bio"><textarea rows={2} value={form.bio} onChange={up('bio')} className={ic} /></F>
-              <F label="Status"><select value={form.status} onChange={up('status')} className={ic}><option>Auto</option><option>Active</option><option>Drop In</option><option>Pending</option><option>Former</option></select>
-                <span className="text-[11px] text-gray-400">Auto = calculated from the member’s memberships.</span></F>
+              <div className="grid grid-cols-2 gap-4">
+                <F label="Status"><select value={form.status} onChange={up('status')} className={ic}><option>Auto</option><option>Active</option><option>Drop In</option><option>Pending</option><option>Former</option></select></F>
+                <F label="Booking Credits"><input type="number" step="0.5" value={form.credits} onChange={up('credits')} className={ic} /></F>
+              </div>
+              <span className="text-[11px] text-gray-400 -mt-2 block">Status Auto = from memberships · 1 credit = $40 of room bookings.</span>
               <div className="border-t border-gray-100 pt-3">
                 <span className="block text-xs font-medium text-gray-600 mb-2">Access</span>
                 {[['contactPerson', 'Contact Person'], ['billingPerson', 'Billing Person'], ['portalAccess', 'Member Portal User']].map(([k, label]) => (

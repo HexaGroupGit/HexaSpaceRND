@@ -21,6 +21,7 @@ import Memberships from './components/Memberships.jsx'
 import Fees from './components/Fees.jsx'
 import Bookings from './components/Bookings.jsx'
 import ActivityLog from './components/ActivityLog.jsx'
+import Calendar from './components/Calendar.jsx'
 import Login from './components/Login.jsx'
 import SignPage from './components/SignPage.jsx'
 import EventBookingSignPage from './components/EventBookingSignPage.jsx'
@@ -101,6 +102,7 @@ export default function App() {
           <Route path="memberships" element={<Memberships />} />
           <Route path="fees" element={<Fees />} />
           <Route path="bookings" element={<Bookings />} />
+          <Route path="calendar" element={<Calendar />} />
           <Route path="activity" element={<ActivityLog />} />
           <Route path="spaces" element={<Spaces />} />
           <Route path="leases" element={<Leases />} />

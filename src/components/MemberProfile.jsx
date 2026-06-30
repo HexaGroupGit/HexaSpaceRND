@@ -70,6 +70,7 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
             <Row label="Status"><span className="inline-flex gap-1">{[st, ...accessRoles(member).map((a) => a.split(' ')[0])].map((b, i) => <span key={i} className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">{b}</span>)}</span></Row>
             <Row label="Phone">{member.phone}</Row>
             <Row label="Email">{member.email}</Row>
+            <Row label="Credits">{Number(member.credits || 0)} · A${(Number(member.credits || 0) * 40).toLocaleString('en-AU')}</Row>
             <Row label="Address">{member.address}</Row>
             <div className="flex items-center justify-between py-1.5 text-xs"><span className="text-gray-400 uppercase tracking-wide">Use Day Passes</span><Toggle on={!!member.useDayPasses} onClick={() => set('useDayPasses', !member.useDayPasses)} /></div>
             <Row label="Presence"><span className="text-gray-400">Not in</span></Row>
