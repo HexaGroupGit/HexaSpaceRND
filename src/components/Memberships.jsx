@@ -49,8 +49,9 @@ export default function Memberships() {
   const rows = leases
     .map((l) => {
       const sp = space(l.spaceId)
-      const unit = sp?.unitNumber || l.resource || l.planName || 'Membership'
-      return { ...l, sp, unit, type: l.membershipType || membershipType(l, sp), companyName: company(l.tenantId)?.businessName ?? l.companyName ?? l.memberName ?? '—', overdue: overdueCompany(l.tenantId) }
+      // Offices show their suite label; virtual/desks share one space record, so use the contract resource.
+      const unit = (sp && sp.type === 'office' ? sp.unitNumber : l.resource) || l.planName || 'Membership'
+      return { ...l, sp, unit, level: l.level || '', type: l.membershipType || membershipType(l, sp), companyName: company(l.tenantId)?.businessName ?? l.companyName ?? l.memberName ?? '—', overdue: overdueCompany(l.tenantId) }
     })
     .filter((r) => r.sp?.type !== 'meeting')
     .filter((r) => r.status === 'active' || r.status === 'pending')
@@ -104,7 +105,7 @@ export default function Memberships() {
                 {items.map((r) => (
                   <div key={r.id} className={`bg-white border rounded-md p-3 ${r.overdue ? 'border-red-300' : 'border-gray-200'}`}>
                     <div className="flex items-start justify-between gap-2">
-                      <span className="font-medium text-gray-900 text-sm leading-tight">{r.unit}</span>
+                      <span className="font-medium text-gray-900 text-sm leading-tight">{r.unit}{r.level ? <span className="text-gray-400 font-normal"> · {r.level}</span> : null}</span>
                       {r.overdue
                         ? <span className="flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700 shrink-0"><AlertTriangle size={10} /> Overdue</span>
                         : <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${r.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>{r.status || 'active'}</span>}
