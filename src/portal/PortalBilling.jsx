@@ -47,12 +47,12 @@ function downloadPDF(invoice, tenant) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
   doc.setTextColor(255, 255, 255)
-  doc.text('HEXAHUB', M, 12)
+  doc.text('HEXA SPACE', M, 12)
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(180, 180, 180)
-  doc.text('HexaHub Pty Ltd  ·  7 Distribution Circuit, Huntingdale VIC 3166', M, 19)
-  doc.text('info@hexahub.com.au  ·  hexahub.com.au', M, 24)
+  doc.text('Hexa Space Pty Ltd  ·  Level 4, 830 Whitehorse Road, Box Hill VIC 3128', M, 19)
+  doc.text('info@hexaspace.com.au  ·  hexaspace.com.au', M, 24)
 
   // Invoice title
   doc.setFontSize(20)

@@ -1,7 +1,7 @@
 import { format, parseISO } from 'date-fns'
 
 const DEFAULT_BUSINESS = {
-  name: 'HexaHub Pty Ltd',
+  name: 'Hexa Space Pty Ltd',
   line1: '7 Distribution Circuit',
   line2: 'Huntingdale VIC 3166',
   country: 'Australia, Victoria',
@@ -9,7 +9,7 @@ const DEFAULT_BUSINESS = {
 
 function getBusinessAddress(settings) {
   if (!settings?.billing) return DEFAULT_BUSINESS
-  const addr = settings.billing.address ?? '7 Distribution Circuit, Huntingdale VIC 3166'
+  const addr = settings.billing.address ?? 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'
   const commaIdx = addr.indexOf(',')
   return {
     name: settings.billing.businessName || settings.company?.name || DEFAULT_BUSINESS.name,

@@ -35,7 +35,7 @@ function SetPasswordScreen({ onDone }) {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
-          <div className="text-3xl font-black tracking-widest text-gray-900">HEXAHUB</div>
+          <div className="text-3xl font-black tracking-widest text-gray-900">HEXA SPACE</div>
           <p className="text-sm text-gray-400 mt-1">Member Portal</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-8 shadow-sm">
@@ -80,7 +80,7 @@ function SetPasswordScreen({ onDone }) {
           </form>
         </div>
         <p className="text-center text-xs text-gray-400 mt-6">
-          hexahub.com.au · build locally, scale sustainably
+          hexaspace.com.au · build locally, scale sustainably
         </p>
       </div>
     </div>
@@ -189,7 +189,7 @@ export default function PortalApp() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-2xl font-black tracking-widest text-gray-900 mb-3">HEXAHUB</div>
+          <div className="text-2xl font-black tracking-widest text-gray-900 mb-3">HEXA SPACE</div>
           <div className="text-sm text-gray-400">Loading…</div>
         </div>
       </div>
@@ -200,7 +200,7 @@ export default function PortalApp() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="text-center max-w-sm">
-          <div className="text-2xl font-black tracking-widest text-gray-900 mb-6">HEXAHUB</div>
+          <div className="text-2xl font-black tracking-widest text-gray-900 mb-6">HEXA SPACE</div>
           <p className="text-gray-600 mb-2">Having trouble connecting.</p>
           <p className="text-sm text-gray-400 mb-8">This is usually caused by a stale login session.</p>
           <button
@@ -229,15 +229,15 @@ export default function PortalApp() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="text-center p-8 max-w-sm">
-          <div className="text-2xl font-black tracking-widest text-gray-900 mb-6">HEXAHUB</div>
+          <div className="text-2xl font-black tracking-widest text-gray-900 mb-6">HEXA SPACE</div>
           <p className="text-gray-600 mb-1">No member account found for</p>
           <p className="font-semibold text-gray-900 mb-6">{session.user.email}</p>
           <p className="text-sm text-gray-400 mb-8">
-            Please contact HexaHub if you believe this is an error.
+            Please contact Hexa Space if you believe this is an error.
           </p>
-          <a href="mailto:info@hexahub.com.au"
+          <a href="mailto:info@hexaspace.com.au"
              className="block w-full bg-black text-white text-sm font-semibold py-2.5 rounded mb-3 text-center hover:bg-gray-800">
-            Contact HexaHub
+            Contact Hexa Space
           </a>
           <button onClick={signOut} className="text-sm text-gray-400 hover:text-gray-600">
             Sign out

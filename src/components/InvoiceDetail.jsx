@@ -61,12 +61,12 @@ export default function InvoiceDetail({
     const ml = 15
     const mr = W - 15
 
-    const companyName = settings?.company?.name ?? 'HexaHub Pty Ltd'
-    const companyWebsite = settings?.company?.website ?? 'hexahub.com.au'
+    const companyName = settings?.company?.name ?? 'Hexa Space Pty Ltd'
+    const companyWebsite = settings?.company?.website ?? 'hexaspace.com.au'
     const billingName = settings?.billing?.businessName ?? companyName
     const billingBsb = settings?.billing?.bsb ?? '063-000'
     const billingAcc = settings?.billing?.acc ?? '00000000'
-    const billingAddress = settings?.billing?.address ?? '7 Distribution Circuit, Huntingdale VIC 3166'
+    const billingAddress = settings?.billing?.address ?? 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'
     const addrComma = billingAddress.indexOf(',')
     const addrLine1 = addrComma > -1 ? billingAddress.slice(0, addrComma).trim() : billingAddress
     const addrLine2 = addrComma > -1 ? billingAddress.slice(addrComma + 1).trim() : ''
@@ -202,7 +202,7 @@ export default function InvoiceDetail({
       const slug = (tenant?.businessName ?? 'invoice').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')
       await sendEmail({
         to: email,
-        subject: resolveEmailTemplate('invoice', { number: invoice.number, company: settings?.company?.name ?? 'HexaHub', dueDate: invoice.dueDate ?? '' }, settings).subject || `Invoice ${invoice.number} from ${settings?.company?.name ?? 'HexaHub'}`,
+        subject: resolveEmailTemplate('invoice', { number: invoice.number, company: settings?.company?.name ?? 'Hexa Space', dueDate: invoice.dueDate ?? '' }, settings).subject || `Invoice ${invoice.number} from ${settings?.company?.name ?? 'Hexa Space'}`,
         html: invoiceEmailHtml({ invoice, tenant, settings }),
         settings,
         attachments: [{ filename: `${invoice.number}_${slug}.pdf`, content: pdfBase64 }],
@@ -223,7 +223,7 @@ export default function InvoiceDetail({
     if (!email) { alert('No email address on file for this tenant.'); return }
     if (!window.confirm(`Send overdue payment reminder to ${email}?`)) return
     try {
-      const companyName = settings?.company?.name ?? 'HexaHub'
+      const companyName = settings?.company?.name ?? 'Hexa Space'
       const sub = (invoice.lineItems ?? []).reduce((s, l) => s + Math.round(l.unitPrice * l.qty * (1 - (l.discountPct ?? 0) / 100) * 100) / 100, 0)
       const gst = invoice.vatEnabled !== false ? Math.round(sub * (taxRate) * 100) / 100 : 0
       const total = sub + gst
@@ -252,7 +252,7 @@ export default function InvoiceDetail({
   async function handleSendReceipt(payment) {
     const email = tenant?.email
     if (!email) { alert('No email address on file for this tenant.'); return }
-    const companyName = settings?.company?.name ?? 'HexaHub'
+    const companyName = settings?.company?.name ?? 'Hexa Space'
     const sub = (invoice.lineItems ?? []).reduce((s, l) => s + Math.round(l.unitPrice * l.qty * (1 - (l.discountPct ?? 0) / 100) * 100) / 100, 0)
     const gst = invoice.vatEnabled !== false ? Math.round(sub * taxRate * 100) / 100 : 0
     const total = sub + gst

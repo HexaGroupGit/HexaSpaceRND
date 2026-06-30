@@ -210,7 +210,7 @@ export default function Billing() {
       try {
         await sendEmail({
           to: tenant.email,
-          subject: `Invoice ${inv.number} from ${settings?.company?.name ?? 'HexaHub'}`,
+          subject: `Invoice ${inv.number} from ${settings?.company?.name ?? 'Hexa Space'}`,
           html: invoiceEmailHtml({ invoice: inv, tenant, settings }),
           settings,
           tenantId: inv.tenantId, emailType: 'invoice',

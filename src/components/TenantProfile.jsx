@@ -50,7 +50,7 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
 
   function generateStatement() {
     const taxRate = (settings?.billingRules?.taxRate ?? 10) / 100
-    const companyName = settings?.billing?.businessName ?? settings?.company?.name ?? 'HexaHub Pty Ltd'
+    const companyName = settings?.billing?.businessName ?? settings?.company?.name ?? 'Hexa Space Pty Ltd'
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
     const W = doc.internal.pageSize.getWidth()
     const H = doc.internal.pageSize.getHeight()
@@ -525,7 +525,7 @@ function PortalAccessSection({ email }) {
       </div>
       <div className="px-5 py-4 flex items-center justify-between gap-4">
         <div>
-          <div className="text-xs text-gray-400 mb-1.5">members.hexahub.com.au</div>
+          <div className="text-xs text-gray-400 mb-1.5">members.hexaspace.com.au</div>
           {portalStatus === null
             ? <span className="text-xs text-gray-400">Checking…</span>
             : badge[portalStatus]}

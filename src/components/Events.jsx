@@ -82,7 +82,7 @@ export default function Events() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Events</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Synced from hexahub.com.au + portal-only events</p>
+          <p className="text-sm text-gray-400 mt-0.5">Synced from hexaspace.com.au + portal-only events</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={load} className="flex items-center gap-1.5 text-sm border border-gray-200 rounded-md px-3 py-2 text-gray-500 hover:bg-gray-50">
@@ -94,11 +94,11 @@ export default function Events() {
         </div>
       </div>
 
-      {/* Sanity events — live from hexahub.com.au */}
+      {/* Sanity events — live from hexaspace.com.au */}
       {sanityEvents.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">From hexahub.com.au</h2>
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">From hexaspace.com.au</h2>
             <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Live from Sanity</span>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -144,7 +144,7 @@ export default function Events() {
       ) : events.length === 0 ? (
         <div className="bg-white border border-dashed border-gray-300 rounded-lg py-10 text-center">
           <Calendar size={28} className="text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 text-sm mb-3">No portal-only events. Events from hexahub.com.au appear above automatically.</p>
+          <p className="text-gray-500 text-sm mb-3">No portal-only events. Events from hexaspace.com.au appear above automatically.</p>
           <button onClick={openAdd} className="bg-black text-white text-sm font-semibold px-4 py-2 rounded-md hover:bg-gray-800">
             + Add Portal Event
           </button>
@@ -282,7 +282,7 @@ export default function Events() {
                   value={form.link}
                   onChange={e => setForm(f => ({ ...f, link: e.target.value }))}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
-                  placeholder="https://www.hexahub.com.au/events/..."
+                  placeholder="https://www.hexaspace.com.au/events/..."
                 />
               </div>
             </div>

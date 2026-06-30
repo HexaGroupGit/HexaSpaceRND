@@ -113,7 +113,7 @@ export async function fetchSanityEvents() {
       location: [e.location, e.locationAddress].filter(Boolean).join(' — '),
       description: e.summary ?? e.tagline ?? '',
       imageUrl: sanityImageUrl(e.coverImage?.asset ? e.coverImage : null),
-      link: e.slug?.current ? `https://www.hexahub.com.au/events/${e.slug.current}` : 'https://www.hexahub.com.au/events',
+      link: e.slug?.current ? `https://www.hexaspace.com.au/events/${e.slug.current}` : 'https://www.hexaspace.com.au/events',
       rsvpEnabled: e.rsvpEnabled,
       source: 'sanity',
     }))

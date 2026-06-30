@@ -38,7 +38,7 @@ export default function Renewals() {
     if (!tenant?.email) { alert('No email on file for this tenant.'); return }
     setSending(lease.id)
     try {
-      const companyName = settings?.company?.name ?? 'HexaHub'
+      const companyName = settings?.company?.name ?? 'Hexa Space'
       const contractNum = lease.contractNumber ?? `CON-${lease.id.slice(-3).toUpperCase()}`
       const expiryDate = format(parseISO(lease.endDate), 'dd MMM yyyy')
       await sendEmail({

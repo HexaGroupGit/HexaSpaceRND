@@ -63,7 +63,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-2xl font-black tracking-widest text-gray-900 mb-3">HEXAHUB</div>
+          <div className="text-2xl font-black tracking-widest text-gray-900 mb-3">HEXA SPACE</div>
           <div className="text-sm text-gray-400">Loading...</div>
         </div>
       </div>
@@ -78,7 +78,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-2xl font-black tracking-widest text-gray-900 mb-3">HEXAHUB</div>
+          <div className="text-2xl font-black tracking-widest text-gray-900 mb-3">HEXA SPACE</div>
           <div className="text-sm text-gray-400">Loading...</div>
         </div>
       </div>

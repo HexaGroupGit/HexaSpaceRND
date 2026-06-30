@@ -247,7 +247,7 @@ function AddExistingUserForm({ users, updateSettings }) {
         <div>
           <label className="block text-xs text-gray-500 mb-1">Email *</label>
           <input type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-            placeholder="user@hexahub.com.au" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black" />
+            placeholder="user@hexaspace.com.au" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black" />
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">Role</label>
@@ -325,7 +325,7 @@ function AdminUsersSection({ settings, updateSettings }) {
     <div>
       <h1 className="text-xl font-bold text-gray-900 mb-1">Admin Users</h1>
       <p className="text-sm text-gray-500 mb-6">
-        Manage who has access to HexaHub and their permission level.
+        Manage who has access to Hexa Space and their permission level.
       </p>
 
       {/* Current users table */}
@@ -427,7 +427,7 @@ function AdminUsersSection({ settings, updateSettings }) {
                 type="email"
                 value={inviteEmail}
                 onChange={e => setInviteEmail(e.target.value)}
-                placeholder="teammate@hexahub.com.au"
+                placeholder="teammate@hexaspace.com.au"
                 required
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
               />

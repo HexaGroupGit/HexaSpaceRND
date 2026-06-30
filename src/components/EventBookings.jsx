@@ -132,14 +132,14 @@ function LicensorSignatureModal({ current, onSave, onClose }) {
     try {
       const now = new Date().toISOString()
       const data = {
-        id: 'hexahub_licensor_sig',
+        id: 'hexaspace_licensor_sig',
         type: 'admin_config',
         signatureData,
         signerName: name.trim(),
         signerTitle: title.trim(),
         updatedAt: now,
       }
-      await supabase.from('event_bookings').upsert({ id: 'hexahub_licensor_sig', data, updated_at: now })
+      await supabase.from('event_bookings').upsert({ id: 'hexaspace_licensor_sig', data, updated_at: now })
       onSave(data)
     } finally {
       setSaving(false)
@@ -161,7 +161,7 @@ function LicensorSignatureModal({ current, onSave, onClose }) {
         </div>
         <div className="px-6 py-5 space-y-4">
           <div><label className={lab}>Name *</label><input className={inp} value={name} onChange={e => setName(e.target.value)} placeholder="Full name" /></div>
-          <div><label className={lab}>Title</label><input className={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Director, HexaHub Pty Ltd" /></div>
+          <div><label className={lab}>Title</label><input className={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Director, Hexa Space Pty Ltd" /></div>
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className={lab} style={{ marginBottom: 0 }}>Signature</label>
@@ -290,7 +290,7 @@ function CountersignModal({ booking, adminSigDefault, onDone, onClose }) {
                 a fully executed PDF will be generated, and {booking.vendorName} will be emailed their copy automatically.
               </div>
               <div><label className={lab}>Your Name *</label><input className={inp} value={name} onChange={e => setName(e.target.value)} placeholder="Full name" /></div>
-              <div><label className={lab}>Title</label><input className={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Director, HexaHub Pty Ltd" /></div>
+              <div><label className={lab}>Title</label><input className={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Director, Hexa Space Pty Ltd" /></div>
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className={lab} style={{ marginBottom: 0 }}>Signature *</label>
@@ -1017,7 +1017,7 @@ function SendAllModal({ bookings, onClose }) {
   const [enabled, setEnabled] = useState(defaultEnabled)
   const [subject, setSubject] = useState(`Found Underground — Sunday 7 June 2026`)
   const [body, setBody] = useState(
-    `Hi everyone,\n\nThank you for being part of the Found Underground on Sunday 7 June 2026.\n\nThe event runs from 3:00 PM – 9:00 PM at 18 Logistic Court, Huntingdale. Bump-in is from 11:00 AM.\n\nPlease don't hesitate to reach out if you have any questions.\n\nSee you there!\n\nThe HexaHub Team`
+    `Hi everyone,\n\nThank you for being part of the Found Underground on Sunday 7 June 2026.\n\nThe event runs from 3:00 PM – 9:00 PM at 18 Logistic Court, Huntingdale. Bump-in is from 11:00 AM.\n\nPlease don't hesitate to reach out if you have any questions.\n\nSee you there!\n\nThe Hexa Space Team`
   )
   const [copied, setCopied] = useState(false)
 
@@ -1193,7 +1193,7 @@ export default function EventBookings() {
     const { data } = await supabase
       .from('event_bookings')
       .select('data')
-      .eq('id', 'hexahub_licensor_sig')
+      .eq('id', 'hexaspace_licensor_sig')
       .single()
     if (data?.data) setLicensorSig(data.data)
   }

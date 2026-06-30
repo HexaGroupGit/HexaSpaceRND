@@ -92,7 +92,7 @@ export default function AiStudio({ store }) {
   function downloadImg() {
     const a = document.createElement('a')
     a.href = `data:image/png;base64,${imgB64}`
-    a.download = `${space?.unitNumber ?? 'hexahub'}-ai.png`
+    a.download = `${space?.unitNumber ?? 'hexaspace'}-ai.png`
     a.click()
   }
 

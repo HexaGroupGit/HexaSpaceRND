@@ -69,7 +69,7 @@ export default function ListingsPanel({ store }) {
       <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-5 text-xs text-blue-800 flex gap-2">
         <Globe size={15} className="shrink-0 mt-0.5" />
         <div>
-          Publishing pushes a unit to <strong>hexahub.com.au</strong>. When a published unit is leased it
+          Publishing pushes a unit to <strong>hexaspace.com.au</strong>. When a published unit is leased it
           automatically flips to <strong>Leased</strong> on the website. Photos &amp; descriptions are managed in Sanity and never overwritten.
         </div>
       </div>

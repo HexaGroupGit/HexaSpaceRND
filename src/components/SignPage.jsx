@@ -92,9 +92,9 @@ export default function SignPage({ token }) {
         data: { ...lease, signatureStatus: 'out_for_signature', tenantSignedAt: now, tenantSignerName: signerName },
       }).eq('id', request.lease_id)
 
-      const companyName = settings?.company?.name ?? 'HexaHub'
+      const companyName = settings?.company?.name ?? 'Hexa Space'
       const contractNum = lease.contractNumber ?? `CON-${lease.id?.slice(-3).toUpperCase()}`
-      const portalUrl = `https://app.hexahub.com.au`
+      const portalUrl = `https://app.hexaspace.com.au`
 
       // Notify admin to countersign
       const adminEmail = settings?.emails?.notificationEmail
@@ -133,19 +133,19 @@ export default function SignPage({ token }) {
     <StatusScreen
       icon="🔒"
       title="Invalid or expired link"
-      subtitle="This signing link is invalid or has expired. Please contact HexaHub for a new link."
+      subtitle="This signing link is invalid or has expired. Please contact Hexa Space for a new link."
     />
   )
 
   if (state === 'error') return (
-    <StatusScreen icon="⚠️" title="Something went wrong" subtitle="Please try again or contact HexaHub." />
+    <StatusScreen icon="⚠️" title="Something went wrong" subtitle="Please try again or contact Hexa Space." />
   )
 
   if (state === 'tenant_signed') return (
     <StatusScreen
       icon="✅"
       title="Signature received"
-      subtitle={`Thank you${request?.licensee_signer_name ? `, ${request.licensee_signer_name}` : ''}. Your signature has been received. HexaHub will countersign and send you a copy shortly.`}
+      subtitle={`Thank you${request?.licensee_signer_name ? `, ${request.licensee_signer_name}` : ''}. Your signature has been received. Hexa Space will countersign and send you a copy shortly.`}
     />
   )
 
@@ -164,7 +164,7 @@ export default function SignPage({ token }) {
       {/* Header */}
       <div className="bg-black text-white px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div>
-          <span className="font-black tracking-widest text-lg">HEXAHUB</span>
+          <span className="font-black tracking-widest text-lg">HEXA SPACE</span>
           <span className="text-gray-400 text-sm ml-3">Contract Signing</span>
         </div>
         <div className="text-sm text-gray-300">{contractNum}</div>
@@ -294,7 +294,7 @@ function StatusScreen({ icon, title, subtitle }) {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="text-center max-w-sm w-full">
-        <div className="text-2xl font-black tracking-widest text-gray-900 mb-6">HEXAHUB</div>
+        <div className="text-2xl font-black tracking-widest text-gray-900 mb-6">HEXA SPACE</div>
         <div className="bg-white border border-gray-200 rounded-md p-8 shadow-sm">
           {icon && <div className="text-4xl mb-4">{icon}</div>}
           <h1 className="text-lg font-bold text-gray-900 mb-2">{title}</h1>
@@ -306,7 +306,7 @@ function StatusScreen({ icon, title, subtitle }) {
 }
 
 function adminCountersignHtml({ tenant, settings, signerName, contractNum, now, portalUrl }) {
-  const company = settings?.company?.name ?? 'HexaHub'
+  const company = settings?.company?.name ?? 'Hexa Space'
   const date = format(parseISO(now), 'dd MMM yyyy, h:mm a')
   return `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1a1a1a;background:#f5f5f5;margin:0;padding:0">
   <div style="max-width:560px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">

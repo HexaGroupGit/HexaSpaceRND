@@ -13,7 +13,7 @@ const TYPE_LABEL = {
 }
 
 const LOCATION_LABEL = {
-  huntingdale: '7 Distribution Circuit, Huntingdale VIC 3166',
+  huntingdale: 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128',
   lonsdale: 'Lonsdale Street, Melbourne VIC',
   whitehorse: 'Whitehorse Road, Mitcham VIC',
 }
@@ -54,13 +54,13 @@ export default function AgreementGenerator() {
     doc.setTextColor(255, 255, 255)
     doc.setFontSize(18)
     doc.setFont('helvetica', 'bold')
-    doc.text('HEXAHUB', margin, 14)
+    doc.text('HEXA SPACE', margin, 14)
     doc.setFontSize(8)
     doc.setFont('helvetica', 'normal')
     doc.text('build locally, scale sustainably', margin, 20)
     doc.setFontSize(8)
-    doc.text('hexahub.com.au', pageW - margin, 14, { align: 'right' })
-    doc.text('7 Distribution Circuit, Huntingdale VIC 3166', pageW - margin, 20, { align: 'right' })
+    doc.text('hexaspace.com.au', pageW - margin, 14, { align: 'right' })
+    doc.text('Level 4, 830 Whitehorse Road, Box Hill VIC 3128', pageW - margin, 20, { align: 'right' })
 
     // --- Title ---
     doc.setTextColor(0, 0, 0)
@@ -112,11 +112,11 @@ export default function AgreementGenerator() {
     doc.text('LICENSOR', margin, y)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(0, 0, 0)
-    doc.text('HexaHub Pty Ltd', margin + 50, y)
+    doc.text('Hexa Space Pty Ltd', margin + 50, y)
     y += 5
     doc.text('ABN: 00 000 000 000', margin + 50, y)
     y += 5
-    doc.text('7 Distribution Circuit, Huntingdale VIC 3166', margin + 50, y)
+    doc.text('Level 4, 830 Whitehorse Road, Box Hill VIC 3128', margin + 50, y)
     y += 8
 
     doc.setFont('helvetica', 'bold')
@@ -274,7 +274,7 @@ export default function AgreementGenerator() {
     y += 6
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(60, 60, 60)
-    doc.text('HexaHub Pty Ltd', margin, y)
+    doc.text('Hexa Space Pty Ltd', margin, y)
     y += 12
     doc.setDrawColor(0, 0, 0)
     doc.line(margin, y, margin + colW, y)
@@ -310,7 +310,7 @@ export default function AgreementGenerator() {
       doc.setFontSize(7)
       doc.setTextColor(150, 150, 150)
       doc.text(
-        `HexaHub Licence Agreement · ${refNumber} · Page ${i} of ${pageCount}`,
+        `Hexa Space Licence Agreement · ${refNumber} · Page ${i} of ${pageCount}`,
         pageW / 2,
         pageH - 8,
         { align: 'center' }
@@ -319,7 +319,7 @@ export default function AgreementGenerator() {
 
     const tenantSlug = selectedTenant.businessName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')
     const dateSlug = format(new Date(), 'yyyyMMdd')
-    doc.save(`HexaHub_Agreement_${tenantSlug}_${dateSlug}.pdf`)
+    doc.save(`Hexa Space_Agreement_${tenantSlug}_${dateSlug}.pdf`)
 
     setGenerating(false)
     setGenerated(true)
@@ -369,7 +369,7 @@ export default function AgreementGenerator() {
             </div>
             <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
               <span className="text-gray-400">Licensor</span>
-              <span>HexaHub Pty Ltd</span>
+              <span>Hexa Space Pty Ltd</span>
               <span className="text-gray-400">Licensee</span>
               <span className="font-medium">{selectedTenant.businessName}</span>
               <span className="text-gray-400">ABN</span>

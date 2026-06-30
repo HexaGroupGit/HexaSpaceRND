@@ -83,7 +83,7 @@ export default function Dashboard() {
     <div className="p-8">
       <div className="mb-7">
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">{format(today, 'EEEE, d MMMM yyyy')} · HexaHub Found Huntingdale</p>
+        <p className="text-sm text-gray-500 mt-1">{format(today, 'EEEE, d MMMM yyyy')} · Hexa Space · Box Hill</p>
       </div>
 
       {/* KPI row 1 */}

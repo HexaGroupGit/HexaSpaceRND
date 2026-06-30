@@ -19,7 +19,7 @@ export default function PortalLayout({ tenant, onSignOut, children }) {
     <aside className="w-52 bg-black text-white flex flex-col h-full">
       <div className="px-5 py-6 border-b border-gray-800 flex items-center justify-between">
         <div>
-          <span className="text-lg font-bold tracking-tight">HexaHub</span>
+          <span className="text-lg font-bold tracking-tight">Hexa Space</span>
           <p className="text-xs text-gray-400 mt-0.5">Member Portal</p>
         </div>
         <button onClick={() => setOpen(false)} className="md:hidden text-gray-400 hover:text-white p-1">
@@ -87,7 +87,7 @@ export default function PortalLayout({ tenant, onSignOut, children }) {
           <button onClick={() => setOpen(true)} className="text-gray-600">
             <Menu size={20} />
           </button>
-          <span className="font-black tracking-widest text-sm">HEXAHUB</span>
+          <span className="font-black tracking-widest text-sm">HEXA SPACE</span>
         </div>
 
         <main className="flex-1 overflow-y-auto">

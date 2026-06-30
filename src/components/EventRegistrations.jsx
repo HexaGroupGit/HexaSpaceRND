@@ -19,7 +19,7 @@ export default function EventRegistrations({ store }) {
   const [testing, setTesting] = useState(false)
   const [testMsg, setTestMsg] = useState('')
 
-  const testEmail = settings?.emails?.notificationEmail || 'info@hexahub.com.au'
+  const testEmail = settings?.emails?.notificationEmail || 'info@hexaspace.com.au'
 
   async function emailSample() {
     setTesting(true); setTestMsg('')
@@ -93,7 +93,7 @@ export default function EventRegistrations({ store }) {
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-xs text-blue-800 flex gap-2 flex-1">
           <Calendar size={15} className="shrink-0 mt-0.5" />
-          <div>Events from Sanity appear here. RSVPs are captured into HexaHub, and a reminder auto-emails registrants the day before the event.</div>
+          <div>Events from Sanity appear here. RSVPs are captured into Hexa Space, and a reminder auto-emails registrants the day before the event.</div>
         </div>
         <button onClick={emailSample} disabled={testing}
           className="shrink-0 flex items-center gap-1.5 text-xs font-medium border border-gray-300 px-3 py-2 rounded-md hover:bg-gray-50 disabled:opacity-40">

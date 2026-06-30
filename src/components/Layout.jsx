@@ -46,7 +46,7 @@ export default function Layout({ store, onLogout }) {
     <aside className="w-52 bg-black text-white flex flex-col h-full">
       <div className="px-5 py-6 border-b border-gray-800 flex items-center justify-between">
         <div>
-          <span className="text-lg font-bold tracking-tight">HexaHub</span>
+          <span className="text-lg font-bold tracking-tight">Hexa Space</span>
           <p className="text-xs text-gray-400 mt-0.5">Management System</p>
         </div>
         {/* Close button — mobile only */}
@@ -80,7 +80,7 @@ export default function Layout({ store, onLogout }) {
         ))}
       </nav>
       <div className="px-5 py-4 border-t border-gray-800 text-xs text-gray-500 shrink-0">
-        <div className="mb-3">7 Distribution Circuit<br />Huntingdale VIC 3166</div>
+        <div className="mb-3">Level 4, 830 Whitehorse Road<br />Box Hill VIC 3128</div>
         <button
           onClick={() => { logout(); onLogout?.() }}
           className="flex items-center gap-2 text-gray-500 hover:text-white transition-colors"
@@ -119,7 +119,7 @@ export default function Layout({ store, onLogout }) {
           <button onClick={() => setOpen(true)} className="text-gray-300 hover:text-white">
             <Menu size={20} />
           </button>
-          <span className="font-bold tracking-tight text-sm">HexaHub</span>
+          <span className="font-bold tracking-tight text-sm">Hexa Space</span>
         </div>
 
         <main className="flex-1 overflow-y-auto">

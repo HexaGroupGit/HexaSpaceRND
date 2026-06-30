@@ -95,7 +95,7 @@ export default function InvoiceForm({ invoices, tenants, leases, spaces, setting
   })
   const [errors, setErrors] = useState({})
 
-  const fromName = settings?.billing?.businessName ?? settings?.company?.name ?? 'HexaHub Pty Ltd'
+  const fromName = settings?.billing?.businessName ?? settings?.company?.name ?? 'Hexa Space Pty Ltd'
 
   // When tenant changes, jump to the first uninvoiced month
   useEffect(() => {

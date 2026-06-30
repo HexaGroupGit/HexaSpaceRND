@@ -60,7 +60,7 @@ function CampaignList({ store, onNew, onKeywords, onData }) {
     setPushingId(c.id); setPushMsg(null)
     try {
       const space = spaces.find((s) => s.id === c.spaceId)
-      const finalUrl = space?.publishedToWeb ? 'https://www.hexahub.com.au/units' : 'https://www.hexahub.com.au'
+      const finalUrl = space?.publishedToWeb ? 'https://www.hexaspace.com.au/units' : 'https://www.hexaspace.com.au'
       const r = await pushToGoogleAds({ campaignId: c.id, customerId: ga.customerId, loginCustomerId: ga.loginCustomerId, finalUrl })
       updateCampaign(c.id, { googleAds: { pushedAt: new Date().toISOString(), customerId: ga.customerId, resourceName: r.campaignResourceName, status: 'paused' } })
       setPushMsg({ id: c.id, ok: true, text: `Pushed (paused): ${r.adGroups} ad groups, ${r.adsCreated} ads, ${r.keywordsCreated} keywords.` })
@@ -222,7 +222,7 @@ function Wizard({ spaces, settings, addCampaign, onDone }) {
   const doResearch = () => run(async () => setResearch(await generateAdResearch(payload())), () => setStep(1))
   const doCampaign = () => run(async () => {
     const c = await generateAdCampaign({ ...payload(), research })
-    setCampaign(c); setName(c.campaignName || `${space?.unitNumber ?? 'HexaHub'} campaign`)
+    setCampaign(c); setName(c.campaignName || `${space?.unitNumber ?? 'Hexa Space'} campaign`)
   }, () => setStep(2))
 
   function goMath() {

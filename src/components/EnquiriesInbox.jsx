@@ -52,7 +52,7 @@ export default function EnquiriesInbox({ store }) {
       {rows.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-md p-12 text-center text-gray-400">
           <Inbox size={26} className="mx-auto mb-2 text-gray-300" />
-          <p className="text-sm">No enquiries yet. Submissions from hexahub.com.au land here.</p>
+          <p className="text-sm">No enquiries yet. Submissions from hexaspace.com.au land here.</p>
         </div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-md overflow-hidden">

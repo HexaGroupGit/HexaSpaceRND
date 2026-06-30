@@ -80,7 +80,7 @@ export default function ListingEditor({ space, store, onClose }) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
           <div>
             <h2 className="font-semibold text-gray-900">Listing details — {space.unitNumber}</h2>
-            <p className="text-xs text-gray-500">Fills the public page on hexahub.com.au. Core specs (size, rate, parking, address) come from the unit itself.</p>
+            <p className="text-xs text-gray-500">Fills the public page on hexaspace.com.au. Core specs (size, rate, parking, address) come from the unit itself.</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
         </div>

@@ -143,7 +143,7 @@ export default function PortalDashboard({ tenant, invoices, leases }) {
       <div className="grid grid-cols-2 gap-4">
         <Link to="/messages" className="bg-white border border-gray-200 rounded-lg p-5 hover:border-gray-300 transition-colors">
           <div className="text-sm font-semibold text-gray-900 mb-1">Send a Message</div>
-          <div className="text-xs text-gray-400">Contact the HexaHub team</div>
+          <div className="text-xs text-gray-400">Contact the Hexa Space team</div>
         </Link>
         <Link to="/events" className="bg-white border border-gray-200 rounded-lg p-5 hover:border-gray-300 transition-colors">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 mb-1">

@@ -26,12 +26,12 @@ function downloadAgreementPDF(lease, tenant) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
   doc.setTextColor(255, 255, 255)
-  doc.text('HEXAHUB', M, 12)
+  doc.text('HEXA SPACE', M, 12)
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(180, 180, 180)
-  doc.text('HexaHub Pty Ltd  ·  7 Distribution Circuit, Huntingdale VIC 3166', M, 19)
-  doc.text('info@hexahub.com.au  ·  hexahub.com.au', M, 24)
+  doc.text('Hexa Space Pty Ltd  ·  Level 4, 830 Whitehorse Road, Box Hill VIC 3128', M, 19)
+  doc.text('info@hexaspace.com.au  ·  hexaspace.com.au', M, 24)
 
   doc.setFontSize(18)
   doc.setFont('helvetica', 'bold')
@@ -91,7 +91,7 @@ function downloadAgreementPDF(lease, tenant) {
   doc.setFontSize(8)
   doc.setTextColor(120, 120, 120)
   doc.setFont('helvetica', 'italic')
-  const note = 'This document is a summary only. For a copy of the full signed agreement, please contact info@hexahub.com.au'
+  const note = 'This document is a summary only. For a copy of the full signed agreement, please contact info@hexaspace.com.au'
   const lines = doc.splitTextToSize(note, W - M * 2)
   doc.text(lines, M, y)
 
@@ -100,7 +100,7 @@ function downloadAgreementPDF(lease, tenant) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7)
   doc.setTextColor(180, 180, 180)
-  doc.text('HexaHub Pty Ltd  ·  build locally, scale sustainably  ·  hexahub.com.au', W / 2, 293, { align: 'center' })
+  doc.text('Hexa Space Pty Ltd  ·  build locally, scale sustainably  ·  hexaspace.com.au', W / 2, 293, { align: 'center' })
 
   doc.save(`${lease.contractNumber ?? 'agreement'}.pdf`)
 }
@@ -194,8 +194,8 @@ export default function PortalAccount({ tenant, leases }) {
         <div className="px-5 pb-4 border-t border-gray-50">
           <p className="text-xs text-gray-400 mt-4">
             To update your company details, please contact{' '}
-            <a href="mailto:info@hexahub.com.au" className="text-gray-600 hover:underline">
-              info@hexahub.com.au
+            <a href="mailto:info@hexaspace.com.au" className="text-gray-600 hover:underline">
+              info@hexaspace.com.au
             </a>
           </p>
         </div>

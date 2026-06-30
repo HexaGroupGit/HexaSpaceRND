@@ -46,13 +46,13 @@ export default function PortalEvents() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-gray-900">Events</h1>
         <a
-          href="https://www.hexahub.com.au/events"
+          href="https://www.hexaspace.com.au/events"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 border border-gray-200 px-3 py-1.5 rounded-md hover:bg-gray-50"
         >
           <ExternalLink size={13} />
-          hexahub.com.au/events
+          hexaspace.com.au/events
         </a>
       </div>
 
@@ -63,12 +63,12 @@ export default function PortalEvents() {
           <Calendar size={32} className="text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500 text-sm mb-1">No upcoming events at the moment.</p>
           <a
-            href="https://www.hexahub.com.au/events"
+            href="https://www.hexaspace.com.au/events"
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm text-gray-600 hover:underline"
           >
-            Check hexahub.com.au for the latest →
+            Check hexaspace.com.au for the latest →
           </a>
         </div>
       ) : (

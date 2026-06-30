@@ -8,8 +8,8 @@ export async function sendEmail({ to, subject, html, settings, attachments, tena
   const billing = settings?.billing ?? {}
   const company = settings?.company ?? {}
 
-  const fromName = emails.fromName || company.name || 'HexaHub'
-  const fromEmail = emails.fromEmail || 'noreply@hexahub.com.au'
+  const fromName = emails.fromName || company.name || 'Hexa Space'
+  const fromEmail = emails.fromEmail || 'noreply@hexaspace.com.au'
 
   const body = {
     to,
@@ -74,9 +74,9 @@ export function resolveEmailTemplate(type, vars, settings) {
 export function invoiceEmailHtml({ invoice, tenant, settings }) {
   const company = settings?.company ?? {}
   const billing = settings?.billing ?? {}
-  const name = billing.businessName || company.name || 'HexaHub'
-  const address = billing.address || '7 Distribution Circuit, Huntingdale VIC 3166'
-  const website = company.website || 'hexahub.com.au'
+  const name = billing.businessName || company.name || 'Hexa Space'
+  const address = billing.address || 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'
+  const website = company.website || 'hexaspace.com.au'
   const bsb = billing.bsb || '—'
   const acc = billing.acc || '—'
 
@@ -136,9 +136,9 @@ export function invoiceEmailHtml({ invoice, tenant, settings }) {
 export function eSignEmailHtml({ lease, tenant, settings }) {
   const company = settings?.company ?? {}
   const contracts = settings?.contracts ?? {}
-  const name = company.name || 'HexaHub'
+  const name = company.name || 'Hexa Space'
   const signerName = contracts.eSignName || name
-  const memberLink = lease.eSignMemberLink ?? `https://esign.hexahub.com.au/member/${lease.id}`
+  const memberLink = lease.eSignMemberLink ?? `https://esign.hexaspace.com.au/member/${lease.id}`
   const contractNum = lease.contractNumber ?? lease.id
 
   return `

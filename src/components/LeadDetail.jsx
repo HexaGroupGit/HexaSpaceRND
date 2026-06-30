@@ -45,7 +45,7 @@ export default function LeadDetail({ lead, store, onClose }) {
       if (res?.referrer?.email && res?.commission) {
         try {
           const html = commissionEmailHtml({ referrer: res.referrer, commission: res.commission, settings })
-          await sendEmail({ to: res.referrer.email, subject: `Your HexaHub referral closed — $${res.commission.amount.toLocaleString('en-AU')} commission`, html, settings, emailType: 'commission' })
+          await sendEmail({ to: res.referrer.email, subject: `Your Hexa Space referral closed — $${res.commission.amount.toLocaleString('en-AU')} commission`, html, settings, emailType: 'commission' })
           appendLeadActivity(lead.id, { type: 'email', text: `Commission notification emailed to ${res.referrer.name}` })
         } catch { /* email failure must not block the close */ }
       }
@@ -67,7 +67,7 @@ export default function LeadDetail({ lead, store, onClose }) {
     if (!subject.trim() || !body.trim()) { setMsg('Add a subject and message.'); return }
     setSending(true); setMsg('')
     try {
-      const company = settings?.company?.name ?? 'HexaHub'
+      const company = settings?.company?.name ?? 'Hexa Space'
       const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1a1a1a;background:#f5f5f5;margin:0;padding:0">
         <div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
           <div style="background:#000;padding:18px 28px"><span style="color:#fff;font-weight:bold;letter-spacing:2px">${company.toUpperCase()}</span></div>
@@ -310,7 +310,7 @@ export default function LeadDetail({ lead, store, onClose }) {
 }
 
 function commissionEmailHtml({ referrer, commission, settings }) {
-  const company = settings?.company?.name ?? 'HexaHub'
+  const company = settings?.company?.name ?? 'Hexa Space'
   const amount = `$${Number(commission.amount).toLocaleString('en-AU')}`
   const deal = `$${Number(commission.dealValue).toLocaleString('en-AU')}`
   return `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1a1a1a;background:#f5f5f5;margin:0;padding:0">
@@ -325,7 +325,7 @@ function commissionEmailHtml({ referrer, commission, settings }) {
           <tr style="background:#f5f5f5"><td style="padding:9px 12px;font-weight:bold">Your commission</td><td style="padding:9px 12px;font-size:18px;font-weight:bold">${amount} AUD</td></tr>
         </table>
         <p style="margin:0 0 14px;color:#555">We'll be in touch shortly to arrange payment. Thank you for the referral!</p>
-        <p style="margin:0;font-size:12px;color:#888">${company} &middot; hexahub.com.au</p>
+        <p style="margin:0;font-size:12px;color:#888">${company} &middot; hexaspace.com.au</p>
       </div>
     </div></body></html>`
 }

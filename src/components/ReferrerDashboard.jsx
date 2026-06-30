@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link2, Copy, Check, DollarSign, Users, Award, Clock } from 'lucide-react'
 
-const SITE = 'https://www.hexahub.com.au'
+const SITE = 'https://www.hexaspace.com.au'
 const money = (n) => `$${Number(n || 0).toLocaleString('en-AU')}`
 
 const STAGE_TONE = { new: 'bg-gray-100 text-gray-600', engaged: 'bg-blue-50 text-blue-700', won: 'bg-green-50 text-green-700', lost: 'bg-red-50 text-red-500' }
@@ -33,7 +33,7 @@ export default function ReferrerDashboard({ token }) {
     return <Shell><p className="text-sm text-gray-400">Loading your dashboard…</p></Shell>
   }
   if (state === 'invalid') {
-    return <Shell><p className="text-sm text-gray-600">This referral link is not valid. Please check the link or contact HexaHub.</p></Shell>
+    return <Shell><p className="text-sm text-gray-600">This referral link is not valid. Please check the link or contact Hexa Space.</p></Shell>
   }
   if (state === 'error') {
     return <Shell><p className="text-sm text-gray-600">Something went wrong loading your dashboard. Please try again shortly.</p></Shell>
@@ -113,7 +113,7 @@ export default function ReferrerDashboard({ token }) {
         )}
       </div>
 
-      <p className="text-center text-xs text-gray-400 mt-8">HexaHub · build locally, scale sustainably</p>
+      <p className="text-center text-xs text-gray-400 mt-8">Hexa Space · build locally, scale sustainably</p>
     </Shell>
   )
 }
@@ -123,7 +123,7 @@ function Shell({ children, wide }) {
     <div className="min-h-screen bg-gray-50">
       <div className="bg-black">
         <div className={`mx-auto ${wide ? 'max-w-3xl' : 'max-w-md'} px-6 py-4`}>
-          <span className="text-white font-black tracking-widest">HEXAHUB</span>
+          <span className="text-white font-black tracking-widest">HEXA SPACE</span>
         </div>
       </div>
       <div className={`mx-auto ${wide ? 'max-w-3xl' : 'max-w-md'} px-6 py-8`}>{children}</div>

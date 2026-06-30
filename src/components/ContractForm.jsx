@@ -28,7 +28,7 @@ const DISCOUNT_OPTIONS = ['5%', '10%', '15%', '20%', '25%', '30%']
 function generateContractNumber(leases) {
   let template = 'CON-{{number}}'
   try {
-    const s = JSON.parse(localStorage.getItem('hexahub_settings') || '{}')
+    const s = JSON.parse(localStorage.getItem('hexaspace_settings') || '{}')
     template = s.contracts?.numberTemplate ?? template
   } catch { /* use default */ }
   const nums = leases

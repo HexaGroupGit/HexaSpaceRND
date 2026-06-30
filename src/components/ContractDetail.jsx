@@ -50,7 +50,7 @@ export default function ContractDetail({
   const [copyMsg, setCopyMsg] = useState('')
   const [eSignData, setESignData] = useState(null)
   const [showCountersignModal, setShowCountersignModal] = useState(false)
-  const [licensorName, setLicensorName] = useState(settings?.company?.name ?? 'HexaHub Pty Ltd')
+  const [licensorName, setLicensorName] = useState(settings?.company?.name ?? 'Hexa Space Pty Ltd')
   const [counterskigning, setCountersigning] = useState(false)
   const licensorSigRef = useRef(null)
 
@@ -68,8 +68,8 @@ export default function ContractDetail({
   const isSigned = lease.signatureStatus === 'manually_signed' || lease.signatureStatus === 'e_signed'
   const isOutForSign = lease.signatureStatus === 'out_for_signature'
 
-  const eSignAdminLink = lease.eSignAdminLink ?? `https://esign.hexahub.com.au/admin/${lease.id}`
-  const eSignMemberLink = lease.eSignMemberLink ?? `https://esign.hexahub.com.au/member/${lease.id}`
+  const eSignAdminLink = lease.eSignAdminLink ?? `https://esign.hexaspace.com.au/admin/${lease.id}`
+  const eSignMemberLink = lease.eSignMemberLink ?? `https://esign.hexaspace.com.au/member/${lease.id}`
 
   function copyLink(link, label) {
     navigator.clipboard?.writeText(link).catch(() => {})
@@ -108,7 +108,7 @@ export default function ContractDetail({
         const mergedLease = { ...lease, ...updatedLease }
         await sendEmail({
           to: tenant.email,
-          subject: `Please sign: ${lease.contractNumber ?? 'Licence Agreement'} — ${settings?.contracts?.eSignName ?? settings?.company?.name ?? 'HexaHub'}`,
+          subject: `Please sign: ${lease.contractNumber ?? 'Licence Agreement'} — ${settings?.contracts?.eSignName ?? settings?.company?.name ?? 'Hexa Space'}`,
           html: eSignEmailHtml({ lease: mergedLease, tenant, settings }),
           settings,
         })
@@ -178,7 +178,7 @@ export default function ContractDetail({
       // Email tenant that agreement is fully executed
       if (tenant?.email) {
         const contractNum = lease.contractNumber ?? `CON-${lease.id?.slice(-3).toUpperCase()}`
-        const companyName = settings?.company?.name ?? 'HexaHub'
+        const companyName = settings?.company?.name ?? 'Hexa Space'
         sendEmail({
           to: tenant.email,
           subject: `Fully executed: ${contractNum} — ${companyName}`,
@@ -220,8 +220,8 @@ export default function ContractDetail({
       y = 26
 
       // ── Contract details row ──────────────────────────────────
-      const companyName = settings?.billing?.businessName ?? settings?.company?.name ?? 'HexaHub Pty Ltd'
-      const billingAddress = settings?.billing?.address ?? '7 Distribution Circuit, Huntingdale VIC 3166'
+      const companyName = settings?.billing?.businessName ?? settings?.company?.name ?? 'Hexa Space Pty Ltd'
+      const billingAddress = settings?.billing?.address ?? 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'
       doc.setTextColor(0); doc.setFontSize(8.5); doc.setFont('helvetica', 'normal')
       doc.text(`Agreement:`, ml, y); doc.setFont('helvetica', 'bold'); doc.text(contractNum, ml + 22, y)
       doc.setFont('helvetica', 'normal')
@@ -469,8 +469,8 @@ export default function ContractDetail({
 
       // ── Footer on every page ──────────────────────────────────
       const pages = doc.getNumberOfPages()
-      const footerCompany = settings?.billing?.businessName ?? settings?.company?.name ?? 'HexaHub Pty Ltd'
-      const footerAddr = settings?.billing?.address ?? '7 Distribution Circuit, Huntingdale VIC 3166'
+      const footerCompany = settings?.billing?.businessName ?? settings?.company?.name ?? 'Hexa Space Pty Ltd'
+      const footerAddr = settings?.billing?.address ?? 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'
       for (let i = 1; i <= pages; i++) {
         doc.setPage(i)
         doc.setFillColor(20, 20, 20)
@@ -516,7 +516,7 @@ export default function ContractDetail({
       const doc = await buildContractPDF(eSignData)
       const slug = (tenant?.businessName ?? 'contract').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')
       const pdfBase64 = doc.output('base64')
-      const companyName = settings?.company?.name ?? 'HexaHub'
+      const companyName = settings?.company?.name ?? 'Hexa Space'
       await sendEmail({
         to: tenant.email,
         subject: `Signed copy: ${contractNum} — ${companyName}`,

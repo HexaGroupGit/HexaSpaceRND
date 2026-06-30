@@ -78,7 +78,7 @@ export default function PortalMessages({ tenant }) {
     <div className="p-6 max-w-3xl mx-auto flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
       <h1 className="text-xl font-bold text-gray-900 mb-1 shrink-0">Messages</h1>
       <p className="text-sm text-gray-400 mb-5 shrink-0">
-        Send a message to the HexaHub team. We'll reply as soon as possible.
+        Send a message to the Hexa Space team. We'll reply as soon as possible.
       </p>
 
       {/* Thread */}

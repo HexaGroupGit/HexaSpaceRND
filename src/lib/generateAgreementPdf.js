@@ -46,7 +46,7 @@ export function generateAgreementPdf(booking, adminSig) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(7)
     doc.setTextColor(255, 255, 255)
-    doc.text('HEXAHUB', M, 7)
+    doc.text('HEXA SPACE', M, 7)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(160, 160, 160)
     doc.text('Pop-up Licence · Lonsdale 369', W - M, 7, { align: 'right' })
@@ -61,7 +61,7 @@ export function generateAgreementPdf(booking, adminSig) {
     doc.setFont('helvetica', 'italic')
     doc.setFontSize(7)
     doc.setTextColor(180, 180, 180)
-    doc.text('HexaHub Pty Ltd · 7 Distribution Circuit, Huntingdale VIC 3166 · hexahub.com.au', W / 2, footerY, { align: 'center' })
+    doc.text('Hexa Space Pty Ltd · Level 4, 830 Whitehorse Road, Box Hill VIC 3128 · hexaspace.com.au', W / 2, footerY, { align: 'center' })
   }
 
   function ensureSpace(needed) {
@@ -191,7 +191,7 @@ export function generateAgreementPdf(booking, adminSig) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
   doc.setTextColor(255, 255, 255)
-  doc.text('HEXAHUB', M, 10.5)
+  doc.text('HEXA SPACE', M, 10.5)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(160, 160, 160)
@@ -223,7 +223,7 @@ export function generateAgreementPdf(booking, adminSig) {
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(140, 140, 140)
   doc.text('LICENSOR', colL, y); doc.text('LICENSEE', colR, y); y += 5
   const sy = y
-  const licLines = [['bold','HexaHub Pty Ltd'],['n','7 Distribution Circuit'],['n','Huntingdale VIC 3166'],['n','info@hexahub.com.au']]
+  const licLines = [['bold','Hexa Space Pty Ltd'],['n','7 Distribution Circuit'],['n','Huntingdale VIC 3166'],['n','info@hexaspace.com.au']]
   licLines.forEach(([w,t]) => { doc.setFont('helvetica', w==='bold'?'bold':'normal'); doc.setFontSize(9); doc.setTextColor(20,20,20); doc.text(t,colL,y); y+=5 })
   y = sy
   const venLines = [['bold', vendorDisplay], ...(b.vendorAbn?[['n',`ABN: ${b.vendorAbn}`]]:[]), ['n',b.vendorName||'—'], ...(b.vendorEmail?[['n',b.vendorEmail]]:[])]
@@ -257,7 +257,7 @@ export function generateAgreementPdf(booking, adminSig) {
   y+=sigH+3
   doc.setDrawColor(60,60,60); doc.line(colL,y,colL+sigW,y); doc.line(colR,y,colR+sigW,y); y+=5
   doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(20,20,20)
-  doc.text(b.signerName||'—',colL,y); doc.text(sig?.signerName||'HexaHub Pty Ltd',colR,y); y+=5
+  doc.text(b.signerName||'—',colL,y); doc.text(sig?.signerName||'Hexa Space Pty Ltd',colR,y); y+=5
   doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(80,80,80)
   doc.text(b.signerTitle||'Authorised Representative',colL,y); doc.text(sig?.signerTitle||'Licensor',colR,y); y+=5
   doc.setFontSize(8)
@@ -279,7 +279,7 @@ export function generateAgreementPdf(booking, adminSig) {
   docDivider('DOCUMENT 1 — EVENT VENUE LICENCE AGREEMENT')
 
   // Document header
-  para('HexaHub Pty Ltd', { sz: 8, bold: true, color: [100,100,100], before: 0, after: 1 })
+  para('Hexa Space Pty Ltd', { sz: 8, bold: true, color: [100,100,100], before: 0, after: 1 })
   para('Pop-up Licence Agreement', { sz: 14, bold: true, before: 0, after: 2 })
   para(`${venueName} · ${period}`, { sz: 9, color: [100,100,100], before: 0, after: 4 })
 
@@ -287,9 +287,9 @@ export function generateAgreementPdf(booking, adminSig) {
 
   // Schedule
   heading('Schedule — Booking Details', { sz: 8, upper: false, before: 4, after: 3 })
-  scheduleRow('Licensor', 'HexaHub Pty Ltd (ABN 51 234 567 890)')
-  scheduleRow('Licensor Address', '7 Distribution Circuit, Huntingdale VIC 3166')
-  scheduleRow('Licensor Contact', 'info@hexahub.com.au')
+  scheduleRow('Licensor', 'Hexa Space Pty Ltd (ABN 51 234 567 890)')
+  scheduleRow('Licensor Address', 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128')
+  scheduleRow('Licensor Contact', 'info@hexaspace.com.au')
   scheduleRow('Licensee', vendorDisplay)
   scheduleRow('Licensee Contact', b.vendorName || '—')
   scheduleRow('Licensee Email', b.vendorEmail || '—')
@@ -450,10 +450,10 @@ export function generateAgreementPdf(booking, adminSig) {
   if (!POPUP_OMIT) {
   docDivider('DOCUMENT 2 — LIABILITY WAIVER AND ACKNOWLEDGEMENT')
 
-  para('HexaHub Pty Ltd', { sz: 8, bold: true, color: [100,100,100], before: 0, after: 1 })
+  para('Hexa Space Pty Ltd', { sz: 8, bold: true, color: [100,100,100], before: 0, after: 1 })
   para('Vendor Liability Waiver and Acknowledgement', { sz: 14, bold: true, before: 0, after: 2 })
   para('Lonsdale 369 Pop-up · Sunday 7 June 2026 · 369 Lonsdale Street, Melbourne VIC 3000', { sz: 9, color: [100,100,100], before: 0, after: 4 })
-  para(`This Waiver is given by the Vendor named below in favour of HexaHub Pty Ltd ABN 51 234 567 890 (HexaHub) and is to be read together with and forms part of the Pop-up Licence Agreement between the parties dated ${today}.`, { sz: 8, italic: true, color: [100,100,100] })
+  para(`This Waiver is given by the Vendor named below in favour of Hexa Space Pty Ltd ABN 51 234 567 890 (Hexa Space) and is to be read together with and forms part of the Pop-up Licence Agreement between the parties dated ${today}.`, { sz: 8, italic: true, color: [100,100,100] })
 
   clauseTitle('1.  Defined Terms')
   para('Words defined in the Pop-up Licence Agreement have the same meaning in this Waiver. Vendor means the Licensee named in the Agreement. Vendor Personnel means the Vendor\'s employees, contractors, agents, representatives and any person operating at or from the Vendor\'s stall or space.')
@@ -461,12 +461,12 @@ export function generateAgreementPdf(booking, adminSig) {
   clauseTitle('2.  Acknowledgement of Risk')
   para('The Vendor acknowledges and agrees that:')
   para('(a) participation in the Event as a vendor, stallholder or exhibitor involves inherent risks, including but not limited to personal injury, property damage, theft, financial loss and disruption;', { indent: 5 })
-  para('(b) HexaHub makes no representation or warranty that the Venue or Premises is suitable for the Vendor\'s specific purposes or that the Event will attract any particular number of attendees;', { indent: 5 })
+  para('(b) Hexa Space makes no representation or warranty that the Venue or Premises is suitable for the Vendor\'s specific purposes or that the Event will attract any particular number of attendees;', { indent: 5 })
   para('(c) the Vendor has independently assessed the suitability of the Venue and the risks associated with its participation and is satisfied that it is appropriate to proceed on the terms of this Waiver and the Agreement; and', { indent: 5 })
-  para('(d) HexaHub does not guarantee exclusivity for the Vendor\'s product or service category at the Event.', { indent: 5 })
+  para('(d) Hexa Space does not guarantee exclusivity for the Vendor\'s product or service category at the Event.', { indent: 5 })
 
   clauseTitle('3.  Waiver and Release')
-  para('To the fullest extent permitted by law, the Vendor, for itself and on behalf of all Vendor Personnel, releases, waives, discharges and covenants not to sue HexaHub, its officers, directors, employees, contractors and agents (Released Parties) from and against any and all claims, demands, causes of action, losses, costs, damages and liabilities of any kind, whether known or unknown, arising directly or indirectly from or in connection with:')
+  para('To the fullest extent permitted by law, the Vendor, for itself and on behalf of all Vendor Personnel, releases, waives, discharges and covenants not to sue Hexa Space, its officers, directors, employees, contractors and agents (Released Parties) from and against any and all claims, demands, causes of action, losses, costs, damages and liabilities of any kind, whether known or unknown, arising directly or indirectly from or in connection with:')
   para('(a) the Vendor\'s or any Vendor Personnel\'s presence at, participation in or preparation for the Event;', { indent: 5 })
   para('(b) any personal injury, illness or death suffered by the Vendor or any Vendor Personnel at or in connection with the Event;', { indent: 5 })
   para('(c) any loss of or damage to the Vendor\'s goods, stock, cash, equipment, vehicles, display materials or other property, howsoever caused, including loss or damage caused by theft, other vendors, attendees or third parties;', { indent: 5 })
@@ -489,10 +489,10 @@ export function generateAgreementPdf(booking, adminSig) {
   para('This indemnity survives expiry or termination of the Agreement.')
 
   clauseTitle('6.  Insurance Confirmation')
-  para('The Vendor warrants that it holds, and will maintain in force through the Event Date, public liability insurance of at least AUD $20,000,000 per occurrence, together with workers compensation insurance as required by law and any other insurance reasonably required having regard to the nature of the Vendor\'s operations. The Vendor acknowledges that it is required to provide a current Certificate of Currency to HexaHub no later than 5 Business Days before the Event Date and that failure to do so entitles HexaHub to refuse access to the Venue.')
+  para('The Vendor warrants that it holds, and will maintain in force through the Event Date, public liability insurance of at least AUD $20,000,000 per occurrence, together with workers compensation insurance as required by law and any other insurance reasonably required having regard to the nature of the Vendor\'s operations. The Vendor acknowledges that it is required to provide a current Certificate of Currency to Hexa Space no later than 5 Business Days before the Event Date and that failure to do so entitles Hexa Space to refuse access to the Venue.')
 
   clauseTitle('7.  Food and Beverage Vendors')
-  para('Where the Vendor\'s goods or services include food or beverage, the Vendor additionally warrants that all food handlers hold current food safety qualifications, the Vendor holds all required food business registrations or notifications, all food is handled, stored and served in compliance with the Food Act 1984 (Vic) and applicable food standards, and the Vendor will immediately cease food service if directed by HexaHub or a relevant authority.')
+  para('Where the Vendor\'s goods or services include food or beverage, the Vendor additionally warrants that all food handlers hold current food safety qualifications, the Vendor holds all required food business registrations or notifications, all food is handled, stored and served in compliance with the Food Act 1984 (Vic) and applicable food standards, and the Vendor will immediately cease food service if directed by Hexa Space or a relevant authority.')
 
   clauseTitle('8.  Preservation of Statutory Rights')
   para('Nothing in this Waiver excludes, restricts or modifies any right, remedy or guarantee that the Vendor may have under the Australian Consumer Law (Schedule 2 of the Competition and Consumer Act 2010 (Cth)) or any other applicable legislation that cannot by law be excluded, restricted or modified. To the extent that such rights apply, nothing in this Waiver affects those rights.')
@@ -509,7 +509,7 @@ export function generateAgreementPdf(booking, adminSig) {
 
   docDivider('ANNEXURE A — VENUE RULES AND OPERATING CONDITIONS')
 
-  para('HexaHub Pty Ltd', { sz: 8, bold: true, color: [100,100,100], before: 0, after: 1 })
+  para('Hexa Space Pty Ltd', { sz: 8, bold: true, color: [100,100,100], before: 0, after: 1 })
   para('Annexure A — Venue Rules and Operating Conditions', { sz: 13, bold: true, before: 0, after: 1 })
   para('369 Lonsdale Street, Melbourne VIC 3000', { sz: 9, color: [100,100,100], before: 0, after: 4 })
   para('These Venue Rules are incorporated into the Agreement. In the event of any inconsistency, the Licensor may direct the stricter requirement to apply to the extent permitted by law.', { sz: 8, italic: true, color: [100,100,100] })
@@ -535,7 +535,7 @@ export function generateAgreementPdf(booking, adminSig) {
   if (!POPUP_OMIT) {
   docDivider('ANNEXURE B — PRACTICAL VICTORIAN COMPLIANCE NOTES')
 
-  para('HexaHub Pty Ltd', { sz: 8, bold: true, color: [100,100,100], before: 0, after: 1 })
+  para('Hexa Space Pty Ltd', { sz: 8, bold: true, color: [100,100,100], before: 0, after: 1 })
   para('Annexure B — Practical Victorian Compliance Notes', { sz: 13, bold: true, before: 0, after: 4 })
   para('This annexure is intended as a practical licensor checklist and pre-event compliance guide. It is not a substitute for project-specific legal, building, council, liquor, health or safety advice.', { sz: 8, italic: true, color: [100,100,100] })
 
@@ -565,7 +565,7 @@ export function generateAgreementPdf(booking, adminSig) {
   // Annexure C
   docDivider('ANNEXURE C — EVENT, VENUE PROMOTION AND DIGITAL MARKETING REQUIREMENTS')
 
-  para('HexaHub Pty Ltd', { sz: 8, bold: true, color: [100,100,100], before: 0, after: 1 })
+  para('Hexa Space Pty Ltd', { sz: 8, bold: true, color: [100,100,100], before: 0, after: 1 })
   para('Annexure C — Event, Venue Promotion and Digital Marketing Requirements', { sz: 13, bold: true, before: 0, after: 4 })
   para('This annexure forms part of the Agreement. The Licensee must comply with these venue promotion requirements unless the Licensor otherwise agrees in writing.', { sz: 8, italic: true, color: [100,100,100] })
 

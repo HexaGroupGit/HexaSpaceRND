@@ -39,7 +39,7 @@ function LicenceAgreementDoc({ booking }) {
   return (
     <div className="font-serif text-[13px] text-gray-900 leading-relaxed space-y-5">
       <div className="text-center space-y-1">
-        <div className="text-xs tracking-widest font-sans font-bold text-gray-500 uppercase">HexaHub Pty Ltd</div>
+        <div className="text-xs tracking-widest font-sans font-bold text-gray-500 uppercase">Hexa Space Pty Ltd</div>
         <h1 className="text-2xl font-bold tracking-tight">Pop-up Licence Agreement</h1>
         <div className="text-xs text-gray-500 font-sans">{venueName} · {period}</div>
       </div>
@@ -52,9 +52,9 @@ function LicenceAgreementDoc({ booking }) {
         <table className="w-full text-xs border-collapse">
           <tbody>
             {[
-              ['Licensor', 'HexaHub Pty Ltd (ABN 51 234 567 890)'],
-              ['Licensor Address', '7 Distribution Circuit, Huntingdale VIC 3166'],
-              ['Licensor Contact', 'info@hexahub.com.au'],
+              ['Licensor', 'Hexa Space Pty Ltd (ABN 51 234 567 890)'],
+              ['Licensor Address', 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'],
+              ['Licensor Contact', 'info@hexaspace.com.au'],
               ['Licensee', vendorDisplay || b.vendorName],
               ['Licensee Contact', b.vendorName],
               ['Licensee Email', b.vendorEmail],
@@ -287,7 +287,7 @@ function LicenceAgreementDoc({ booking }) {
         <div className="grid grid-cols-2 gap-8 text-xs">
           <div className="space-y-4">
             <div className="font-semibold text-gray-700">SIGNED for and on behalf of</div>
-            <div className="font-bold">HexaHub Pty Ltd (Licensor)</div>
+            <div className="font-bold">Hexa Space Pty Ltd (Licensor)</div>
             <div className="border-b border-gray-400 pt-8 w-full" />
             <div className="text-gray-500">Authorised Signatory &nbsp;·&nbsp; Date: ___________</div>
           </div>
@@ -312,14 +312,14 @@ function LiabilityWaiverDoc({ booking }) {
   return (
     <div className="font-serif text-[13px] text-gray-900 leading-relaxed space-y-5">
       <div className="text-center space-y-1">
-        <div className="text-xs tracking-widest font-sans font-bold text-gray-500 uppercase">HexaHub Pty Ltd</div>
+        <div className="text-xs tracking-widest font-sans font-bold text-gray-500 uppercase">Hexa Space Pty Ltd</div>
         <h1 className="text-xl font-bold tracking-tight">Vendor Liability Waiver and Acknowledgement</h1>
         <div className="text-xs text-gray-500 font-sans">Lonsdale 369 Pop-up · Sunday 7 June 2026 · 369 Lonsdale Street, Melbourne VIC 3000</div>
       </div>
 
       <hr className="border-gray-300" />
 
-      <p className="text-xs text-gray-600 italic">This Waiver is given by the Vendor named below in favour of HexaHub Pty Ltd ABN 51 234 567 890 (<strong>HexaHub</strong>) and is to be read together with and forms part of the Event Venue Licence Agreement between the parties dated {today}.</p>
+      <p className="text-xs text-gray-600 italic">This Waiver is given by the Vendor named below in favour of Hexa Space Pty Ltd ABN 51 234 567 890 (<strong>Hexa Space</strong>) and is to be read together with and forms part of the Event Venue Licence Agreement between the parties dated {today}.</p>
 
       <div className="space-y-4 text-xs">
         <div>
@@ -331,14 +331,14 @@ function LiabilityWaiverDoc({ booking }) {
           <strong>2. Acknowledgement of Risk</strong>
           <p className="mt-1">The Vendor acknowledges and agrees that:</p>
           <p className="mt-1">(a) participation in the Event as a vendor, stallholder or exhibitor involves inherent risks, including but not limited to personal injury, property damage, theft, financial loss and disruption;</p>
-          <p className="mt-1">(b) HexaHub makes no representation or warranty that the Venue or Premises is suitable for the Vendor's specific purposes or that the Event will attract any particular number of attendees;</p>
+          <p className="mt-1">(b) Hexa Space makes no representation or warranty that the Venue or Premises is suitable for the Vendor's specific purposes or that the Event will attract any particular number of attendees;</p>
           <p className="mt-1">(c) the Vendor has independently assessed the suitability of the Venue and the risks associated with its participation and is satisfied that it is appropriate to proceed on the terms of this Waiver and the Agreement; and</p>
-          <p className="mt-1">(d) HexaHub does not guarantee exclusivity for the Vendor's product or service category at the Event.</p>
+          <p className="mt-1">(d) Hexa Space does not guarantee exclusivity for the Vendor's product or service category at the Event.</p>
         </div>
 
         <div>
           <strong>3. Waiver and Release</strong>
-          <p className="mt-1">To the fullest extent permitted by law, the Vendor, for itself and on behalf of all Vendor Personnel, releases, waives, discharges and covenants not to sue HexaHub, its officers, directors, employees, contractors and agents (<strong>Released Parties</strong>) from and against any and all claims, demands, causes of action, losses, costs, damages and liabilities of any kind, whether known or unknown, arising directly or indirectly from or in connection with:</p>
+          <p className="mt-1">To the fullest extent permitted by law, the Vendor, for itself and on behalf of all Vendor Personnel, releases, waives, discharges and covenants not to sue Hexa Space, its officers, directors, employees, contractors and agents (<strong>Released Parties</strong>) from and against any and all claims, demands, causes of action, losses, costs, damages and liabilities of any kind, whether known or unknown, arising directly or indirectly from or in connection with:</p>
           <p className="mt-1">(a) the Vendor's or any Vendor Personnel's presence at, participation in or preparation for the Event;</p>
           <p className="mt-1">(b) any personal injury, illness or death suffered by the Vendor or any Vendor Personnel at or in connection with the Event;</p>
           <p className="mt-1">(c) any loss of or damage to the Vendor's goods, stock, cash, equipment, vehicles, display materials or other property, howsoever caused, including loss or damage caused by theft, other vendors, attendees or third parties;</p>
@@ -367,12 +367,12 @@ function LiabilityWaiverDoc({ booking }) {
 
         <div>
           <strong>6. Insurance Confirmation</strong>
-          <p className="mt-1">The Vendor warrants that it holds, and will maintain in force through the Event Date, public liability insurance of at least AUD $20,000,000 per occurrence, together with workers compensation insurance as required by law and any other insurance reasonably required having regard to the nature of the Vendor's operations. The Vendor acknowledges that it is required to provide a current Certificate of Currency to HexaHub no later than 5 Business Days before the Event Date and that failure to do so entitles HexaHub to refuse access to the Venue.</p>
+          <p className="mt-1">The Vendor warrants that it holds, and will maintain in force through the Event Date, public liability insurance of at least AUD $20,000,000 per occurrence, together with workers compensation insurance as required by law and any other insurance reasonably required having regard to the nature of the Vendor's operations. The Vendor acknowledges that it is required to provide a current Certificate of Currency to Hexa Space no later than 5 Business Days before the Event Date and that failure to do so entitles Hexa Space to refuse access to the Venue.</p>
         </div>
 
         <div>
           <strong>7. Food and Beverage Vendors</strong>
-          <p className="mt-1">Where the Vendor's goods or services include food or beverage, the Vendor additionally warrants that all food handlers hold current food safety qualifications, the Vendor holds all required food business registrations or notifications, all food is handled, stored and served in compliance with the Food Act 1984 (Vic) and applicable food standards, and the Vendor will immediately cease food service if directed by HexaHub or a relevant authority.</p>
+          <p className="mt-1">Where the Vendor's goods or services include food or beverage, the Vendor additionally warrants that all food handlers hold current food safety qualifications, the Vendor holds all required food business registrations or notifications, all food is handled, stored and served in compliance with the Food Act 1984 (Vic) and applicable food standards, and the Vendor will immediately cease food service if directed by Hexa Space or a relevant authority.</p>
         </div>
 
         <div>
@@ -397,7 +397,7 @@ function VenueRulesDoc() {
   return (
     <div className="font-serif text-[13px] text-gray-900 leading-relaxed space-y-5">
       <div className="text-center space-y-1">
-        <div className="text-xs tracking-widest font-sans font-bold text-gray-500 uppercase">HexaHub Pty Ltd</div>
+        <div className="text-xs tracking-widest font-sans font-bold text-gray-500 uppercase">Hexa Space Pty Ltd</div>
         <h1 className="text-xl font-bold tracking-tight">Annexure A</h1>
         <h2 className="text-base font-semibold text-gray-700">Venue Rules and Operating Conditions</h2>
         <div className="text-xs text-gray-500 font-sans">369 Lonsdale Street, Melbourne VIC 3000</div>
@@ -434,7 +434,7 @@ function ComplianceAndMarketingDoc() {
       {/* Annexure B */}
       <div className="space-y-4">
         <div className="text-center space-y-1">
-          <div className="text-xs tracking-widest font-sans font-bold text-gray-500 uppercase">HexaHub Pty Ltd</div>
+          <div className="text-xs tracking-widest font-sans font-bold text-gray-500 uppercase">Hexa Space Pty Ltd</div>
           <h1 className="text-xl font-bold tracking-tight">Annexure B</h1>
           <h2 className="text-base font-semibold text-gray-700">Practical Victorian Compliance Notes</h2>
         </div>
@@ -626,7 +626,7 @@ export default function EventBookingSignPage({ token }) {
         const { data: sigRows } = await supabase
           .from('event_bookings')
           .select('data')
-          .eq('id', 'hexahub_licensor_sig')
+          .eq('id', 'hexaspace_licensor_sig')
           .single()
         if (sigRows?.data) adminSig = sigRows.data
       } catch (_) {}
@@ -714,8 +714,8 @@ export default function EventBookingSignPage({ token }) {
   ]
 
   if (state === 'loading') return <Screen title="Loading…" />
-  if (state === 'invalid') return <Screen icon="🔒" title="Invalid or expired link" subtitle="This signing link is invalid or has already been used. Contact info@hexahub.com.au for assistance." />
-  if (state === 'error') return <Screen icon="⚠️" title="Something went wrong" subtitle="Please try again or contact info@hexahub.com.au." />
+  if (state === 'invalid') return <Screen icon="🔒" title="Invalid or expired link" subtitle="This signing link is invalid or has already been used. Contact info@hexaspace.com.au for assistance." />
+  if (state === 'error') return <Screen icon="⚠️" title="Something went wrong" subtitle="Please try again or contact info@hexaspace.com.au." />
 
   if (state === 'signed' && insuranceChoice == null) {
     return (
@@ -726,7 +726,7 @@ export default function EventBookingSignPage({ token }) {
             <div className="text-4xl mb-4 text-center">✅</div>
             <h2 className="text-lg font-bold text-gray-900 mb-2 text-center">Agreement Signed</h2>
             <p className="text-sm text-gray-500 mb-6 text-center">
-              Thank you, {booking?.signerName}. Your agreement is signed. HexaHub will countersign and be in touch to confirm your participation.
+              Thank you, {booking?.signerName}. Your agreement is signed. Hexa Space will countersign and be in touch to confirm your participation.
             </p>
             <InsuranceUploadStep booking={booking} onDone={setInsuranceChoice} />
           </div>
@@ -742,7 +742,7 @@ export default function EventBookingSignPage({ token }) {
         title="You're all set!"
         subtitle={
           insuranceChoice === 'later'
-            ? `Thanks ${booking?.signerName}. Please email your Certificate of Currency to info@hexahub.com.au and we'll confirm your booking.`
+            ? `Thanks ${booking?.signerName}. Please email your Certificate of Currency to info@hexaspace.com.au and we'll confirm your booking.`
             : `Thanks ${booking?.signerName}. Agreement signed and insurance confirmed — we'll be in touch to confirm your booking.`
         }
       />
@@ -811,7 +811,7 @@ export default function EventBookingSignPage({ token }) {
               <div><span className="font-medium text-gray-700">Licensee:</span> {[booking?.vendorBusiness, booking?.vendorName].filter(Boolean).join(' — ')}</div>
               {booking?.allocatedSpace && <div><span className="font-medium text-gray-700">Venue / Space:</span> {booking.allocatedSpace}</div>}
               <div><span className="font-medium text-gray-700">Booking:</span> {booking?.venue || POPUP_VENUE}{booking?.bookingStartDate && booking?.bookingEndDate ? ` · ${fmtDate(booking.bookingStartDate)} – ${fmtDate(booking.bookingEndDate)}` : ''}</div>
-              <div><span className="font-medium text-gray-700">Licensor:</span> HexaHub Pty Ltd</div>
+              <div><span className="font-medium text-gray-700">Licensor:</span> Hexa Space Pty Ltd</div>
             </div>
 
             <button onClick={handleSign} disabled={submitting || !agreed} className="w-full bg-black text-white py-3 rounded-md text-sm font-bold hover:bg-gray-800 disabled:opacity-40 transition-colors">
@@ -1029,7 +1029,7 @@ function InsuranceUploadStep({ booking, onDone }) {
       onDone('done')
     } catch (err) {
       console.error(err)
-      setUploadError('Upload failed. Please try again or email your certificate to info@hexahub.com.au.')
+      setUploadError('Upload failed. Please try again or email your certificate to info@hexaspace.com.au.')
     } finally {
       setUploading(false)
     }
@@ -1103,7 +1103,7 @@ function InsuranceUploadStep({ booking, onDone }) {
         disabled={uploading}
         className="w-full mt-3 border border-gray-200 text-gray-600 py-2 rounded-md text-sm hover:bg-gray-50 disabled:opacity-40"
       >
-        I'll email it to info@hexahub.com.au
+        I'll email it to info@hexaspace.com.au
       </button>
     </div>
   )
@@ -1113,7 +1113,7 @@ function Header() {
   return (
     <div className="bg-black text-white px-6 py-4 flex items-center justify-between sticky top-0 z-10">
       <div>
-        <span className="font-black tracking-widest text-lg">HEXAHUB</span>
+        <span className="font-black tracking-widest text-lg">HEXA SPACE</span>
         <span className="text-gray-400 text-sm ml-3">Event Venue Licence Agreement</span>
       </div>
       <div className="text-right hidden sm:block">
@@ -1144,7 +1144,7 @@ function Screen({ icon, title, subtitle }) {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="text-center max-w-sm w-full">
-        <div className="text-2xl font-black tracking-widest text-gray-900 mb-6">HEXAHUB</div>
+        <div className="text-2xl font-black tracking-widest text-gray-900 mb-6">HEXA SPACE</div>
         <div className="bg-white border border-gray-200 rounded-md p-8 shadow-sm">
           {icon && <div className="text-4xl mb-4">{icon}</div>}
           <h1 className="text-lg font-bold text-gray-900 mb-2">{title}</h1>

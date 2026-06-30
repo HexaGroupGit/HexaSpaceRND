@@ -25,7 +25,7 @@ export default function Login({ onSuccess }) {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="text-3xl font-black tracking-widest text-gray-900">HEXAHUB</div>
+          <div className="text-3xl font-black tracking-widest text-gray-900">HEXA SPACE</div>
           <p className="text-sm text-gray-500 mt-3">Management Portal</p>
         </div>
 
@@ -41,7 +41,7 @@ export default function Login({ onSuccess }) {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoFocus
-                placeholder="you@hexahub.com.au"
+                placeholder="you@hexaspace.com.au"
                 className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
               />
             </div>
@@ -75,7 +75,7 @@ export default function Login({ onSuccess }) {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          HexaHub Pty Ltd · app.hexahub.com.au
+          Hexa Space Pty Ltd · app.hexaspace.com.au
         </p>
       </div>
     </div>
