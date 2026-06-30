@@ -49,9 +49,11 @@ export default function Memberships() {
   const rows = leases
     .map((l) => {
       const sp = space(l.spaceId)
-      return { ...l, sp, type: membershipType(l, sp), companyName: company(l.tenantId)?.businessName ?? l.memberName ?? '—', overdue: overdueCompany(l.tenantId) }
+      const unit = sp?.unitNumber || l.resource || l.planName || 'Membership'
+      return { ...l, sp, unit, type: l.membershipType || membershipType(l, sp), companyName: company(l.tenantId)?.businessName ?? l.companyName ?? l.memberName ?? '—', overdue: overdueCompany(l.tenantId) }
     })
     .filter((r) => r.sp?.type !== 'meeting')
+    .filter((r) => r.status === 'active' || r.status === 'pending')
     .filter((r) => {
       const s = r.startDate ? parseISO(r.startDate) : null
       const e = r.endDate ? parseISO(r.endDate) : null
@@ -59,7 +61,7 @@ export default function Memberships() {
       if (e && e < monthStart) return false
       return true
     })
-    .sort((a, b) => (a.sp?.unitNumber || '').localeCompare(b.sp?.unitNumber || '') || a.companyName.localeCompare(b.companyName))
+    .sort((a, b) => a.unit.localeCompare(b.unit) || a.companyName.localeCompare(b.companyName))
 
   const byType = Object.fromEntries(TYPES.map((t) => [t, rows.filter((r) => r.type === t)]))
   const overdueCount = rows.filter((r) => r.overdue).length
@@ -102,7 +104,7 @@ export default function Memberships() {
                 {items.map((r) => (
                   <div key={r.id} className={`bg-white border rounded-md p-3 ${r.overdue ? 'border-red-300' : 'border-gray-200'}`}>
                     <div className="flex items-start justify-between gap-2">
-                      <span className="font-medium text-gray-900 text-sm leading-tight">{r.sp?.unitNumber || 'Membership'}</span>
+                      <span className="font-medium text-gray-900 text-sm leading-tight">{r.unit}</span>
                       {r.overdue
                         ? <span className="flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700 shrink-0"><AlertTriangle size={10} /> Overdue</span>
                         : <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${r.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>{r.status || 'active'}</span>}
