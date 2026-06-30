@@ -255,30 +255,7 @@ const SAMPLE_TEMPLATES = [
 // Prices in PDF are annual ex-GST ex-outgoings. monthlyRate = annualRate / 12 (rounded).
 // "reserved" = Under Offer per PDF.
 
-const SAMPLE_TENANTS = [
-  {
-    id: 't1',
-    businessName: 'Meridian Fulfilment Pty Ltd',
-    contactName: 'Sarah Chen',
-    email: 'sarah@meridianful.com.au',
-    phone: '0412 345 678',
-    abn: '51 234 567 890',
-    industry: 'E-commerce & Logistics',
-    country: 'Australia',
-    createdAt: '2024-06-01',
-  },
-  {
-    id: 't2',
-    businessName: 'BluePeak Distribution Co',
-    contactName: 'James Okafor',
-    email: 'james@bluepeak.com.au',
-    phone: '0398 765 432',
-    abn: '78 901 234 567',
-    industry: 'Wholesale Distribution',
-    country: 'Australia',
-    createdAt: '2025-01-10',
-  },
-]
+const SAMPLE_TENANTS = []
 
 const SAMPLE_SPACES = [
   // ── Hexa Space — Box Hill (pin onto Level 2/4/5 in the Plan view) ─────────
@@ -299,7 +276,10 @@ const SAMPLE_SPACES = [
   { id: 'hx_mr_west',    unitNumber: 'West',         type: 'meeting', size: 'Up to 8',  monthlyRate: 0, hourlyRate: 80,  status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', attributes: 'West (Xi) · $80/hr · up to 8.' },
   { id: 'hx_mr_central', unitNumber: 'Central',      type: 'meeting', size: 'Up to 14', monthlyRate: 0, hourlyRate: 80,  status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', attributes: 'Central (Zhong) · $80/hr · up to 14.' },
   { id: 'hx_func',       unitNumber: 'Function',     type: 'meeting', size: '20–100',   monthlyRate: 0, hourlyRate: 250, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', attributes: 'Hexa Function Space · $250/hr · 20–100 guests.' },
+]
 
+// Huntingdale sample data removed for the Hexa Space RND — kept out of the seed.
+const _UNUSED_HUNTINGDALE_SPACES = [
   // ── Distribution Circuit — Block B ────────────────────────────────────────
   {
     id: 'so5',
@@ -497,32 +477,7 @@ const SAMPLE_SPACES = [
   },
 ]
 
-const SAMPLE_LEASES = [
-  {
-    id: 'l1',
-    tenantId: 't1',
-    spaceId: 'so5',  // Meridian in O5 (11 Distribution Circuit)
-    startDate: '2025-07-01',
-    endDate: '2026-06-15',  // 31 days from 2026-05-15 → shows in Renewals
-    monthlyRent: 4708,
-    bondAmount: 9416,
-    status: 'active',
-    notes: 'Renewal discussion pending. Tenant is happy with the space and access.',
-    createdAt: '2025-06-20',
-  },
-  {
-    id: 'l2',
-    tenantId: 't2',
-    spaceId: 'so15',  // BluePeak in O15 (20 Logistic Court)
-    startDate: '2026-01-01',
-    endDate: '2026-05-30',  // 15 days from 2026-05-15 → urgent in Renewals
-    monthlyRent: 3000,
-    bondAmount: 6000,
-    status: 'active',
-    notes: '',
-    createdAt: '2025-12-10',
-  },
-]
+const SAMPLE_LEASES = []
 
 // ── Lead pipeline ─────────────────────────────────────────────────────────────
 // Default stages mirror Reuvi's pipeline categories (new|engaged|won|lost) so

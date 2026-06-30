@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
 import { Plus, Pencil, Trash2, X, Check, LayoutGrid, Map, FileText, Upload } from 'lucide-react'
-import FloorPlan from './FloorPlan.jsx'
 import InteractiveFloorPlan from './InteractiveFloorPlan.jsx'
 import ContractForm from './ContractForm.jsx'
 import PriceListImport from './PriceListImport.jsx'
@@ -47,7 +46,7 @@ export default function Spaces() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [filterType, setFilterType] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
-  const [viewMode, setViewMode] = useState('floorplan')
+  const [viewMode, setViewMode] = useState('interactive')
   const [showImport, setShowImport] = useState(false)
 
   const filtered = spaces.filter((s) => {
@@ -151,20 +150,12 @@ export default function Spaces() {
             <LayoutGrid size={14} /> List
           </button>
           <button
-            onClick={() => setViewMode('floorplan')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border-l border-gray-200 transition-colors ${
-              viewMode === 'floorplan' ? 'bg-black text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <Map size={14} /> Schematic
-          </button>
-          <button
             onClick={() => setViewMode('interactive')}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border-l border-gray-200 transition-colors ${
               viewMode === 'interactive' ? 'bg-black text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
             }`}
           >
-            <Map size={14} /> Plan
+            <Map size={14} /> Floorplan
           </button>
         </div>
 
@@ -198,12 +189,7 @@ export default function Spaces() {
         )}
       </div>
 
-      {/* ── Floorplan view (schematic) ── */}
-      {viewMode === 'floorplan' && (
-        <FloorPlan spaces={spaces} leases={leases} tenants={tenants} onNewContract={setContractSpace} />
-      )}
-
-      {/* ── Interactive image-based plan ── */}
+      {/* ── Interactive image-based floorplan ── */}
       {viewMode === 'interactive' && (
         <InteractiveFloorPlan
           spaces={spaces}
