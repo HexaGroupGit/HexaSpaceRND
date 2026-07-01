@@ -16,6 +16,13 @@ const DOCUMENT_TYPES = [
   'Membership Agreement Month-to-month',
   'Service Agreement',
 ]
+// Which space types each document type may book. Anything not listed (e.g.
+// Service Agreement) is unrestricted.
+const DOC_TYPE_SPACES = {
+  'License Agreement': ['office'], // private offices
+  'Virtual Office Membership Agreement': ['virtual'],
+  'Membership Agreement Month-to-month': ['desk'], // flexible or dedicated desk
+}
 const SIGNATURE_STATUSES = [
   { value: 'not_signed',        label: 'Not Signed' },
   { value: 'out_for_signature', label: 'Out For Signature' },
@@ -529,6 +536,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
             <div className="space-y-4">
               {form.items.map((item, itemIdx) => {
                 const itemSpace = spaces.find((s) => s.id === item.spaceId)
+                const allowedTypes = DOC_TYPE_SPACES[form.documentType] || null
                 const typeLabel = itemSpace
                   ? itemSpace.type.charAt(0).toUpperCase() + itemSpace.type.slice(1)
                   : 'Space'
@@ -553,11 +561,14 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                           {spaces
                             .filter((s) => {
                               if (s.id === item.spaceId) return true // keep current selection
-                              // Private offices: only show units not already leased/assigned.
+                              // Restrict to the space types this document type may book.
+                              if (allowedTypes && !allowedTypes.includes(s.type)) return false
+                              // Private offices: only units not already leased/assigned.
                               if (s.type === 'office') {
                                 if (s.assignedCompanyId) return false
                                 return !leases.some((l) => l.spaceId === s.id && (l.status === 'active' || l.status === 'pending'))
                               }
+                              if (s.type === 'virtual') return true // show all virtual-office options
                               return s.status === 'vacant'
                             })
                             .map((s) => (
