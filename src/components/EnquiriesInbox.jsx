@@ -61,7 +61,7 @@ export default function EnquiriesInbox({ store }) {
               <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
                 <th className="px-4 py-2.5 font-medium">Date</th>
                 <th className="px-4 py-2.5 font-medium">Name</th>
-                <th className="px-4 py-2.5 font-medium">Unit</th>
+                <th className="px-4 py-2.5 font-medium">Enquiring about</th>
                 <th className="px-4 py-2.5 font-medium">Source</th>
                 <th className="px-4 py-2.5 font-medium">Stage</th>
                 <th className="px-4 py-2.5 font-medium text-right">Actions</th>
@@ -69,7 +69,13 @@ export default function EnquiriesInbox({ store }) {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {rows.map((lead) => {
-                const unit = spaceLabel(lead.spaceId)
+                // What they're enquiring about — the structured interest from the
+                // website (e.g. "Virtual Office", "Private Office"); tours show
+                // "Private tour"; otherwise fall back to a matched unit.
+                const about =
+                  lead.enquiryType ||
+                  lead.interest ||
+                  (lead.source === 'book-tour' ? 'Private tour' : spaceLabel(lead.spaceId))
                 const converted = lead.tenantId
                 return (
                   <tr key={lead.id} onClick={() => openDetail(lead)}
@@ -84,7 +90,7 @@ export default function EnquiriesInbox({ store }) {
                       <div className={`${!lead.read ? 'font-semibold' : 'font-medium'} text-gray-900 hover:underline`}>{lead.name || '—'}</div>
                       {lead.businessName && <div className="text-xs text-gray-400">{lead.businessName}</div>}
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{unit ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{about || '—'}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded capitalize ${SOURCE_BADGE[lead.source] ?? 'bg-gray-100 text-gray-600'}`}>{lead.source ?? '—'}</span>
                     </td>
