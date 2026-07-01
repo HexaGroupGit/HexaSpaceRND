@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { format, parseISO } from 'date-fns'
-import { ArrowLeft, Pencil, Building2, Mail, Phone, Hash, Plus, FileDown, Send, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Pencil, Building2, Mail, Phone, Hash, Plus, FileDown, Send, MessageSquare, Users, CreditCard, Receipt, Trash2, User } from 'lucide-react'
 import InvoiceForm from './InvoiceForm.jsx'
 import DocumentsPanel from './DocumentsPanel.jsx'
 import { jsPDF } from 'jspdf'
@@ -44,9 +44,12 @@ function Section({ title, action, children }) {
   )
 }
 
-export default function TenantProfile({ tenant, leases, invoices, spaces, settings, onBack, onEdit, onSelectInvoice, onSelectContract, onAddInvoice }) {
+export default function TenantProfile({ tenant, leases, invoices, spaces, settings, members = [], addMember, updateMember, deleteMember, addLease, updateLease, onBack, onEdit, onSelectInvoice, onSelectContract, onAddInvoice }) {
   const [showInvoiceForm, setShowInvoiceForm] = useState(false)
+  const [memberModal, setMemberModal] = useState(null)   // null | {} (new) | member (edit)
+  const [showMembership, setShowMembership] = useState(false)
   const tenantLeases = leases.filter((l) => l.tenantId === tenant.id)
+  const companyMembers = members.filter((m) => m.companyId === tenant.id)
 
   function generateStatement() {
     const taxRate = (settings?.billingRules?.taxRate ?? 10) / 100
@@ -258,6 +261,98 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
               )}
             </Section>
 
+            {/* ── Members ── */}
+            <Section title="Members" action={
+              <button onClick={() => setMemberModal({})} className="flex items-center gap-1 text-xs bg-black text-white px-3 py-1.5 rounded hover:bg-gray-800 font-medium">
+                <Plus size={12} /> Add member
+              </button>
+            }>
+              {companyMembers.length === 0 ? (
+                <p className="px-5 py-5 text-sm text-gray-400">No members yet. Add the people who work under this company.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      {['Name', 'Email', 'Roles', 'Status', ''].map((h) => (
+                        <th key={h} className="text-left px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {companyMembers.map((m) => (
+                      <tr key={m.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0"><User size={13} className="text-gray-400" /></span>
+                            <span className="font-medium text-gray-900">{m.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-gray-500">{m.email || '—'}</td>
+                        <td className="px-5 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {m.contactPerson && <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700"><CreditCard size={10} /> Contact</span>}
+                            {m.billingPerson && <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded bg-purple-50 text-purple-700"><Receipt size={10} /> Billing</span>}
+                            {!m.contactPerson && !m.billingPerson && <span className="text-xs text-gray-300">—</span>}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3">
+                          <Badge label={m.status && m.status !== 'Auto' ? m.status : 'Active'} cls={(m.status === 'Inactive' || m.status === 'inactive') ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700'} />
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => setMemberModal(m)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-900"><Pencil size={13} /></button>
+                            <button onClick={() => { if (window.confirm(`Remove ${m.name}?`)) deleteMember?.(m.id) }} className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600"><Trash2 size={13} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Section>
+
+            {/* ── Memberships ── */}
+            <Section title="Memberships" action={
+              <button onClick={() => setShowMembership(true)} className="flex items-center gap-1 text-xs bg-black text-white px-3 py-1.5 rounded hover:bg-gray-800 font-medium">
+                <Plus size={12} /> Add membership
+              </button>
+            }>
+              {tenantLeases.length === 0 ? (
+                <p className="px-5 py-5 text-sm text-gray-400">No memberships. Add a desk/office plan, or sign a contract to enrol automatically.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      {['Plan', 'Member', 'Status', 'Period', 'Price'].map((h) => (
+                        <th key={h} className="text-left px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tenantLeases.map((l) => {
+                      const space = spaces.find((s) => s.id === l.spaceId)
+                      const plan = l.membershipType || l.planName || 'Private Office'
+                      const fromContract = l.contractNumber && !/^membership$/i.test(l.source || '')
+                      return (
+                        <tr key={l.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer" onClick={() => onSelectContract?.(l)}>
+                          <td className="px-5 py-3">
+                            <div className="font-medium text-gray-900">{plan}</div>
+                            <div className="text-xs text-gray-400">{space?.unitNumber ?? (fromContract ? l.contractNumber : 'Hexa Space')}</div>
+                          </td>
+                          <td className="px-5 py-3 text-gray-600">{l.memberName || tenant.contactName || '—'}</td>
+                          <td className="px-5 py-3">
+                            <Badge label={l.status} cls={l.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'} />
+                          </td>
+                          <td className="px-5 py-3 text-gray-500 text-xs">{fmt(l.startDate)} – {fmt(l.endDate)}<br /><span className="text-gray-400">{l.contractType || 'Month-to-Month'}</span></td>
+                          <td className="px-5 py-3 font-medium text-gray-900">{fmtAud(l.monthlyRent)}/mo</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </Section>
+
             {/* ── One-off Fees (Deposits) ── */}
             <Section title="One-off Fees">
               {oneOffFees.length === 0 ? (
@@ -433,7 +528,199 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
         />
       )
     })()}
+
+    {memberModal && (
+      <MemberModal
+        member={memberModal.id ? memberModal : null}
+        tenant={tenant}
+        onClose={() => setMemberModal(null)}
+        onSave={(data) => {
+          if (memberModal.id) updateMember?.(memberModal.id, data)
+          else addMember?.({ ...data, companyId: tenant.id })
+          setMemberModal(null)
+        }}
+      />
+    )}
+
+    {showMembership && (
+      <MembershipModal
+        tenant={tenant}
+        members={companyMembers}
+        onClose={() => setShowMembership(false)}
+        onSave={(data) => {
+          addLease?.(data)
+          setShowMembership(false)
+        }}
+      />
+    )}
     </>
+  )
+}
+
+// ── Add / edit a member (person) under a company ──────────────────────────────
+function MemberModal({ member, tenant, onClose, onSave }) {
+  const [form, setForm] = useState({
+    name: member?.name ?? '',
+    email: member?.email ?? '',
+    phone: member?.phone ?? '',
+    contactPerson: member?.contactPerson ?? false,
+    billingPerson: member?.billingPerson ?? false,
+    status: member?.status ?? 'Auto',
+  })
+  const ic = 'w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black'
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-md w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
+          <h2 className="font-semibold text-gray-900">{member ? 'Edit member' : 'Add member'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <label className="block">
+            <span className="block text-xs font-medium text-gray-600 mb-1">Name *</span>
+            <input value={form.name} onChange={set('name')} placeholder="Full name" className={ic} />
+          </label>
+          <label className="block">
+            <span className="block text-xs font-medium text-gray-600 mb-1">Company</span>
+            <input value={tenant.businessName} disabled className={`${ic} bg-gray-50 text-gray-500`} />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="block text-xs font-medium text-gray-600 mb-1">Email</span>
+              <input value={form.email} onChange={set('email')} placeholder="name@company.com" className={ic} />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-medium text-gray-600 mb-1">Phone</span>
+              <input value={form.phone} onChange={set('phone')} placeholder="+61…" className={ic} />
+            </label>
+          </div>
+
+          <div className="space-y-3 bg-gray-50 rounded-md p-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={form.contactPerson} onChange={(e) => setForm((f) => ({ ...f, contactPerson: e.target.checked }))} className="mt-0.5" />
+              <span>
+                <span className="text-sm font-medium text-gray-800">Contact Person</span>
+                <span className="block text-xs text-gray-500">Can pay by card and add members into the portal.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={form.billingPerson} onChange={(e) => setForm((f) => ({ ...f, billingPerson: e.target.checked }))} className="mt-0.5" />
+              <span>
+                <span className="text-sm font-medium text-gray-800">Billing Person</span>
+                <span className="block text-xs text-gray-500">Receives invoices by email.</span>
+              </span>
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="block text-xs font-medium text-gray-600 mb-1">Status</span>
+            <select value={form.status} onChange={set('status')} className={ic}>
+              <option value="Auto">Auto</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+            <span className="block text-xs text-gray-400 mt-1">Auto: calculated from their memberships.</span>
+          </label>
+        </div>
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+          <button onClick={() => form.name.trim() && onSave(form)} className="px-4 py-2 text-sm bg-black text-white rounded-md hover:bg-gray-800">{member ? 'Save' : 'Add member'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Add a membership (desk / office / virtual) — stored as a lease so it bills ──
+const MEMBERSHIP_PLANS = [
+  { key: 'Flexible Desk',  price: 300 },
+  { key: 'Dedicated Desk', price: 600 },
+  { key: 'Private Office', price: 0 },
+  { key: 'Virtual Office', price: 150 },
+]
+
+function MembershipModal({ tenant, members, onClose, onSave }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const [form, setForm] = useState({ plan: 'Dedicated Desk', memberId: '', price: 600, startDate: today, endDate: '' })
+  const ic = 'w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black'
+
+  function pickPlan(plan) {
+    const def = MEMBERSHIP_PLANS.find((p) => p.key === plan)
+    setForm((f) => ({ ...f, plan, price: def ? def.price : f.price }))
+  }
+  function save() {
+    const price = Number(form.price) || 0
+    const member = members.find((m) => m.id === form.memberId)
+    onSave({
+      tenantId: tenant.id,
+      companyName: tenant.businessName,
+      memberId: form.memberId || undefined,
+      memberName: member?.name || undefined,
+      membershipType: form.plan,
+      planName: form.plan,
+      monthlyRent: price,
+      total: price,
+      status: 'active',
+      contractType: 'Month-to-month',
+      documentType: 'Membership',
+      signatureStatus: 'not_signed',
+      source: 'membership',
+      location: 'Hexa Space',
+      startDate: form.startDate,
+      endDate: form.endDate || undefined,
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-md w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
+          <h2 className="font-semibold text-gray-900">Add membership</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div>
+            <span className="block text-xs font-medium text-gray-600 mb-1.5">Plan</span>
+            <div className="grid grid-cols-2 gap-2">
+              {MEMBERSHIP_PLANS.map((p) => (
+                <button key={p.key} type="button" onClick={() => pickPlan(p.key)}
+                  className={`text-left px-3 py-2.5 rounded-md border text-sm transition-colors ${form.plan === p.key ? 'border-black bg-gray-900 text-white' : 'border-gray-200 hover:bg-gray-50 text-gray-700'}`}>
+                  {p.key}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="block">
+            <span className="block text-xs font-medium text-gray-600 mb-1">Assign to member (optional)</span>
+            <select value={form.memberId} onChange={(e) => setForm((f) => ({ ...f, memberId: e.target.value }))} className={ic}>
+              <option value="">— Company (unassigned) —</option>
+              {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="block text-xs font-medium text-gray-600 mb-1">Price (AUD / month, ex GST)</span>
+            <input type="number" min="0" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} className={ic} />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="block text-xs font-medium text-gray-600 mb-1">Start date</span>
+              <input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} className={ic} />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-medium text-gray-600 mb-1">End date (optional)</span>
+              <input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} className={ic} />
+            </label>
+          </div>
+          <p className="text-xs text-gray-400">Enrols {tenant.businessName} on this plan and bills it monthly. Signing an office contract creates a membership automatically.</p>
+        </div>
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+          <button onClick={save} className="px-4 py-2 text-sm bg-black text-white rounded-md hover:bg-gray-800">Add membership</button>
+        </div>
+      </div>
+    </div>
   )
 }
 
