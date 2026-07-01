@@ -10,6 +10,7 @@ const DAY_END = 17
 const HOUR_H = 52
 const CREDIT_VALUE = 40 // A$40 per credit
 const HOURS = Array.from({ length: DAY_END - DAY_START }, (_, i) => DAY_START + i)
+const LABEL_HOURS = Array.from({ length: DAY_END - DAY_START + 1 }, (_, i) => DAY_START + i)
 
 const t12 = (h) => `${h % 12 || 12} ${h >= 12 ? 'pm' : 'am'}`
 const to12 = (t) => { if (!t) return ''; let [h, m] = t.split(':').map(Number); const ap = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12; return `${h}:${String(m).padStart(2, '0')} ${ap}` }
@@ -44,30 +45,34 @@ export default function PortalCalendar({ resources, allBookings, member, company
         <span className="hx-eyebrow">{resources.length} {resources.length === 1 ? 'space' : 'spaces'}</span>
       </div>
 
-      <Card className="overflow-auto">
-        <div className="flex min-w-max">
+      <Card className="overflow-hidden">
+        <div className="flex">
           {/* time gutter */}
-          <div className="w-16 shrink-0 border-r border-ink/10">
+          <div className="w-14 shrink-0 border-r border-ink/10">
             <div className="h-16 border-b border-ink/10" />
-            {HOURS.map((h) => (
-              <div key={h} style={{ height: HOUR_H }} className="font-heading uppercase tracking-nav text-[9px] text-muted text-right pr-2 -mt-1.5">{t12(h)}</div>
-            ))}
+            {/* labels sit just below each gridline; +1 row gives 5pm a box under it */}
+            <div className="relative" style={{ height: (HOURS.length + 1) * HOUR_H }}>
+              {LABEL_HOURS.map((h) => (
+                <span key={h} style={{ top: (h - DAY_START) * HOUR_H + 4 }} className="absolute right-2 font-heading uppercase tracking-nav text-[9px] text-muted">{t12(h)}</span>
+              ))}
+            </div>
           </div>
           {/* resource columns */}
           {resources.map((room) => {
             const roomBookings = dayBookings.filter((b) => b.resourceId === room.id)
             const rate = room.hourlyRate ?? room.rate
             return (
-              <div key={room.id} className="w-44 shrink-0 border-r border-ink/10 last:border-r-0">
+              <div key={room.id} className="flex-1 min-w-0 border-r border-ink/10 last:border-r-0">
                 <div className="h-16 border-b border-ink/10 px-3 py-2 border-t-2 border-t-hexa-green bg-bone">
                   <div className="font-heading uppercase tracking-nav text-[11px] text-ink truncate">{room.unitNumber}</div>
-                  <div className="hx-prose text-[11px]">{rate ? `A$${rate}/hr` : '—'}{room.size ? ` · ${room.size}` : ''}</div>
+                  <div className="hx-prose text-[11px] truncate">{rate ? `A$${rate}/hr` : '—'}{room.size ? ` · ${room.size}` : ''}</div>
                 </div>
-                <div className="relative" style={{ height: HOURS.length * HOUR_H }}>
+                <div className="relative" style={{ height: (HOURS.length + 1) * HOUR_H }}>
                   {HOURS.map((h) => (
                     <div key={h} onClick={() => openSlot(room.id, h)} style={{ height: HOUR_H }}
                       className="border-b border-ink/5 hover:bg-hexa-green/5 cursor-pointer transition-colors" />
                   ))}
+                  <div style={{ height: HOUR_H }} className="border-b border-ink/5" />
                   {roomBookings.map((b) => {
                     const top = (toDec(b.startTime) - DAY_START) * HOUR_H
                     const height = Math.max(20, (toDec(b.endTime) - toDec(b.startTime)) * HOUR_H)

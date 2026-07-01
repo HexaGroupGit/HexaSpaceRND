@@ -8,6 +8,8 @@ const DAY_END = 17
 const HOUR_H = 52
 const CREDIT_VALUE = 40 // $40 per credit
 const HOURS = Array.from({ length: DAY_END - DAY_START }, (_, i) => DAY_START + i)
+// Gridline labels — one per line including the closing hour (so 5pm shows).
+const LABEL_HOURS = Array.from({ length: DAY_END - DAY_START + 1 }, (_, i) => DAY_START + i)
 const RESOURCE_TYPES = [
   { label: 'Meeting Rooms', type: 'meeting' },
   { label: 'Media Studios', type: 'studio' },
@@ -114,29 +116,34 @@ export default function Calendar() {
       {rooms.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-md p-12 text-center text-gray-400 text-sm">No {RESOURCE_TYPES.find((r) => r.type === resType)?.label.toLowerCase()} yet. Add spaces of this type in Spaces.</div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-md overflow-auto">
-          <div className="flex min-w-max">
+        <div className="bg-white border border-gray-200 rounded-md overflow-hidden">
+          <div className="flex">
             {/* time gutter */}
-            <div className="w-16 shrink-0 border-r border-gray-200">
+            <div className="w-14 shrink-0 border-r border-gray-200">
               <div className="h-16 border-b border-gray-200" />
-              {HOURS.map((h) => (
-                <div key={h} style={{ height: HOUR_H }} className="text-[11px] text-gray-400 text-right pr-2 -mt-2">{t12(h)}</div>
-              ))}
+              {/* hour labels sit just below each gridline; +1 row gives 5pm a box under it */}
+              <div className="relative" style={{ height: (HOURS.length + 1) * HOUR_H }}>
+                {LABEL_HOURS.map((h) => (
+                  <span key={h} style={{ top: (h - DAY_START) * HOUR_H + 4 }} className="absolute right-2 text-[11px] text-gray-400">{t12(h)}</span>
+                ))}
+              </div>
             </div>
             {/* room columns */}
             {rooms.map((room, ri) => {
               const color = ROOM_COLORS[ri % ROOM_COLORS.length]
               const roomBookings = dayBookings.filter((b) => b.resourceId === room.id)
               return (
-                <div key={room.id} className="w-48 shrink-0 border-r border-gray-200 last:border-r-0">
+                <div key={room.id} className="flex-1 min-w-0 border-r border-gray-200 last:border-r-0">
                   <div className="h-16 border-b border-gray-200 px-2 py-1.5" style={{ borderTop: `3px solid ${color}` }}>
                     <div className="font-semibold text-xs text-gray-900 truncate">{room.unitNumber}</div>
-                    <div className="text-[10px] text-gray-400">{room.hourlyRate ? `$${room.hourlyRate}/hr` : '—'}{room.size ? ` · ${room.size}` : ''}</div>
+                    <div className="text-[10px] text-gray-400 truncate">{room.hourlyRate ? `$${room.hourlyRate}/hr` : '—'}{room.size ? ` · ${room.size}` : ''}</div>
                   </div>
-                  <div className="relative" style={{ height: HOURS.length * HOUR_H }}>
+                  {/* +1 trailing box so the 5pm line has a cell beneath it */}
+                  <div className="relative" style={{ height: (HOURS.length + 1) * HOUR_H }}>
                     {HOURS.map((h) => (
                       <div key={h} onClick={() => openSlot(room.id, h)} style={{ height: HOUR_H }} className="border-b border-gray-100 hover:bg-blue-50/50 cursor-pointer" />
                     ))}
+                    <div style={{ height: HOUR_H }} className="border-b border-gray-100" />
                     {roomBookings.map((b) => {
                       const top = (toDec(b.startTime) - DAY_START) * HOUR_H
                       const height = Math.max(18, (toDec(b.endTime) - toDec(b.startTime)) * HOUR_H)
