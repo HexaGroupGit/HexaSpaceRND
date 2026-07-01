@@ -17,6 +17,20 @@ const TONE = {
   red:    'border-t-red-500',
 }
 
+// The workspace offerings a lead can enquire about (from the website), used to
+// populate the filter dropdown even before leads of that type exist.
+const INTEREST_TYPES = [
+  'Virtual Office', 'Flexible Desk', 'Dedicated Desk', 'Private Office',
+  'Enterprise Suites', 'Meeting Rooms', 'The Function Space',
+  'Media Studios', 'The Podcast Studio', 'Membership', 'Private tour',
+]
+
+// What a lead is enquiring about — the structured type from the website
+// (enquiryType/interest), or "Private tour" for tour bookings.
+function interestOf(lead) {
+  return lead.enquiryType || lead.interest || (lead.source === 'book-tour' ? 'Private tour' : '')
+}
+
 const EMPTY = {
   name: '', businessName: '', email: '', phone: '',
   spaceId: '', source: 'website', stageId: '', value: '', notes: '',
@@ -32,9 +46,14 @@ export default function LeadsBoard({ store }) {
   const [editId, setEditId] = useState(null)
   const [form, setForm] = useState(EMPTY)
   const [activeId, setActiveId] = useState(null)
+  const [interest, setInterest] = useState('all')
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
   const stages = [...pipelineStages].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+
+  // Enquiry-type filter — canonical offerings plus any extra types seen on leads.
+  const interestOptions = [...new Set([...INTEREST_TYPES, ...leads.map(interestOf).filter(Boolean)])]
+  const visibleLeads = interest === 'all' ? leads : leads.filter((l) => interestOf(l) === interest)
 
   function openAdd() {
     setEditId(null)
@@ -91,7 +110,20 @@ export default function LeadsBoard({ store }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-gray-500 whitespace-nowrap">Enquiring about</label>
+          <select
+            value={interest}
+            onChange={(e) => setInterest(e.target.value)}
+            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+          >
+            <option value="all">All enquiry types</option>
+            {interestOptions.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
         <button onClick={openAdd}
           className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-800">
           <Plus size={15} /> Add Lead
@@ -101,7 +133,7 @@ export default function LeadsBoard({ store }) {
       <DndContext sensors={sensors} onDragStart={(e) => setActiveId(e.active.id)} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
         <div className="flex gap-4 overflow-x-auto pb-4">
           {stages.map((stage) => {
-            const stageLeads = leads.filter((l) => l.stageId === stage.id)
+            const stageLeads = visibleLeads.filter((l) => l.stageId === stage.id)
             return (
               <Column key={stage.id} stage={stage} count={stageLeads.length}>
                 {stageLeads.map((lead) => (
@@ -220,6 +252,7 @@ function Column({ stage, count, children }) {
 function LeadCard({ lead, spaces, tenants, onEdit, onDelete, onConvert, dragging }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: lead.id, disabled: dragging })
   const space = spaces.find((s) => s.id === lead.spaceId)
+  const about = interestOf(lead)
   const converted = lead.tenantId && tenants.some((t) => t.id === lead.tenantId)
   const days = lead.stageEnteredAt ? differenceInCalendarDays(new Date(), parseISO(lead.stageEnteredAt)) : null
 
@@ -243,6 +276,7 @@ function LeadCard({ lead, spaces, tenants, onEdit, onDelete, onConvert, dragging
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 mt-2">
+        {about && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">{about}</span>}
         {space && <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">{space.unitNumber}</span>}
         {lead.value > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-700">${Number(lead.value).toLocaleString('en-AU')}/mo</span>}
         {lead.source && <span className="text-xs px-1.5 py-0.5 rounded bg-gray-50 text-gray-500 capitalize border border-gray-100">{lead.source}</span>}
