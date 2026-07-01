@@ -1,22 +1,20 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { Megaphone } from 'lucide-react'
-import ListingsPanel from './ListingsPanel.jsx'
 import AdsWorkbench from './AdsWorkbench.jsx'
 import AiStudio from './AiStudio.jsx'
 
-// Marketing — promotion & demand generation. Listings publish vacancies; Ads and
-// the AI Studio create and run campaigns. (Leads/Enquiries live in CRM; event
-// registrations live under Events.)
+// Marketing — promotion & demand generation. Ads and the AI Studio create and
+// run campaigns. (Leads/Enquiries live in CRM; event registrations live under
+// Events.)
 const TABS = [
-  { key: 'listings', label: 'Listings' },
   { key: 'ads',      label: 'Ads' },
   { key: 'studio',   label: 'AI Studio' },
 ]
 
 export default function Marketing() {
   const store = useOutletContext()
-  const [tab, setTab] = useState('listings')
+  const [tab, setTab] = useState('ads')
 
   const { spaces = [] } = store
   const vacantCount = spaces.filter((s) => s.status === 'vacant').length
@@ -49,7 +47,6 @@ export default function Marketing() {
         ))}
       </div>
 
-      {tab === 'listings' && <ListingsPanel store={store} />}
       {tab === 'ads' && <AdsWorkbench store={store} />}
       {tab === 'studio' && <AiStudio store={store} />}
     </div>
