@@ -36,6 +36,13 @@ export default async function handler(req, res) {
   if (!serviceKey) return res.status(500).json({ error: 'Not configured' })
   const supabase = createClient(SUPABASE_URL, serviceKey, { auth: { persistSession: false } })
 
+  // Function-space enquiries belong in the Function Space Bookings funnel
+  // (function_bookings table → CRM "Function Enquiries" tab), not the general
+  // lead pipeline.
+  if (isFunctionEnquiry(req.body)) {
+    return handleFunctionEnquiry(req, res, supabase)
+  }
+
   try {
     const [{ data: spaceRows }, { data: stageRows }, { data: refRows }, { data: tmplRows }, { data: settRows }] = await Promise.all([
       supabase.from('spaces').select('id, data'),
@@ -106,6 +113,67 @@ export default async function handler(req, res) {
     console.error('form-submit error:', err)
     return res.status(500).json({ error: 'Internal server error' })
   }
+}
+
+// Detect a function-space enquiry from the website form's selector fields.
+function isFunctionEnquiry(body = {}) {
+  const hay = `${body.enquiryType || ''} ${body.interest || ''} ${body.unitId || ''} ${body.spaceType || ''} ${body.service || ''} ${body.subject || ''}`.toLowerCase()
+  return /function/.test(hay)
+}
+
+// Create a function_bookings record in the 'enquiry' stage (mirrors
+// /api/function-enquiry) and notify the events team.
+async function handleFunctionEnquiry(req, res, supabase) {
+  const b = req.body ?? {}
+  try {
+    const now = new Date().toISOString()
+    const id = `fn${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    const ref = `FN-${Math.floor(100000 + Math.random() * 900000)}`
+    const record = {
+      id, ref, source: b.source || 'website', stage: 'enquiry', read: false,
+      name: b.name ?? '', organisation: b.businessName ?? b.organisation ?? '', email: b.email ?? '', phone: b.phone ?? '',
+      eventName: b.eventName ?? '', eventType: b.eventType ?? '',
+      eventDate: b.eventDate ?? '', startTime: b.startTime ?? '', endTime: b.endTime ?? '',
+      guests: b.guests ?? '', catering: !!b.catering,
+      addons: { parking: !!(b.addons?.parking), nameTags: !!(b.addons?.nameTags), photographer: !!(b.addons?.photographer) },
+      additionalRequirements: b.additionalRequirements ?? b.message ?? '',
+      createdAt: now.split('T')[0], updatedAt: now,
+    }
+    const { error } = await supabase.from('function_bookings').upsert({ id, data: record, updated_at: now })
+    if (error) { console.error('form-submit function insert error:', error); return res.status(500).json({ error: 'Could not save enquiry' }) }
+    notifyFunctionAdmin(supabase, record).catch(() => {})
+    return res.status(200).json({ success: true, ref })
+  } catch (err) {
+    console.error('handleFunctionEnquiry error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
+async function notifyFunctionAdmin(supabase, b) {
+  const resendKey = process.env.RESEND_API_KEY
+  if (!resendKey) return
+  const { data: settRows } = await supabase.from('settings').select('data').eq('id', 'global')
+  const settings = settRows?.[0]?.data ?? {}
+  const to = settings?.emails?.notificationEmail
+  if (!to) return
+  const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
+  const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
+  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
+  <div style="max-width:560px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
+    <div style="background:#000;padding:20px 32px"><span style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px">${fromName.toUpperCase()}</span></div>
+    <div style="padding:32px">
+      <h2 style="margin:0 0 12px;font-size:16px">New function space enquiry 🎉</h2>
+      <div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:4px;padding:16px;font-size:13px;color:#555">
+        <div><strong>Name:</strong> ${b.name || '—'}${b.organisation ? ` (${b.organisation})` : ''}</div>
+        <div><strong>Email:</strong> ${b.email || '—'}</div>
+        <div><strong>Phone:</strong> ${b.phone || '—'}</div>
+        ${b.eventDate ? `<div><strong>When:</strong> ${b.eventDate} ${b.startTime || ''}–${b.endTime || ''}</div>` : ''}
+        ${b.additionalRequirements ? `<div style="margin-top:8px"><strong>Message:</strong><br>${String(b.additionalRequirements).replace(/</g, '&lt;')}</div>` : ''}
+      </div>
+      <p style="font-size:12px;color:#888;margin-top:20px">Added to CRM → Function Enquiries.</p>
+    </div>
+  </div></body></html>`
+  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `Function enquiry — ${b.name || b.email}`, html })
 }
 
 async function notifyAdmin(supabase, lead, space) {
