@@ -68,30 +68,30 @@ export default function Memberships() {
     .filter((r) => inPeriod(r))
     .sort((a, b) => a.unit.localeCompare(b.unit) || a.companyName.localeCompare(b.companyName))
 
-  // Private Office column follows every office unit in Spaces, showing its occupant
-  // (an explicit space assignment wins; otherwise the active/pending lease on it).
+  // Private Office column mirrors Spaces → Private Offices exactly: occupant is the
+  // explicit space assignment (occupantTenantId / occupantName); otherwise the
+  // active-or-pending lease on the unit. Status follows occupancy; rate & dates
+  // come from the space + its lease so this matches the Spaces view 1:1.
+  const activeLeaseForSpace = (spaceId) =>
+    leases.find((l) => l.spaceId === spaceId && l.status === 'active') ||
+    leases.find((l) => l.spaceId === spaceId && l.status === 'pending') || null
   const officeItems = spaces
     .filter((s) => s.type === 'office')
     .sort((a, b) => (floorRank[a.floor] ?? 9) - (floorRank[b.floor] ?? 9) || String(a.unitNumber).localeCompare(String(b.unitNumber), undefined, { numeric: true }))
     .map((sp) => {
-      const override = sp.assignedCompanyId || ''
-      let lease = null
-      if (override) {
-        lease = leases.find((l) => l.tenantId === override && (l.status === 'active' || l.status === 'pending')) || null
-      } else {
-        lease = leases
-          .filter((l) => l.spaceId === sp.id && (l.status === 'active' || l.status === 'pending') && inPeriod(l))
-          .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''))[0] || null
-      }
-      const companyId = override || lease?.tenantId || ''
-      const co = company(companyId)
-      const vacant = !companyId
+      const lease = activeLeaseForSpace(sp.id)
+      let companyId = '', companyName = ''
+      if (sp.occupantTenantId) { companyId = sp.occupantTenantId; companyName = company(sp.occupantTenantId)?.businessName || '—' }
+      else if (sp.occupantName) { companyName = sp.occupantName }
+      else if (lease) { companyId = lease.tenantId; companyName = company(lease.tenantId)?.businessName || lease.companyName || lease.memberName || '—' }
+      const vacant = !companyName
       return {
         id: sp.id, unit: sp.unitNumber, level: floorLabel[sp.floor] || '',
-        companyName: vacant ? 'Available' : (co?.businessName || lease?.companyName || '—'),
+        companyName: vacant ? 'Available' : companyName,
         vacant, status: vacant ? 'vacant' : (lease?.status || 'active'),
-        startDate: lease?.startDate, endDate: lease?.endDate, monthlyRent: lease?.monthlyRent,
-        overdue: !vacant && overdueCompany(companyId),
+        startDate: lease?.startDate, endDate: lease?.endDate,
+        monthlyRent: sp.monthlyRate ?? lease?.monthlyRent,
+        overdue: !vacant && !!companyId && overdueCompany(companyId),
       }
     })
 

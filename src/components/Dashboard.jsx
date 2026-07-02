@@ -37,11 +37,17 @@ export default function Dashboard() {
   const monthEnd = endOfMonth(today)
 
   const activeLeases = leases.filter((l) => l.status === 'active')
+  // An office is occupied if it has an explicit occupant (occupantTenantId /
+  // occupantName) or an active/pending lease on it — same rule as the Spaces &
+  // Memberships views, so occupancy stays consistent across the app.
+  const officeHasOccupant = (s) =>
+    !!(s.occupantTenantId || s.occupantName ||
+      leases.some((l) => l.spaceId === s.id && (l.status === 'active' || l.status === 'pending')))
   const occupiedSpaces = spaces.filter((s) => s.status === 'occupied')
   const vacantSpaces = spaces.filter((s) => s.status === 'vacant')
   // Vacant-space widgets list private offices only — meeting rooms, virtual
   // offices, desks etc. aren't leased month-to-month the same way.
-  const vacantOffices = vacantSpaces.filter((s) => s.type === 'office')
+  const vacantOffices = spaces.filter((s) => s.type === 'office' && !officeHasOccupant(s))
 
   // Offices in chronological order: Office 1–10 (L4), 11–15 (L5), then Suite 1–30 (L2).
   const floorRank = (f) => ({ l4: 0, l5: 1, l2: 2 }[f] ?? 9)
@@ -273,17 +279,18 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {officeList.map((space) => {
             const occ = officeOccupant(space)
+            const occupied = officeHasOccupant(space)
             return (
               <div key={space.id} className={`rounded-md border p-3 text-sm flex items-center justify-between gap-3 ${
-                space.status === 'occupied' ? 'border-gray-300 bg-gray-900 text-white' : 'border-green-200 bg-green-50 text-green-900'
+                occupied ? 'border-gray-300 bg-gray-900 text-white' : 'border-green-200 bg-green-50 text-green-900'
               }`}>
                 <div className="min-w-0">
                   <div className="font-semibold">{space.unitNumber}</div>
-                  <div className={`text-xs mt-0.5 truncate ${space.status === 'occupied' ? 'text-gray-300' : 'text-green-700'}`}>
+                  <div className={`text-xs mt-0.5 truncate ${occupied ? 'text-gray-300' : 'text-green-700'}`}>
                     {occ || 'Vacant'}
                   </div>
                 </div>
-                <div className={`text-xs whitespace-nowrap ${space.status === 'occupied' ? 'text-gray-300' : 'text-gray-400'}`}>
+                <div className={`text-xs whitespace-nowrap ${occupied ? 'text-gray-300' : 'text-gray-400'}`}>
                   {fmtAud(space.monthlyRate)}/mo
                 </div>
               </div>
