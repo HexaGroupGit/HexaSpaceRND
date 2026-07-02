@@ -22,8 +22,20 @@ const STATUS_STYLE = {
   Pending: 'bg-amber-100 text-amber-800',
 }
 
-export function displayStatus(m) {
-  return m.status && m.status !== 'Auto' ? m.status : 'Active'
+// A member has an active membership if there's an active lease tied to them
+// directly (memberId) or to their company (tenantId/companyId).
+export function memberHasActiveMembership(m, leases = []) {
+  return leases.some((l) => l.status === 'active' && (
+    (l.memberId && l.memberId === m.id) ||
+    (m.companyId && l.tenantId === m.companyId)
+  ))
+}
+// Status only reads "Active" when the member actually has an active membership.
+// Explicit non-active labels (Drop In / Pending / Former) are respected.
+export function displayStatus(m, hasActiveMembership = false) {
+  const s = m.status && m.status !== 'Auto' ? m.status : null
+  if (s && s !== 'Active') return s
+  return hasActiveMembership ? 'Active' : 'Former'
 }
 export function accessRoles(m) {
   return [
@@ -35,7 +47,8 @@ export function accessRoles(m) {
 
 export default function Members() {
   const ctx = useOutletContext()
-  const { members = [], tenants = [], addMember, updateMember } = ctx
+  const { members = [], tenants = [], leases = [], addMember, updateMember } = ctx
+  const hasMem = (m) => memberHasActiveMembership(m, leases)
   const [selected, setSelected] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState(null)
@@ -46,16 +59,16 @@ export default function Members() {
   const companyName = (id) => tenants.find((t) => t.id === id)?.businessName ?? ''
 
   const counts = {
-    active: members.filter((m) => displayStatus(m) === 'Active').length,
-    dropin: members.filter((m) => displayStatus(m) === 'Drop In').length,
-    pending: members.filter((m) => displayStatus(m) === 'Pending').length,
+    active: members.filter((m) => displayStatus(m, hasMem(m)) === 'Active').length,
+    dropin: members.filter((m) => displayStatus(m, hasMem(m)) === 'Drop In').length,
+    pending: members.filter((m) => displayStatus(m, hasMem(m)) === 'Pending').length,
     portal: members.filter((m) => m.portalAccess).length,
   }
 
   const filtered = members.filter((m) => {
-    if (filter === 'Active' && displayStatus(m) !== 'Active') return false
-    if (filter === 'Drop In' && displayStatus(m) !== 'Drop In') return false
-    if (filter === 'Pending' && displayStatus(m) !== 'Pending') return false
+    if (filter === 'Active' && displayStatus(m, hasMem(m)) !== 'Active') return false
+    if (filter === 'Drop In' && displayStatus(m, hasMem(m)) !== 'Drop In') return false
+    if (filter === 'Pending' && displayStatus(m, hasMem(m)) !== 'Pending') return false
     if (filter === 'portal' && !m.portalAccess) return false
     return [m.name, companyName(m.companyId), m.email].join(' ').toLowerCase().includes(search.toLowerCase())
   })
@@ -114,7 +127,7 @@ export default function Members() {
               <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400 text-sm">No members yet. Click <strong>Add Member</strong> to create one.</td></tr>
             )}
             {filtered.map((m) => {
-              const st = displayStatus(m)
+              const st = displayStatus(m, hasMem(m))
               return (
                 <tr key={m.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer" onClick={() => setSelected(m)}>
                   <td className="px-4 py-3 font-medium text-blue-700 hover:underline">{m.name}</td>

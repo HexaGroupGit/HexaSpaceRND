@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ArrowLeft, Pencil, Check } from 'lucide-react'
-import { displayStatus, accessRoles } from './Members.jsx'
+import { displayStatus, accessRoles, memberHasActiveMembership } from './Members.jsx'
 
 const TABS = ['Overview', 'Memberships', 'Bookings', 'Day Passes', 'Credits', 'One-off Fees', 'Invoices', 'Comments']
 
@@ -36,11 +36,11 @@ function Section({ title, addLabel, onAdd, children }) {
 }
 
 export default function MemberProfile({ member, ctx, onBack, onEdit }) {
-  const { tenants = [], invoices = [], updateMember } = ctx
+  const { tenants = [], invoices = [], leases = [], updateMember } = ctx
   const [tab, setTab] = useState('Overview')
   const company = tenants.find((t) => t.id === member.companyId)
   const memberInvoices = invoices.filter((i) => i.tenantId === member.companyId)
-  const st = displayStatus(member)
+  const st = displayStatus(member, memberHasActiveMembership(member, leases))
   const show = (s) => tab === 'Overview' || tab === s
   const set = (k, v) => updateMember(member.id, { [k]: v })
 

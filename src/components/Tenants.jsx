@@ -99,13 +99,16 @@ export default function Tenants() {
             )}
             {filtered.map((t) => {
               const al = activeLeases(t.id)
+              // A company is Active only if it has an active membership; otherwise
+              // keep an explicit non-active label (Lead/Drop In/Former) or fall to Former.
+              const derivedStatus = al.length > 0 ? 'Active' : (t.status && t.status !== 'Active' ? t.status : 'Former')
               return (
                 <tr key={t.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedTenant(t)}>
                   <td className="px-4 py-3 font-medium text-blue-700 hover:underline">{t.businessName}</td>
                   <td className="px-4 py-3 text-gray-500">Hexa Space</td>
                   <td className="px-4 py-3 text-gray-600">{t.email}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded ${STATUS_STYLE[t.status] || 'bg-green-100 text-green-800'}`}>{t.status || 'Active'}</span>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded ${STATUS_STYLE[derivedStatus] || 'bg-green-100 text-green-800'}`}>{derivedStatus}</span>
                   </td>
                   <td className="px-4 py-3 text-gray-500">{t.startDate ? format(parseISO(t.startDate), 'dd/MM/yyyy') : (t.createdAt ? format(parseISO(t.createdAt), 'dd/MM/yyyy') : '—')}</td>
                   <td className="px-4 py-3 text-gray-600 text-xs">
