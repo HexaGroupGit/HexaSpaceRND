@@ -113,9 +113,7 @@
     <section>
       <div class="eyebrow" style="margin-bottom:16px">Anything extra?</div>
       <label class="chk"><input type="checkbox" name="catering"> I’d like catering (quoted separately)</label>
-      <label class="chk"><input type="checkbox" name="parking"> Additional onsite parking</label>
-      <label class="chk"><input type="checkbox" name="nameTags"> Name tags</label>
-      <label class="chk"><input type="checkbox" name="photographer"> Event photographer</label>
+      <p class="muted" style="margin:6px 0 0">F&amp;B &amp; AV staff ($40/hr) are added automatically for events over 80 guests.</p>
       <div style="margin-top:16px"><label class="lab">Anything else we should know?</label><textarea name="message" rows="3" placeholder="Run sheet, AV, accessibility, special requests…"></textarea></div>
     </section>
 
@@ -184,7 +182,7 @@
       eventName:d.get('eventName'), eventType:d.get('eventType'), layout:layout,
       eventDate:d.get('eventDate'), startTime:d.get('startTime'), endTime:d.get('endTime'), guests:d.get('guests'),
       catering: !!d.get('catering'),
-      addons:{ parking: !!d.get('parking'), nameTags: !!d.get('nameTags'), photographer: !!d.get('photographer') },
+      addons:{},
       message:d.get('message'), website:d.get('website')
     };
     var btn=document.getElementById('submit'); btn.disabled=true; btn.textContent='Sending…';

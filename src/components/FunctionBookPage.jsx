@@ -109,6 +109,7 @@ export default function FunctionBookPage() {
               {ADDONS.map((a) => (
                 <label key={a.key} className="flex items-center gap-2.5 hx-prose text-[14px]"><input type="checkbox" className="accent-[#7F8B2F] h-4 w-4" checked={!!f.addons[a.key]} onChange={(e) => setAddon(a.key, e.target.checked)} /> {a.label}</label>
               ))}
+              <p className="hx-prose text-[12px] text-portal-muted">F&B &amp; AV staff ($40/hr) are added automatically for events over 80 guests.</p>
             </div>
             <div className="mt-5"><label className="hx-eyebrow block mb-1.5">Anything else we should know?</label><textarea rows={3} className="hx-input" value={f.message} onChange={up('message')} placeholder="Run sheet, AV, accessibility, special requests…" /></div>
           </section>

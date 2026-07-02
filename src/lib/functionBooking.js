@@ -17,12 +17,9 @@ export const DEPOSIT_PCT = 0.5           // non-refundable deposit = 50% of venu
 export const BUFFER_MIN = 30             // 30-min turnover buffer each side of the event
 export const BALANCE_DUE_DAYS = 14       // full balance due this many days before the event
 
-// Selectable add-ons (staff is auto-applied for 80+ pax, so it isn't listed here).
-export const ADDONS = [
-  { key: 'parking', label: 'Additional onsite parking', price: 100 },
-  { key: 'nameTags', label: 'Name tags', price: 50 },
-  { key: 'photographer', label: 'Event photographer', price: 600 },
-]
+// No client-selectable add-ons — the only extra is the F&B & AV staff charge,
+// which is auto-applied at $40/hr for functions over 80 guests.
+export const ADDONS = []
 
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100
 
@@ -79,10 +76,7 @@ export function computeQuote(input = {}) {
   const cleaning = CLEANING_FEE
   const staffApplies = Number(guests) > STAFF_GUEST_THRESHOLD
   const staff = staffApplies ? round(STAFF_RATE * hours) : 0
-  const parking = addons.parking ? 100 : 0
-  const nameTags = addons.nameTags ? 50 : 0
-  const photographer = addons.photographer ? 600 : 0
-  const addonsTotal = round(staff + parking + nameTags + photographer)
+  const addonsTotal = staff
 
   const days = daysBetween(bookedOn, eventDate)
   const lateFee = days != null && days >= 0 && days < LATE_WINDOW_DAYS ? LATE_FEE : 0
@@ -104,7 +98,7 @@ export function computeQuote(input = {}) {
   return {
     isWeekend, rate, hours,
     rental, depositHalf, balanceHalf,
-    cleaning, staff, staffApplies, parking, nameTags, photographer, addonsTotal,
+    cleaning, staff, staffApplies, addonsTotal,
     lateFee,
     taxable, gst, total,
     securityDeposit, depositIncGst, dueNow, balanceDue,
