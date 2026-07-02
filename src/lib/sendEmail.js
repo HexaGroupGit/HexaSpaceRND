@@ -218,3 +218,41 @@ export function renderEsignTemplate({ template, lease, tenant, settings, signLin
     html: fillEmailVars(template?.content || DEFAULT_ESIGN_EMAIL_HTML, vars),
   }
 }
+
+// ── Editable signed-contract copy TEMPLATE (Templates → Emails) ─────────────────
+// Sent (with the signed PDF attached) to both the client and us once fully signed.
+// Supported: {{company}} {{tenantName}} {{contract}} {{signedDate}} {{website}}.
+export const DEFAULT_SIGNED_EMAIL_SUBJECT = 'Signed copy: {{contract}} — {{company}}'
+export const DEFAULT_SIGNED_EMAIL_HTML = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
+  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
+    <div style="background:#000;padding:24px 32px">
+      <span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">{{company}}</span>
+    </div>
+    <div style="padding:32px">
+      <h2 style="font-size:20px;margin:0 0 16px">Your agreement is fully executed ✅</h2>
+      <p style="margin:0 0 16px;font-size:14px">Hi {{tenantName}},</p>
+      <p style="margin:0 0 16px;font-size:14px">Licence agreement <strong>{{contract}}</strong> has been signed by all parties as of {{signedDate}}. A PDF copy of the fully signed contract is attached to this email for your records.</p>
+      <p style="margin:0 0 16px;font-size:13px;color:#555">Please keep this copy for your records — you can also view it any time from your member portal.</p>
+      <p style="font-size:12px;color:#888;margin:16px 0 0">{{company}} &middot; <a href="https://{{website}}" style="color:#888">{{website}}</a></p>
+    </div>
+  </div>
+</body>
+</html>`
+
+export function renderSignedTemplate({ template, lease, tenant, settings, signedDate }) {
+  const name = settings?.company?.name || 'Hexa Space'
+  const vars = {
+    company: name,
+    tenantName: tenant?.contactName || tenant?.businessName || 'there',
+    contract: lease?.contractNumber || lease?.id || '',
+    signedDate: signedDate || '',
+    website: settings?.company?.website || 'hexaspace.com.au',
+  }
+  return {
+    subject: fillEmailVars(template?.subject || DEFAULT_SIGNED_EMAIL_SUBJECT, vars),
+    html: fillEmailVars(template?.content || DEFAULT_SIGNED_EMAIL_HTML, vars),
+  }
+}

@@ -4,7 +4,7 @@ import { format, parseISO, differenceInDays } from 'date-fns'
 import { ArrowLeft, MoreHorizontal, Pencil, Trash2, FileDown, ChevronDown, LayoutGrid, FileText, CheckCircle2 } from 'lucide-react'
 import ContractTemplate from './ContractTemplate.jsx'
 import SignatureCanvas from './SignatureCanvas.jsx'
-import { sendEmail, eSignEmailHtml, renderEsignTemplate } from '../lib/sendEmail.js'
+import { sendEmail, eSignEmailHtml, renderEsignTemplate, renderSignedTemplate } from '../lib/sendEmail.js'
 import { supabase } from '../lib/supabase.js'
 import { jsPDF } from 'jspdf'
 import DocumentsPanel from './DocumentsPanel.jsx'
@@ -45,7 +45,8 @@ export default function ContractDetail({
   const [showSignMenu, setShowSignMenu] = useState(false)
   const [showNoticeModal, setShowNoticeModal] = useState(false)
   const [noticeForm, setNoticeForm] = useState({ noticeDate: new Date().toISOString().split('T')[0], vacateDate: '', bondRefunded: false, notes: '' })
-  const [view, setView] = useState('grid') // 'grid' | 'template'
+  const [view, setView] = useState('grid') // 'grid' | 'template' | 'signed'
+  const [signedUri, setSignedUri] = useState(null)
   const [generating, setGenerating] = useState(false)
   const [copyMsg, setCopyMsg] = useState('')
   const [eSignData, setESignData] = useState(null)
@@ -182,22 +183,11 @@ export default function ContractDetail({
       setShowCountersignModal(false)
       logAudit('sign', 'lease', lease.id, contractNum, `Countersigned by ${licensorName}`)
 
-      // Email tenant that agreement is fully executed
-      if (tenant?.email) {
-        const contractNum = lease.contractNumber ?? `CON-${lease.id?.slice(-3).toUpperCase()}`
-        const companyName = settings?.company?.name ?? 'Hexa Space'
-        sendEmail({
-          to: tenant.email,
-          subject: `Fully executed: ${contractNum} — ${companyName}`,
-          html: `<div style="font-family:Arial,sans-serif;padding:32px;max-width:560px;color:#1a1a1a">
-            <div style="font-size:18px;font-weight:bold;letter-spacing:2px;margin-bottom:16px">${companyName.toUpperCase()}</div>
-            <p>Hi ${tenant.contactName ?? ''},</p>
-            <p>Your Licence Agreement <strong>${contractNum}</strong> has been fully executed and signed by all parties.</p>
-            <p style="color:#888;font-size:12px">If you require a copy, please contact us directly.</p>
-          </div>`,
-          settings,
-        }).catch(() => {})
-      }
+      // Both parties signed → email the fully-signed PDF copy to the client AND us.
+      try {
+        const fullSig = { ...(eSignData || {}), status: 'fully_signed', licensor_signature_data: signatureData, licensor_signer_name: licensorName, licensor_signed_at: now }
+        await emailSignedCopy(fullSig)
+      } catch (e) { console.error('Signed copy email failed:', e) }
     } catch (err) {
       alert(`Error: ${err.message}`)
     } finally {
@@ -512,33 +502,55 @@ export default function ContractDetail({
     }
   }
 
+  const adminCopyEmail = () => settings?.emails?.notificationEmail || settings?.company?.email || settings?.emails?.replyTo || ''
+
+  // Build the signed PDF once and email it (attached) to the client AND to us,
+  // using the editable "Signed contract" email template when present.
+  async function emailSignedCopy(sigData) {
+    const doc = await buildContractPDF(sigData)
+    const slug = (tenant?.businessName ?? 'contract').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')
+    const pdfBase64 = doc.output('base64')
+    const companyName = settings?.company?.name ?? 'Hexa Space'
+    const signedDate = format(new Date(), 'dd MMM yyyy')
+    const signedTpl = (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'signedContract' && t.content)
+    let subject, html
+    if (signedTpl) {
+      ({ subject, html } = renderSignedTemplate({ template: signedTpl, lease, tenant, settings, signedDate }))
+    } else {
+      subject = `Signed copy: ${contractNum} — ${companyName}`
+      html = `<div style="font-family:Arial,sans-serif;color:#1a1a1a;padding:32px;max-width:560px"><div style="font-size:18px;font-weight:bold;letter-spacing:2px;margin-bottom:16px">${companyName.toUpperCase()}</div><p>Hi ${tenant?.contactName ?? ''},</p><p>Please find the fully signed copy of <strong>${contractNum}</strong> attached.</p></div>`
+    }
+    const recipients = [...new Set([tenant?.email, adminCopyEmail()].filter(Boolean))]
+    const attachments = [{ filename: `${contractNum}_${slug}_SIGNED.pdf`, content: pdfBase64 }]
+    for (const to of recipients) {
+      await sendEmail({ to, subject, html, settings, attachments, tenantId: tenant?.id, emailType: 'signedContract' })
+    }
+    return recipients
+  }
+
   async function handleSendSignedCopy() {
-    if (!tenant?.email) { alert('No email address on file for this tenant.'); return }
-    if (!window.confirm(`Send signed copy of ${contractNum} to ${tenant.email}?`)) return
+    const recips = [...new Set([tenant?.email, adminCopyEmail()].filter(Boolean))]
+    if (recips.length === 0) { alert('No email address on file.'); return }
+    if (!window.confirm(`Send the signed copy of ${contractNum} to: ${recips.join(', ')}?`)) return
     setGenerating(true)
     try {
-      const doc = await buildContractPDF(eSignData)
-      const slug = (tenant?.businessName ?? 'contract').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')
-      const pdfBase64 = doc.output('base64')
-      const companyName = settings?.company?.name ?? 'Hexa Space'
-      await sendEmail({
-        to: tenant.email,
-        subject: `Signed copy: ${contractNum} — ${companyName}`,
-        html: `<div style="font-family:Arial,sans-serif;color:#1a1a1a;padding:32px;max-width:560px">
-          <div style="font-size:18px;font-weight:bold;letter-spacing:2px;margin-bottom:16px">${companyName.toUpperCase()}</div>
-          <p>Hi ${tenant.contactName ?? ''},</p>
-          <p>Please find your signed copy of <strong>${contractNum}</strong> attached.</p>
-          <p style="color:#888;font-size:12px">Signed by ${eSignData?.signer_name ?? tenant.contactName} on ${eSignData?.signed_at ? format(parseISO(eSignData.signed_at), 'dd MMM yyyy') : 'date unknown'}.</p>
-        </div>`,
-        settings,
-        attachments: [{ filename: `${contractNum}_${slug}_SIGNED.pdf`, content: pdfBase64 }],
-      })
-      alert(`Signed copy sent to ${tenant.email}`)
+      await emailSignedCopy(eSignData)
+      alert(`Signed copy sent to: ${recips.join(', ')}`)
     } catch (err) {
       alert(`Failed to send: ${err.message}`)
     } finally {
       setGenerating(false)
     }
+  }
+
+  // Lazily render the signed PDF into the "Signed Copy" review tab.
+  async function openSignedView() {
+    setView('signed')
+    setSignedUri(null)
+    try {
+      const doc = await buildContractPDF(eSignData)
+      setSignedUri(doc.output('datauristring'))
+    } catch { /* leave spinner */ }
   }
 
   return (
@@ -880,6 +892,14 @@ export default function ContractDetail({
                 >
                   <LayoutGrid size={13} /> Grid View
                 </button>
+                {isSigned && (
+                  <button
+                    onClick={openSignedView}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 border-l border-input transition-colors ${view === 'signed' ? 'bg-green-600 text-white' : 'bg-card text-muted-foreground hover:bg-muted/50'}`}
+                  >
+                    <FileDown size={13} /> Signed Copy
+                  </button>
+                )}
               </div>
               <button
                 onClick={handleGeneratePDF}
@@ -890,6 +910,17 @@ export default function ContractDetail({
               </button>
             </div>
           </div>
+
+          {/* ── Signed Copy review ── */}
+          {view === 'signed' && (
+            <div className="bg-muted flex-1">
+              {signedUri ? (
+                <iframe title="Signed contract" src={signedUri} className="w-full border-none" style={{ height: 'calc(100vh - 130px)' }} />
+              ) : (
+                <div className="p-12 text-center text-muted-foreground text-sm">Generating signed PDF…</div>
+              )}
+            </div>
+          )}
 
           {/* ── Template View ── */}
           {view === 'template' && (

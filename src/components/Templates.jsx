@@ -25,12 +25,14 @@ const TYPE_BADGE = {
 const EMAIL_TYPES = [
   { value: 'onboarding', label: 'Onboarding / Welcome' },
   { value: 'esign', label: 'E-Signature request' },
+  { value: 'signedContract', label: 'Signed contract copy' },
   { value: 'lead', label: 'Lead / Nurture' },
   { value: 'custom', label: 'Custom' },
 ]
 const EMAIL_TYPE_BADGE = {
   onboarding: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   esign: 'bg-blue-50 text-blue-700 border-blue-200',
+  signedContract: 'bg-green-50 text-green-700 border-green-200',
   lead: 'bg-amber-50 text-amber-700 border-amber-200',
   custom: 'bg-gray-100 text-gray-600 border-gray-200',
 }
@@ -38,6 +40,7 @@ const EMAIL_TYPE_BADGE = {
 const VARS_BY_TYPE = {
   onboarding: ['{{company}}', '{{tenantName}}', '{{unit}}', '{{startDate}}', '{{contract}}', '{{portalUrl}}', '{{website}}', '{{address}}', '{{saltoBlock}}'],
   esign: ['{{company}}', '{{tenantName}}', '{{contract}}', '{{signLink}}', '{{signerName}}', '{{website}}'],
+  signedContract: ['{{company}}', '{{tenantName}}', '{{contract}}', '{{signedDate}}', '{{website}}'],
 }
 const varsFor = (emailType) => VARS_BY_TYPE[emailType] || ['{{company}}', '{{tenantName}}', '{{website}}']
 const PREVIEW_VARS = {
@@ -45,6 +48,7 @@ const PREVIEW_VARS = {
   contract: 'CON-259', portalUrl: 'https://members.hexaspace.com.au', website: 'hexaspace.com.au',
   address: '830 Whitehorse Road, Box Hill VIC 3128', saltoBlock: '',
   signLink: 'https://app.hexaspace.com.au/sign/sample-token', signerName: 'Hexa Space',
+  signedDate: '2 July 2026',
 }
 const fillPreview = (html) => String(html || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in PREVIEW_VARS ? PREVIEW_VARS[k] : m))
 
