@@ -157,6 +157,7 @@ export default function ContractDetail({
   const attachedTemplates = (lease.contractTerms ?? [])
     .map((ref) => templates.find((t) => t.id === ref) ?? templates.find((t) => `${t.name} - ${t.version}` === ref || t.name === ref))
     .filter(Boolean)
+    .filter((t) => (t.category || 'document') !== 'email')
 
   async function handleCountersign() {
     if (!licensorName.trim()) { alert('Please enter the licensor name.'); return }

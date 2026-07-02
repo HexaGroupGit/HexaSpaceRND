@@ -158,6 +158,8 @@ export default function AgreementGenerator() {
         )
       })
       .filter(Boolean)
+      // Never render email templates into the agreement — documents only.
+      .filter((t) => (t.category || 'document') !== 'email')
 
     const fallbackHtml = `<h3>1. Permitted Use</h3><p>The Licensee shall use the Premises solely for lawful commercial operations.</p><h3>2. Payment Terms</h3><p>The monthly licence fee is payable in advance on the 1st of each month.</p><h3>3. Termination</h3><p>Either party may terminate by providing 30 days' written notice.</p><h3>4. Governing Law</h3><p>This agreement is governed by the laws of the State of Victoria, Australia.</p>`
 

@@ -6,6 +6,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { parseISO, differenceInCalendarDays } from 'date-fns'
 import { Plus, X, Pencil, Trash2, UserPlus, Mail, Phone, CheckCircle2 } from 'lucide-react'
+import LeadDetail from './LeadDetail.jsx'
 
 const SOURCES = ['website', 'walk-in', 'referral', 'phone', 'email', 'other']
 
@@ -47,6 +48,8 @@ export default function LeadsBoard({ store }) {
   const [form, setForm] = useState(EMPTY)
   const [activeId, setActiveId] = useState(null)
   const [interest, setInterest] = useState('all')
+  const [openId, setOpenId] = useState(null)
+  const openLead = openId ? leads.find((l) => l.id === openId) : null
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
   const stages = [...pipelineStages].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
@@ -140,7 +143,7 @@ export default function LeadsBoard({ store }) {
                   <LeadCard
                     key={lead.id} lead={lead} spaces={spaces} tenants={tenants}
                     onEdit={() => openEdit(lead)} onDelete={() => handleDelete(lead.id)}
-                    onConvert={() => handleConvert(lead)}
+                    onConvert={() => handleConvert(lead)} onOpen={() => setOpenId(lead.id)}
                   />
                 ))}
                 {stageLeads.length === 0 && (
@@ -155,6 +158,8 @@ export default function LeadsBoard({ store }) {
           {activeLead ? <LeadCard lead={activeLead} spaces={spaces} tenants={tenants} dragging /> : null}
         </DragOverlay>
       </DndContext>
+
+      {openLead && <LeadDetail lead={openLead} store={store} onClose={() => setOpenId(null)} />}
 
       {/* Add / edit modal */}
       {showForm && (
@@ -249,7 +254,7 @@ function Column({ stage, count, children }) {
   )
 }
 
-function LeadCard({ lead, spaces, tenants, onEdit, onDelete, onConvert, dragging }) {
+function LeadCard({ lead, spaces, tenants, onEdit, onDelete, onConvert, onOpen, dragging }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: lead.id, disabled: dragging })
   const space = spaces.find((s) => s.id === lead.spaceId)
   const about = interestOf(lead)
@@ -264,7 +269,14 @@ function LeadCard({ lead, spaces, tenants, onEdit, onDelete, onConvert, dragging
       className={`bg-card border border-border rounded-md p-3 shadow-sm cursor-grab active:cursor-grabbing ${dragging ? 'shadow-lg rotate-1' : 'hover:shadow'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground truncate">{lead.businessName || lead.name}</p>
+          {dragging ? (
+            <p className="text-sm font-semibold text-foreground truncate">{lead.businessName || lead.name}</p>
+          ) : (
+            <button type="button" onPointerDown={stop} onClick={onOpen}
+              className="text-sm font-semibold text-foreground truncate hover:underline text-left block max-w-full">
+              {lead.businessName || lead.name}
+            </button>
+          )}
           {lead.businessName && <p className="text-xs text-muted-foreground truncate">{lead.name}</p>}
         </div>
         {!dragging && (

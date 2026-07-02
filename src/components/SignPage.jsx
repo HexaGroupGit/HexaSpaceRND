@@ -57,6 +57,7 @@ export default function SignPage({ token }) {
         const attached = contractTerms
           .map((ref) => allTemplates.find((t) => t.id === ref) ?? allTemplates.find((t) => `${t.name} - ${t.version}` === ref || t.name === ref))
           .filter(Boolean)
+          .filter((t) => (t.category || 'document') !== 'email')
         setAttachedTemplates(attached)
 
         setState('ready')

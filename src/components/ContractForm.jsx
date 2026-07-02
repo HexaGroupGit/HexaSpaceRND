@@ -798,12 +798,13 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
               </p>
             </Field>
 
-            {/* Available templates to add */}
-            {templates.length > 0 && (
+            {/* Available templates to add — documents only (email templates are
+                sent separately and must never be attached to the agreement PDF). */}
+            {templates.some((t) => (t.category || 'document') !== 'email') && (
               <div className="mt-4">
                 <p className="text-xs font-medium text-muted-foreground mb-2">Available templates</p>
                 <div className="border border-border rounded-xl divide-y divide-border">
-                  {templates.map((tmpl) => {
+                  {templates.filter((t) => (t.category || 'document') !== 'email').map((tmpl) => {
                     const isSelected = form.contractTerms.includes(tmpl.id)
                     return (
                       <div
