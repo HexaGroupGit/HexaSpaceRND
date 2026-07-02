@@ -108,7 +108,7 @@ export default function PortalFunction({ spaces, member, company }) {
       <div className="grid gap-px bg-ink/10 sm:grid-cols-2 lg:grid-cols-4 mb-10">
         {LAYOUTS.map((l, i) => (
           <Card key={l.name} className="p-6">
-            <span className="font-heading uppercase tracking-label text-[11px] text-muted">0{i + 1}</span>
+            <span className="font-heading uppercase tracking-label text-[11px] text-portal-muted">0{i + 1}</span>
             <h3 className="font-display font-extralight text-2xl mt-3">{l.name}</h3>
             <p className="font-heading uppercase tracking-nav text-[11px] text-hexa-green mt-2">{l.cap}</p>
           </Card>

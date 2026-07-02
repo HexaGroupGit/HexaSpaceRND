@@ -72,14 +72,16 @@ export default function Layout({ store, onLogout }) {
   }
 
   const sidebar = (
-    <aside className="w-52 bg-black text-white flex flex-col h-full">
-      <div className="px-5 py-6 border-b border-gray-800 flex items-center justify-between">
-        <div>
-          <span className="text-lg font-bold tracking-tight">Hexa Space</span>
-          <p className="text-xs text-gray-400 mt-0.5">Management System</p>
+    <aside className="w-60 bg-[#0b0b0d] text-zinc-300 flex flex-col h-full border-r border-white/5">
+      <div className="px-5 py-5 border-b border-white/5 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="h-8 w-8 rounded-lg bg-white text-black grid place-items-center font-bold text-sm">H</div>
+          <div>
+            <span className="text-sm font-semibold tracking-tight text-white">Hexa Space</span>
+            <p className="text-[11px] text-zinc-500 leading-none mt-0.5">Management System</p>
+          </div>
         </div>
-        {/* Close button — mobile only */}
-        <button onClick={() => setOpen(false)} className="md:hidden text-gray-400 hover:text-white p-1">
+        <button onClick={() => setOpen(false)} className="md:hidden text-zinc-400 hover:text-white p-1">
           <X size={18} />
         </button>
       </div>
@@ -87,7 +89,7 @@ export default function Layout({ store, onLogout }) {
         {GROUPS.map((group, gi) => (
           <div key={gi} className={gi > 0 ? 'pt-4' : ''}>
             {group.heading && (
-              <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+              <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
                 {group.heading}
               </div>
             )}
@@ -98,22 +100,22 @@ export default function Layout({ store, onLogout }) {
                 end={to === '/'}
                 onClick={() => setOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+                  `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                     isActive
-                      ? 'bg-white text-black font-semibold'
-                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                      ? 'bg-white text-zinc-950 font-medium shadow-sm'
+                      : 'text-zinc-400 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >
-                <Icon size={16} />
+                <Icon size={16} className="shrink-0" />
                 <span className="flex-1">{label}</span>
                 {to === '/messages' && unreadMessages > 0 && (
-                  <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full leading-none">
+                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
                     {unreadMessages}
                   </span>
                 )}
                 {to === '/crm' && unreadEnquiries > 0 && (
-                  <span className="bg-blue-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full leading-none">
+                  <span className="bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
                     {unreadEnquiries}
                   </span>
                 )}
@@ -122,11 +124,11 @@ export default function Layout({ store, onLogout }) {
           </div>
         ))}
       </nav>
-      <div className="px-5 py-4 border-t border-gray-800 text-xs text-gray-500 shrink-0">
-        <div className="mb-3">Level 4, 830 Whitehorse Road<br />Box Hill VIC 3128</div>
+      <div className="px-5 py-4 border-t border-white/5 text-xs text-zinc-500 shrink-0">
+        <div className="mb-3 leading-relaxed">Level 4, 830 Whitehorse Road<br />Box Hill VIC 3128</div>
         <button
           onClick={() => { logout(); onLogout?.() }}
-          className="flex items-center gap-2 text-gray-500 hover:text-white transition-colors"
+          className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"
         >
           <LogOut size={13} /> Sign out
         </button>
@@ -135,7 +137,7 @@ export default function Layout({ store, onLogout }) {
   )
 
   return (
-    <div className="flex h-screen bg-gray-50 text-gray-900 font-sans">
+    <div className="flex h-screen bg-muted/40 text-foreground font-sans">
 
       {/* Desktop sidebar */}
       <div className="hidden md:flex shrink-0">
@@ -149,7 +151,7 @@ export default function Layout({ store, onLogout }) {
             className="fixed inset-0 bg-black/60 z-40 md:hidden"
             onClick={() => setOpen(false)}
           />
-          <div className="fixed inset-y-0 left-0 z-50 flex md:hidden w-52">
+          <div className="fixed inset-y-0 left-0 z-50 flex md:hidden w-60">
             {sidebar}
           </div>
         </>
@@ -158,11 +160,11 @@ export default function Layout({ store, onLogout }) {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile top bar */}
-        <div className="md:hidden flex items-center gap-3 bg-black text-white px-4 py-3 shrink-0">
-          <button onClick={() => setOpen(true)} className="text-gray-300 hover:text-white">
+        <div className="md:hidden flex items-center gap-3 bg-[#0b0b0d] text-white px-4 py-3 shrink-0">
+          <button onClick={() => setOpen(true)} className="text-zinc-300 hover:text-white">
             <Menu size={20} />
           </button>
-          <span className="font-bold tracking-tight text-sm">Hexa Space</span>
+          <span className="font-semibold tracking-tight text-sm">Hexa Space</span>
         </div>
 
         <main className="flex-1 overflow-y-auto">

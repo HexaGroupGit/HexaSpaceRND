@@ -62,7 +62,7 @@ export default function PortalCalendar({ resources, allBookings, member, company
             {/* labels sit just below each gridline; +1 row gives 5pm a box under it */}
             <div className="relative" style={{ height: (HOURS.length + 1) * HOUR_H }}>
               {LABEL_HOURS.map((h) => (
-                <span key={h} style={{ top: (h - DAY_START) * HOUR_H + 4 }} className="absolute right-2 font-heading uppercase tracking-nav text-[9px] text-muted">{t12(h)}</span>
+                <span key={h} style={{ top: (h - DAY_START) * HOUR_H + 4 }} className="absolute right-2 font-heading uppercase tracking-nav text-[9px] text-portal-muted">{t12(h)}</span>
               ))}
             </div>
           </div>
@@ -212,7 +212,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, o
             <p className="hx-eyebrow">Request a booking</p>
             <h2 className="font-display font-extralight text-2xl mt-1">{room?.unitNumber}</h2>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
+          <button onClick={onClose} className="text-portal-muted hover:text-ink"><X size={18} /></button>
         </div>
         <div className="px-6 py-5 space-y-4">
           <div>

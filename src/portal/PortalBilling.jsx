@@ -99,7 +99,7 @@ function InvoicesTab({ invoices, company }) {
                       <td className="px-5 py-4 text-right font-display font-extralight text-lg">{money(total)}</td>
                       <td className="px-5 py-4 text-center"><StatusBadge status={inv.status} /></td>
                       <td className="px-5 py-4 text-right">
-                        <button onClick={() => downloadPDF(inv, company)} className="inline-flex items-center gap-1.5 text-muted hover:text-ink transition-colors">
+                        <button onClick={() => downloadPDF(inv, company)} className="inline-flex items-center gap-1.5 text-portal-muted hover:text-ink transition-colors">
                           <Download size={13} /><span className="font-heading uppercase tracking-nav text-[10px]">PDF</span>
                         </button>
                       </td>
@@ -122,7 +122,7 @@ function PaymentTab({ company }) {
       <div>
         <Eyebrow className="mb-4">Saved cards</Eyebrow>
         <Card className="p-8 text-center">
-          <CreditCard size={22} className="mx-auto text-muted" />
+          <CreditCard size={22} className="mx-auto text-portal-muted" />
           <p className="hx-prose mt-3">No payment method saved.</p>
           {adding ? (
             <div className="mt-6 text-left space-y-4 max-w-sm mx-auto">

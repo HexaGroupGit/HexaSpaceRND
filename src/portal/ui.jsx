@@ -73,7 +73,7 @@ export function SubTabs({ tabs, active, onChange }) {
             key={key}
             onClick={() => onChange(key)}
             className={`relative -mb-px pb-3 font-heading uppercase tracking-nav text-[11px] transition-colors ${
-              on ? 'text-ink' : 'text-muted hover:text-ink'
+              on ? 'text-ink' : 'text-portal-muted hover:text-ink'
             }`}
           >
             {label}
@@ -98,7 +98,7 @@ export function Segmented({ options, active, onChange }) {
             key={key}
             onClick={() => onChange(key)}
             className={`px-4 py-1.5 font-heading uppercase tracking-nav text-[10px] transition-colors ${
-              on ? 'bg-ink text-paper' : 'text-muted hover:text-ink'
+              on ? 'bg-ink text-paper' : 'text-portal-muted hover:text-ink'
             }`}
           >
             {label}
@@ -116,10 +116,10 @@ const STATUS_TONE = {
   pending: 'text-amber-700 border-amber-300 bg-amber-50',
   overdue: 'text-red-700 border-red-300 bg-red-50',
   cancelled: 'text-red-700 border-red-300 bg-red-50',
-  voided: 'text-muted border-ink/15 bg-bone',
-  draft: 'text-muted border-ink/15 bg-bone',
-  completed: 'text-muted border-ink/15 bg-bone',
-  expired: 'text-muted border-ink/15 bg-bone',
+  voided: 'text-portal-muted border-ink/15 bg-bone',
+  draft: 'text-portal-muted border-ink/15 bg-bone',
+  completed: 'text-portal-muted border-ink/15 bg-bone',
+  expired: 'text-portal-muted border-ink/15 bg-bone',
 }
 
 export function StatusBadge({ status }) {

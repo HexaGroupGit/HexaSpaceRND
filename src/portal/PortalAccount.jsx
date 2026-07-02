@@ -75,7 +75,7 @@ function ChangePassword() {
     <div>
       <Eyebrow className="mb-4">Security</Eyebrow>
       <Card className="p-7">
-        <div className="flex items-center gap-2 mb-5"><Lock size={15} className="text-muted" /><span className="font-heading uppercase tracking-nav text-[11px]">Change password</span></div>
+        <div className="flex items-center gap-2 mb-5"><Lock size={15} className="text-portal-muted" /><span className="font-heading uppercase tracking-nav text-[11px]">Change password</span></div>
         <form onSubmit={submit} className="space-y-4 max-w-sm">
           {msg && <div className={`text-sm px-3 py-2 border ${msg.type === 'success' ? 'text-hexa-green bg-hexa-green/5 border-hexa-green/30' : 'text-red-700 bg-red-50 border-red-200'}`}>{msg.text}</div>}
           <div><label className="hx-eyebrow block mb-1.5">New password</label><input type="password" className="hx-input" value={form.password} minLength={8} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required /></div>
@@ -220,7 +220,7 @@ function TermsTab({ templates }) {
           {docs.map(t => (
             <button key={t.id} onClick={() => setView(t)} className="w-full flex items-center justify-between gap-4 px-5 py-4 text-left hover:bg-bone transition-colors">
               <div className="flex items-center gap-3">
-                <FileText size={15} className="text-muted" />
+                <FileText size={15} className="text-portal-muted" />
                 <div>
                   <div className="font-heading uppercase tracking-nav text-[11px] text-ink">{t.name}</div>
                   <div className="hx-prose text-[12px]">Version {t.version} · updated {fmt(t.updatedAt)}</div>
@@ -240,7 +240,7 @@ function TermsTab({ templates }) {
                 <div className="font-heading uppercase tracking-nav text-[12px]">{view.name}</div>
                 <div className="hx-prose text-[12px]">Version {view.version}</div>
               </div>
-              <button onClick={() => setView(null)} className="text-muted hover:text-ink"><X size={18} /></button>
+              <button onClick={() => setView(null)} className="text-portal-muted hover:text-ink"><X size={18} /></button>
             </div>
             <div className="template-html-body px-6 py-6" dangerouslySetInnerHTML={{ __html: view.content }} />
           </div>

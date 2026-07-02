@@ -1,28 +1,35 @@
 import { useOutletContext } from 'react-router-dom'
 import { differenceInDays, parseISO, format, startOfMonth, endOfMonth } from 'date-fns'
 import { Building2, Users, TrendingUp, AlertTriangle, DollarSign, Clock, CheckCircle } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card.jsx'
 
-function KPICard({ icon: Icon, label, value, sub, accent, color = 'gray' }) {
-  const colors = {
-    gray:   { border: 'border-gray-200',   bg: 'bg-gray-50',   icon: 'text-gray-500'   },
-    amber:  { border: 'border-amber-300',  bg: 'bg-amber-50',  icon: 'text-amber-600'  },
-    red:    { border: 'border-red-300',    bg: 'bg-red-50',    icon: 'text-red-600'    },
-    green:  { border: 'border-green-300',  bg: 'bg-green-50',  icon: 'text-green-600'  },
-    blue:   { border: 'border-blue-300',   bg: 'bg-blue-50',   icon: 'text-blue-600'   },
+function KPICard({ icon: Icon, label, value, sub, color = 'gray' }) {
+  const tones = {
+    gray:  'text-muted-foreground bg-muted',
+    amber: 'text-amber-600 bg-amber-50',
+    red:   'text-red-600 bg-red-50',
+    green: 'text-green-600 bg-green-50',
+    blue:  'text-blue-600 bg-blue-50',
   }
-  const c = colors[color] ?? colors.gray
+  const t = tones[color] ?? tones.gray
   return (
-    <div className={`bg-white rounded-md border ${c.border} p-5`}>
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm text-gray-500">{label}</span>
-        <div className={`p-2 rounded-md ${c.bg}`}>
-          <Icon size={16} className={c.icon} />
+    <Card>
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm text-muted-foreground">{label}</span>
+          <div className={`grid place-items-center h-8 w-8 rounded-lg ${t}`}>
+            <Icon size={15} />
+          </div>
         </div>
-      </div>
-      <div className="text-2xl font-bold text-gray-900">{value}</div>
-      {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
-    </div>
+        <div className="text-2xl font-semibold tracking-tight text-foreground">{value}</div>
+        {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
+      </CardContent>
+    </Card>
   )
+}
+
+function SectionTitle({ children }) {
+  return <h2 className="text-sm font-semibold text-foreground mb-3">{children}</h2>
 }
 
 function fmtAud(n) {
@@ -37,19 +44,13 @@ export default function Dashboard() {
   const monthEnd = endOfMonth(today)
 
   const activeLeases = leases.filter((l) => l.status === 'active')
-  // An office is occupied if it has an explicit occupant (occupantTenantId /
-  // occupantName) or an active/pending lease on it — same rule as the Spaces &
-  // Memberships views, so occupancy stays consistent across the app.
   const officeHasOccupant = (s) =>
     !!(s.occupantTenantId || s.occupantName ||
       leases.some((l) => l.spaceId === s.id && (l.status === 'active' || l.status === 'pending')))
   const occupiedSpaces = spaces.filter((s) => s.status === 'occupied')
   const vacantSpaces = spaces.filter((s) => s.status === 'vacant')
-  // Vacant-space widgets list private offices only — meeting rooms, virtual
-  // offices, desks etc. aren't leased month-to-month the same way.
   const vacantOffices = spaces.filter((s) => s.type === 'office' && !officeHasOccupant(s))
 
-  // Offices in chronological order: Office 1–10 (L4), 11–15 (L5), then Suite 1–30 (L2).
   const floorRank = (f) => ({ l4: 0, l5: 1, l2: 2 }[f] ?? 9)
   const firstNum = (s) => { const m = String(s.unitNumber).match(/\d+/); return m ? +m[0] : 9999 }
   const officeList = spaces.filter((s) => s.type === 'office')
@@ -60,7 +61,6 @@ export default function Dashboard() {
   const occupancyRate = spaces.length ? Math.round((occupiedSpaces.length / spaces.length) * 100) : 0
   const mrr = activeLeases.reduce((sum, l) => sum + Number(l.monthlyRent || 0), 0)
 
-  // Cash collected this month (payments recorded in this calendar month)
   const collectedThisMonth = invoices.reduce((sum, inv) => {
     const monthPayments = (inv.payments ?? []).filter((p) => {
       const d = p.date ? new Date(p.date) : null
@@ -69,7 +69,6 @@ export default function Dashboard() {
     return sum + monthPayments.reduce((s, p) => s + Number(p.amount), 0)
   }, 0)
 
-  // Overdue invoices
   const overdueInvoices = invoices.filter((inv) => inv.status === 'overdue')
   const overdueAmount = overdueInvoices.reduce((sum, inv) => {
     const sub = (inv.lineItems ?? []).reduce((s, l) => s + Math.round(l.unitPrice * l.qty * (1 - (l.discountPct ?? 0) / 100) * 100) / 100, 0)
@@ -77,13 +76,11 @@ export default function Dashboard() {
     return sum + Math.max(0, sub * 1.1 - paid)
   }, 0)
 
-  // Expiring leases
   const expiringSoon = activeLeases.filter((l) => {
     const days = differenceInDays(parseISO(l.endDate), today)
     return days >= 0 && days <= 60
   }).sort((a, b) => differenceInDays(parseISO(a.endDate), today) - differenceInDays(parseISO(b.endDate), today))
 
-  // Spaces becoming available in next 90 days (active lease ending)
   const becomingAvailable = activeLeases
     .filter((l) => {
       const days = differenceInDays(parseISO(l.endDate), today)
@@ -97,11 +94,14 @@ export default function Dashboard() {
     })
     .sort((a, b) => a.days - b.days)
 
+  const th = 'text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide'
+  const tr = 'border-b border-border last:border-0'
+
   return (
     <div className="p-8">
       <div className="mb-7">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">{format(today, 'EEEE, d MMMM yyyy')} · Hexa Space · Box Hill</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Dashboard</h1>
+        <p className="text-sm text-muted-foreground mt-1">{format(today, 'EEEE, d MMMM yyyy')} · Hexa Space · Box Hill</p>
       </div>
 
       {/* KPI row 1 */}
@@ -131,17 +131,17 @@ export default function Dashboard() {
       </div>
 
       {/* MRR banner */}
-      <div className="bg-black text-white rounded-md p-6 mb-6 flex items-center justify-between">
+      <div className="bg-primary text-primary-foreground rounded-xl p-6 mb-6 flex items-center justify-between shadow-sm">
         <div>
-          <p className="text-sm text-gray-400 mb-1">Monthly Recurring Revenue</p>
-          <p className="text-4xl font-bold">
-            {fmtAud(mrr)} <span className="text-lg font-normal text-gray-400">AUD + GST / month</span>
+          <p className="text-sm text-primary-foreground/60 mb-1">Monthly Recurring Revenue</p>
+          <p className="text-4xl font-semibold tracking-tight">
+            {fmtAud(mrr)} <span className="text-lg font-normal text-primary-foreground/60">AUD + GST / month</span>
           </p>
-          <p className="text-xs text-gray-500 mt-2">Annual run rate: {fmtAud(mrr * 12)}</p>
+          <p className="text-xs text-primary-foreground/50 mt-2">Annual run rate: {fmtAud(mrr * 12)}</p>
         </div>
         <div className="text-right hidden lg:block">
-          <p className="text-sm text-gray-400">Collected this month</p>
-          <p className="text-2xl font-bold text-green-400">{fmtAud(collectedThisMonth)}</p>
+          <p className="text-sm text-primary-foreground/60">Collected this month</p>
+          <p className="text-2xl font-semibold text-green-400">{fmtAud(collectedThisMonth)}</p>
           {overdueAmount > 0 && <p className="text-sm text-red-400 mt-1">{fmtAud(overdueAmount)} overdue</p>}
         </div>
       </div>
@@ -150,15 +150,11 @@ export default function Dashboard() {
         {/* Overdue invoices */}
         {overdueInvoices.length > 0 && (
           <div>
-            <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Overdue Invoices</h2>
-            <div className="bg-white border border-red-200 rounded-md overflow-hidden">
+            <SectionTitle>Overdue invoices</SectionTitle>
+            <Card className="overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-red-50 border-b border-red-200">
-                  <tr>
-                    {['Invoice', 'Tenant', 'Due', 'Amount'].map((h) => (
-                      <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-red-800 uppercase tracking-wide">{h}</th>
-                    ))}
-                  </tr>
+                <thead className="bg-muted/50 border-b border-border">
+                  <tr>{['Invoice', 'Tenant', 'Due', 'Amount'].map((h) => <th key={h} className={th}>{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {overdueInvoices.slice(0, 8).map((inv) => {
@@ -167,32 +163,28 @@ export default function Dashboard() {
                     const paid = (inv.payments ?? []).reduce((s, p) => s + Number(p.amount), 0)
                     const due = Math.max(0, sub * 1.1 - paid)
                     return (
-                      <tr key={inv.id} className="border-b border-gray-100 last:border-0">
-                        <td className="px-4 py-2.5 font-medium text-gray-900">{inv.number}</td>
-                        <td className="px-4 py-2.5 text-gray-600">{tenant?.businessName ?? '—'}</td>
+                      <tr key={inv.id} className={tr}>
+                        <td className="px-4 py-2.5 font-medium text-foreground">{inv.number}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{tenant?.businessName ?? '—'}</td>
                         <td className="px-4 py-2.5 text-red-600 text-xs">{inv.dueDate}</td>
-                        <td className="px-4 py-2.5 font-medium text-gray-900">{fmtAud(due)}</td>
+                        <td className="px-4 py-2.5 font-medium text-foreground">{fmtAud(due)}</td>
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
-            </div>
+            </Card>
           </div>
         )}
 
         {/* Expiring leases */}
         {expiringSoon.length > 0 && (
           <div>
-            <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Leases Expiring Soon</h2>
-            <div className="bg-white border border-amber-200 rounded-md overflow-hidden">
+            <SectionTitle>Leases expiring soon</SectionTitle>
+            <Card className="overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-amber-50 border-b border-amber-200">
-                  <tr>
-                    {['Tenant', 'Space', 'Expiry', 'Days'].map((h) => (
-                      <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-amber-800 uppercase tracking-wide">{h}</th>
-                    ))}
-                  </tr>
+                <thead className="bg-muted/50 border-b border-border">
+                  <tr>{['Tenant', 'Space', 'Expiry', 'Days'].map((h) => <th key={h} className={th}>{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {expiringSoon.map((lease) => {
@@ -200,10 +192,10 @@ export default function Dashboard() {
                     const space = spaces.find((s) => s.id === lease.spaceId)
                     const days = differenceInDays(parseISO(lease.endDate), today)
                     return (
-                      <tr key={lease.id} className="border-b border-gray-100 last:border-0">
-                        <td className="px-4 py-2.5 font-medium">{tenant?.businessName ?? '—'}</td>
-                        <td className="px-4 py-2.5 text-gray-600">{space?.unitNumber ?? '—'}</td>
-                        <td className="px-4 py-2.5 text-gray-600">{format(parseISO(lease.endDate), 'dd/MM/yyyy')}</td>
+                      <tr key={lease.id} className={tr}>
+                        <td className="px-4 py-2.5 font-medium text-foreground">{tenant?.businessName ?? '—'}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{space?.unitNumber ?? '—'}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{format(parseISO(lease.endDate), 'dd/MM/yyyy')}</td>
                         <td className="px-4 py-2.5">
                           <span className={`text-xs font-semibold px-2 py-0.5 rounded ${days <= 14 ? 'bg-red-100 text-red-800' : days <= 30 ? 'bg-orange-100 text-orange-800' : 'bg-amber-100 text-amber-800'}`}>
                             {days}d
@@ -214,7 +206,7 @@ export default function Dashboard() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </Card>
           </div>
         )}
       </div>
@@ -222,12 +214,10 @@ export default function Dashboard() {
       {/* Vacant private offices */}
       {vacantOffices.length > 0 && (
         <div className="mt-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
-            Vacant Offices — Available Now ({vacantOffices.length})
-          </h2>
+          <SectionTitle>Vacant offices — available now ({vacantOffices.length})</SectionTitle>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {vacantOffices.map((space) => (
-              <div key={space.id} className="rounded-md border border-green-200 bg-green-50 p-3 text-sm">
+              <div key={space.id} className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm">
                 <div className="font-semibold text-green-900">{space.unitNumber}</div>
                 <div className="text-xs text-green-700 mt-0.5 capitalize">{space.type}</div>
                 <div className="text-xs text-green-600 mt-1">{fmtAud(space.monthlyRate)}/mo</div>
@@ -241,56 +231,50 @@ export default function Dashboard() {
       {/* Becoming available */}
       {becomingAvailable.length > 0 && (
         <div className="mt-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
-            Becoming Available — Next 90 Days
-          </h2>
-          <div className="bg-white border border-gray-200 rounded-md overflow-hidden">
+          <SectionTitle>Becoming available — next 90 days</SectionTitle>
+          <Card className="overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  {['Space', 'Current Tenant', 'Available From', 'Days', 'Monthly Rate'].map((h) => (
-                    <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
+              <thead className="bg-muted/50 border-b border-border">
+                <tr>{['Space', 'Current Tenant', 'Available From', 'Days', 'Monthly Rate'].map((h) => <th key={h} className={th}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {becomingAvailable.map(({ lease, space, tenant, days }) => (
-                  <tr key={lease.id} className="border-b border-gray-100 last:border-0">
-                    <td className="px-4 py-3 font-medium text-gray-900">{space?.unitNumber ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-600">{tenant?.businessName ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-600">{format(parseISO(lease.endDate), 'dd/MM/yyyy')}</td>
+                  <tr key={lease.id} className={tr}>
+                    <td className="px-4 py-3 font-medium text-foreground">{space?.unitNumber ?? '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{tenant?.businessName ?? '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{format(parseISO(lease.endDate), 'dd/MM/yyyy')}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded ${days <= 30 ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-700'}`}>
                         {days}d
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{fmtAud(space?.monthlyRate ?? lease.monthlyRent)}/mo</td>
+                    <td className="px-4 py-3 text-muted-foreground">{fmtAud(space?.monthlyRate ?? lease.monthlyRent)}/mo</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </Card>
         </div>
       )}
 
-      {/* Offices — occupancy (Office 1–15 then Suite 1–30) */}
+      {/* Offices — occupancy */}
       <div className="mt-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Offices</h2>
+        <SectionTitle>Offices</SectionTitle>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {officeList.map((space) => {
             const occ = officeOccupant(space)
             const occupied = officeHasOccupant(space)
             return (
-              <div key={space.id} className={`rounded-md border p-3 text-sm flex items-center justify-between gap-3 ${
-                occupied ? 'border-gray-300 bg-gray-900 text-white' : 'border-green-200 bg-green-50 text-green-900'
+              <div key={space.id} className={`rounded-xl border p-3 text-sm flex items-center justify-between gap-3 ${
+                occupied ? 'border-transparent bg-primary text-primary-foreground' : 'border-green-200 bg-green-50 text-green-900'
               }`}>
                 <div className="min-w-0">
                   <div className="font-semibold">{space.unitNumber}</div>
-                  <div className={`text-xs mt-0.5 truncate ${occupied ? 'text-gray-300' : 'text-green-700'}`}>
+                  <div className={`text-xs mt-0.5 truncate ${occupied ? 'text-primary-foreground/60' : 'text-green-700'}`}>
                     {occ || 'Vacant'}
                   </div>
                 </div>
-                <div className={`text-xs whitespace-nowrap ${occupied ? 'text-gray-300' : 'text-gray-400'}`}>
+                <div className={`text-xs whitespace-nowrap ${occupied ? 'text-primary-foreground/60' : 'text-green-600'}`}>
                   {fmtAud(space.monthlyRate)}/mo
                 </div>
               </div>
