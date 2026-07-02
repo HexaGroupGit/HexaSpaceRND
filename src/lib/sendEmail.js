@@ -256,3 +256,82 @@ export function renderSignedTemplate({ template, lease, tenant, settings, signed
     html: fillEmailVars(template?.content || DEFAULT_SIGNED_EMAIL_HTML, vars),
   }
 }
+
+// ── Editable LEAD-NURTURE email TEMPLATES (Templates → Emails) ───────────────────
+// Sent automatically after a website enquiry. {{company}} = our venue name;
+// {{name}} = the lead's contact; {{membershipType}} = what they enquired about;
+// {{tourLink}} = book-a-tour URL; {{officeOptions}} = available offices (private
+// office only, filled later); {{website}}. Brochure content is designed into the
+// template body itself.
+const _emailShell = (inner) => `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
+  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
+    <div style="background:#000;padding:24px 32px"><span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">{{company}}</span></div>
+    <div style="padding:32px">
+${inner}
+      <p style="font-size:12px;color:#888;margin:16px 0 0">{{company}} &middot; <a href="https://{{website}}" style="color:#888">{{website}}</a></p>
+    </div>
+  </div>
+</body>
+</html>`
+const _tourBtn = `      <div style="margin:24px 0;text-align:center"><a href="{{tourLink}}" style="background:#000;color:#fff;padding:12px 32px;border-radius:4px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block">Book a tour</a></div>`
+
+export const DEFAULT_LEAD_DESK_SUBJECT = "Your {{membershipType}} at {{company}} — what's included"
+export const DEFAULT_LEAD_DESK_HTML = _emailShell(`      <h2 style="font-size:20px;margin:0 0 16px">Thanks for your interest in a {{membershipType}} 👋</h2>
+      <p style="margin:0 0 16px;font-size:14px">Hi {{name}},</p>
+      <p style="margin:0 0 16px;font-size:14px">Thanks for enquiring about a {{membershipType}} at {{company}}. Here's a rundown of what's included — the community, amenities, meeting-room credits and flexible month-to-month terms.</p>
+      <!-- BROCHURE: design your "what's included" section here -->
+      <p style="margin:0 0 16px;font-size:14px">The best way to get a feel for it is to come see the space. Book a quick tour and we'll show you around.</p>
+${_tourBtn}
+      <p style="margin:0;font-size:13px;color:#555">Prefer to chat first? Just reply to this email.</p>`)
+
+export const DEFAULT_LEAD_OFFICE_SUBJECT = 'Private offices at {{company}} — availability & tour'
+export const DEFAULT_LEAD_OFFICE_HTML = _emailShell(`      <h2 style="font-size:20px;margin:0 0 16px">Private offices at {{company}} 🏢</h2>
+      <p style="margin:0 0 16px;font-size:14px">Hi {{name}},</p>
+      <p style="margin:0 0 16px;font-size:14px">Thanks for enquiring about a private office. Based on your team size, here are the options currently available — with the floorplan and a closer look at each suite.</p>
+      {{officeOptions}}
+      <!-- BROCHURE: availability, floorplan + suite zoom + terms (design later) -->
+      <p style="margin:0 0 16px;font-size:14px">Come see them in person — book a tour and we'll walk you through the available offices.</p>
+${_tourBtn}
+      <p style="margin:0;font-size:13px;color:#555">Happy to answer any questions — just reply to this email.</p>`)
+
+export const DEFAULT_LEAD_FOLLOWUP_SUBJECT = "Still keen to see {{company}}? Let's book your tour"
+export const DEFAULT_LEAD_FOLLOWUP_HTML = _emailShell(`      <h2 style="font-size:20px;margin:0 0 16px">Still keen to see {{company}}?</h2>
+      <p style="margin:0 0 16px;font-size:14px">Hi {{name}},</p>
+      <p style="margin:0 0 16px;font-size:14px">Just following up on your enquiry about a {{membershipType}}. The easiest next step is a quick tour so you can see if it's the right fit.</p>
+${_tourBtn}
+      <p style="margin:0;font-size:13px;color:#555">If now isn't the right time, no problem — reply and let us know.</p>`)
+
+export const DEFAULT_LEAD_FINAL_SUBJECT = 'One last check-in from {{company}}'
+export const DEFAULT_LEAD_FINAL_HTML = _emailShell(`      <h2 style="font-size:20px;margin:0 0 16px">One last check-in</h2>
+      <p style="margin:0 0 16px;font-size:14px">Hi {{name}},</p>
+      <p style="margin:0 0 16px;font-size:14px">We haven't heard back, so we'll pause things here for now. If a {{membershipType}} at {{company}} is still on your radar, we'd love to show you around — the door's always open.</p>
+${_tourBtn}
+      <p style="margin:0;font-size:13px;color:#555">Reach out any time — we'll be here.</p>`)
+
+const LEAD_DEFAULTS = {
+  lead_desk: { subject: DEFAULT_LEAD_DESK_SUBJECT, html: DEFAULT_LEAD_DESK_HTML },
+  lead_office: { subject: DEFAULT_LEAD_OFFICE_SUBJECT, html: DEFAULT_LEAD_OFFICE_HTML },
+  lead_followup: { subject: DEFAULT_LEAD_FOLLOWUP_SUBJECT, html: DEFAULT_LEAD_FOLLOWUP_HTML },
+  lead_final: { subject: DEFAULT_LEAD_FINAL_SUBJECT, html: DEFAULT_LEAD_FINAL_HTML },
+}
+
+export function renderLeadTemplate({ template, lead, membershipType, settings, tourLink, officeOptions }) {
+  const name = settings?.company?.name || 'Hexa Space'
+  const website = settings?.company?.website || 'hexaspace.com.au'
+  const fallback = LEAD_DEFAULTS[template?.emailType] || {}
+  const vars = {
+    company: name,
+    name: lead?.name || lead?.contactName || 'there',
+    membershipType: membershipType || lead?.enquiryType || lead?.interest || 'membership',
+    tourLink: tourLink || `https://${website}/book-a-tour`,
+    officeOptions: officeOptions || '',
+    website,
+  }
+  return {
+    subject: fillEmailVars(template?.subject || fallback.subject || '', vars),
+    html: fillEmailVars(template?.content || fallback.html || '', vars),
+  }
+}
