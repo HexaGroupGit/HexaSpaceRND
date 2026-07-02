@@ -24,20 +24,27 @@ const TYPE_BADGE = {
 // emailType options here (e.g. lead nurture) as they're built.
 const EMAIL_TYPES = [
   { value: 'onboarding', label: 'Onboarding / Welcome' },
+  { value: 'esign', label: 'E-Signature request' },
   { value: 'lead', label: 'Lead / Nurture' },
   { value: 'custom', label: 'Custom' },
 ]
 const EMAIL_TYPE_BADGE = {
   onboarding: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  esign: 'bg-blue-50 text-blue-700 border-blue-200',
   lead: 'bg-amber-50 text-amber-700 border-amber-200',
   custom: 'bg-gray-100 text-gray-600 border-gray-200',
 }
-// Placeholders available to the onboarding email (filled at send time).
-const EMAIL_VARS = ['{{company}}', '{{tenantName}}', '{{unit}}', '{{startDate}}', '{{contract}}', '{{portalUrl}}', '{{website}}', '{{address}}', '{{saltoBlock}}']
+// Placeholders available per email type (filled at send time).
+const VARS_BY_TYPE = {
+  onboarding: ['{{company}}', '{{tenantName}}', '{{unit}}', '{{startDate}}', '{{contract}}', '{{portalUrl}}', '{{website}}', '{{address}}', '{{saltoBlock}}'],
+  esign: ['{{company}}', '{{tenantName}}', '{{contract}}', '{{signLink}}', '{{signerName}}', '{{website}}'],
+}
+const varsFor = (emailType) => VARS_BY_TYPE[emailType] || ['{{company}}', '{{tenantName}}', '{{website}}']
 const PREVIEW_VARS = {
   company: 'Hexa Space', tenantName: 'Jane Smith', unit: 'Office 4', startDate: '1 August 2026',
   contract: 'CON-259', portalUrl: 'https://members.hexaspace.com.au', website: 'hexaspace.com.au',
   address: '830 Whitehorse Road, Box Hill VIC 3128', saltoBlock: '',
+  signLink: 'https://app.hexaspace.com.au/sign/sample-token', signerName: 'Hexa Space',
 }
 const fillPreview = (html) => String(html || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in PREVIEW_VARS ? PREVIEW_VARS[k] : m))
 
@@ -146,7 +153,7 @@ export default function Templates() {
                   placeholder="Welcome to {{company}} — your space is ready"
                   className="w-full border border-input rounded px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40" />
                 <p className="text-xs text-muted-foreground mt-2">
-                  Placeholders: {EMAIL_VARS.map((v) => <code key={v} className="mx-0.5 bg-muted px-1 py-0.5 rounded text-[11px]">{v}</code>)}
+                  Placeholders: {varsFor(form.emailType).map((v) => <code key={v} className="mx-0.5 bg-muted px-1 py-0.5 rounded text-[11px]">{v}</code>)}
                 </p>
               </div>
             )}

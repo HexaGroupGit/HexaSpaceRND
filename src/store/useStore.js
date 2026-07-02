@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase.js'
 import { logAudit } from '../lib/audit.js'
 import { publishListing } from '../lib/sanity.js'
 import { descPrefix, unitNameFor } from '../lib/billing.js'
-import { sendEmail } from '../lib/sendEmail.js'
+import { sendEmail, DEFAULT_ESIGN_EMAIL_SUBJECT, DEFAULT_ESIGN_EMAIL_HTML } from '../lib/sendEmail.js'
 import {
   accessGateMet, desiredSpaceStatus, shouldOnboard, requiresAccessGate, depositAmount,
   onboardingEmailHtml, resolveOnboardingCopy, renderOnboardingTemplate,
@@ -355,6 +355,17 @@ const SAMPLE_TEMPLATES = [
     version: 'v1.0',
     subject: DEFAULT_ONBOARDING_EMAIL_SUBJECT,
     content: DEFAULT_ONBOARDING_EMAIL_HTML,
+    updatedAt: '2026-07-02',
+    createdAt: '2026-07-02',
+  },
+  {
+    id: 'tmpl_email_esign',
+    category: 'email',
+    emailType: 'esign',
+    name: 'E-Signature request',
+    version: 'v1.0',
+    subject: DEFAULT_ESIGN_EMAIL_SUBJECT,
+    content: DEFAULT_ESIGN_EMAIL_HTML,
     updatedAt: '2026-07-02',
     createdAt: '2026-07-02',
   },

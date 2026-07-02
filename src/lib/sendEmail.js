@@ -170,3 +170,51 @@ export function eSignEmailHtml({ lease, tenant, settings }) {
 </body>
 </html>`
 }
+
+// ── Editable e-signature request TEMPLATE (Templates → Emails) ──────────────────
+// Full HTML so the design is preserved; {{placeholders}} filled at send time.
+// Supported: {{company}} {{tenantName}} {{contract}} {{signLink}} {{signerName}} {{website}}.
+export const DEFAULT_ESIGN_EMAIL_SUBJECT = 'Please sign: {{contract}} — {{company}}'
+export const DEFAULT_ESIGN_EMAIL_HTML = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
+  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
+    <div style="background:#000;padding:24px 32px">
+      <span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">{{company}}</span>
+    </div>
+    <div style="padding:32px">
+      <h2 style="font-size:20px;margin:0 0 16px">Your agreement is ready to sign</h2>
+      <p style="margin:0 0 16px;font-size:14px">Hi {{tenantName}},</p>
+      <p style="margin:0 0 16px;font-size:14px"><strong>{{signerName}}</strong> has sent you a licence agreement to review and sign electronically.</p>
+      <p style="margin:0 0 8px;font-size:13px;color:#555">Contract: <strong>{{contract}}</strong></p>
+      <div style="margin:24px 0;text-align:center">
+        <a href="{{signLink}}" style="background:#000;color:#fff;padding:12px 32px;border-radius:4px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block">Review &amp; sign document</a>
+      </div>
+      <p style="margin:0 0 16px;font-size:13px;color:#555">The link is unique to you. Please review the terms carefully before signing — reply to this email if you have any questions.</p>
+      <p style="font-size:12px;color:#888;margin:0">If the button doesn't work, copy this link: <a href="{{signLink}}" style="color:#888">{{signLink}}</a></p>
+      <p style="font-size:12px;color:#888;margin:16px 0 0">{{company}} &middot; <a href="https://{{website}}" style="color:#888">{{website}}</a></p>
+    </div>
+  </div>
+</body>
+</html>`
+
+function fillEmailVars(str, vars) {
+  return String(str || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vars ? (vars[k] ?? '') : m))
+}
+
+export function renderEsignTemplate({ template, lease, tenant, settings, signLink }) {
+  const name = settings?.company?.name || 'Hexa Space'
+  const vars = {
+    company: name,
+    tenantName: tenant?.contactName || tenant?.businessName || 'there',
+    contract: lease?.contractNumber || lease?.id || '',
+    signLink: signLink || lease?.eSignMemberLink || '',
+    signerName: settings?.contracts?.eSignName || name,
+    website: settings?.company?.website || 'hexaspace.com.au',
+  }
+  return {
+    subject: fillEmailVars(template?.subject || DEFAULT_ESIGN_EMAIL_SUBJECT, vars),
+    html: fillEmailVars(template?.content || DEFAULT_ESIGN_EMAIL_HTML, vars),
+  }
+}

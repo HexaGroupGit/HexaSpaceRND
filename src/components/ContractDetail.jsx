@@ -4,7 +4,7 @@ import { format, parseISO, differenceInDays } from 'date-fns'
 import { ArrowLeft, MoreHorizontal, Pencil, Trash2, FileDown, ChevronDown, LayoutGrid, FileText, CheckCircle2 } from 'lucide-react'
 import ContractTemplate from './ContractTemplate.jsx'
 import SignatureCanvas from './SignatureCanvas.jsx'
-import { sendEmail, eSignEmailHtml } from '../lib/sendEmail.js'
+import { sendEmail, eSignEmailHtml, renderEsignTemplate } from '../lib/sendEmail.js'
 import { supabase } from '../lib/supabase.js'
 import { jsPDF } from 'jspdf'
 import DocumentsPanel from './DocumentsPanel.jsx'
@@ -106,12 +106,16 @@ export default function ContractDetail({
     if (tenant?.email) {
       try {
         const mergedLease = { ...lease, ...updatedLease }
-        await sendEmail({
-          to: tenant.email,
-          subject: `Please sign: ${lease.contractNumber ?? 'Licence Agreement'} — ${settings?.contracts?.eSignName ?? settings?.company?.name ?? 'Hexa Space'}`,
-          html: eSignEmailHtml({ lease: mergedLease, tenant, settings }),
-          settings,
-        })
+        // Prefer the editable Templates → Emails → E-signature request template.
+        const esignTpl = (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'esign' && t.content)
+        let subject, html
+        if (esignTpl) {
+          ({ subject, html } = renderEsignTemplate({ template: esignTpl, lease: mergedLease, tenant, settings, signLink: memberLink }))
+        } else {
+          subject = `Please sign: ${lease.contractNumber ?? 'Licence Agreement'} — ${settings?.contracts?.eSignName ?? settings?.company?.name ?? 'Hexa Space'}`
+          html = eSignEmailHtml({ lease: mergedLease, tenant, settings })
+        }
+        await sendEmail({ to: tenant.email, subject, html, settings, tenantId: tenant?.id, emailType: 'esign' })
       } catch {
         // silently fail — lease status already updated
       }
