@@ -13,8 +13,14 @@ export default async function handler(req, res) {
   if (!serviceKey) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY not configured.' })
   if (!resendKey)  return res.status(500).json({ error: 'RESEND_API_KEY not configured.' })
 
-  const { email } = req.body ?? {}
+  const { email, redirectTo, subject, heading, intro, ctaLabel } = req.body ?? {}
   if (!email) return res.status(400).json({ error: 'Email is required.' })
+
+  const REDIRECT = redirectTo || 'https://members.hexaspace.com.au'
+  const SUBJECT = subject || "You've been invited to the Hexa Space Member Portal"
+  const HEADING = heading || "You've been invited"
+  const INTRO = intro || "You've been given access to the Hexa Space Member Portal — your home for bookings, invoices, membership, events and messaging our team."
+  const CTA = ctaLabel || 'Set up your password'
 
   const admin = createClient(SUPABASE_URL, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -33,7 +39,7 @@ export default async function handler(req, res) {
   const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
     type: 'recovery',
     email,
-    options: { redirectTo: 'https://members.hexaspace.com.au' },
+    options: { redirectTo: REDIRECT },
   })
   if (linkErr) return res.status(400).json({ error: linkErr.message })
 
@@ -49,7 +55,7 @@ export default async function handler(req, res) {
     body: JSON.stringify({
       from: 'Hexa Space <info@hexaspace.com.au>',
       to: [email],
-      subject: "You've been invited to the Hexa Space Member Portal",
+      subject: SUBJECT,
       html: `
 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
   <div style="background:#161614;padding:34px 40px;">
@@ -57,16 +63,13 @@ export default async function handler(req, res) {
     <div style="color:#888888;font-size:11px;margin-top:6px;letter-spacing:3px;text-transform:uppercase;">Member Portal</div>
   </div>
   <div style="padding:40px;">
-    <h2 style="font-size:20px;color:#111111;margin:0 0 16px 0;font-weight:600;">You've been invited</h2>
+    <h2 style="font-size:20px;color:#111111;margin:0 0 16px 0;font-weight:600;">${HEADING}</h2>
     <p style="color:#444444;font-size:14px;line-height:1.7;margin:0 0 8px 0;">Welcome to Hexa Space.</p>
-    <p style="color:#444444;font-size:14px;line-height:1.7;margin:0 0 32px 0;">
-      You've been given access to the Hexa Space Member Portal — your home for
-      bookings, invoices, membership, events and messaging our team.
-    </p>
+    <p style="color:#444444;font-size:14px;line-height:1.7;margin:0 0 32px 0;">${INTRO}</p>
     <a href="${actionLink}"
        style="display:inline-block;background:#161614;color:#ffffff;text-decoration:none;
               padding:14px 36px;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;">
-      Set up your password
+      ${CTA}
     </a>
     <p style="color:#999999;font-size:12px;line-height:1.6;margin:0;">
       This link expires in 24 hours.<br><br>

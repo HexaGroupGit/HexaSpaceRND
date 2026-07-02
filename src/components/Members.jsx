@@ -47,7 +47,9 @@ export function accessRoles(m) {
 
 export default function Members() {
   const ctx = useOutletContext()
-  const { members = [], tenants = [], leases = [], addMember, updateMember } = ctx
+  const { members: allMembers = [], tenants = [], leases = [], addMember, updateMember } = ctx
+  // Function-only clients (drop-in event bookers) are not members — keep them out.
+  const members = allMembers.filter((m) => m.clientType !== 'function')
   const hasMem = (m) => memberHasActiveMembership(m, leases)
   const [selected, setSelected] = useState(null)
   const [showForm, setShowForm] = useState(false)

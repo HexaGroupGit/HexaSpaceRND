@@ -107,6 +107,28 @@ export default async function handler(req, res) {
       return res.status(ok ? 200 : 500).json({ sent: ok })
     }
 
+    if (mode === 'brochure') {
+      if (!b.email) return res.status(400).json({ error: 'No client email.' })
+      const hasQuote = b.quote && b.quote.total
+      const rateCard = `
+        <table style="width:100%;border-collapse:collapse;margin:0 0 20px;font-size:13px">
+          <tr><td style="padding:6px 0;color:#888">Venue hire (weekday)</td><td style="padding:6px 0;text-align:right;color:#111">$250 + GST / hour</td></tr>
+          <tr><td style="padding:6px 0;color:#888">Venue hire (weekend)</td><td style="padding:6px 0;text-align:right;color:#111">$325 + GST / hour</td></tr>
+          <tr><td style="padding:6px 0;color:#888">Cleaning fee</td><td style="padding:6px 0;text-align:right;color:#111">$200 + GST</td></tr>
+          <tr><td style="padding:6px 0;color:#888">Refundable security deposit</td><td style="padding:6px 0;text-align:right;color:#111">$300</td></tr>
+          <tr><td style="padding:6px 0;color:#888">Capacity</td><td style="padding:6px 0;text-align:right;color:#111">20–100 guests</td></tr>
+        </table>`
+      const inner = `
+        <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Function Space Hire</p>
+        <h2 style="font-size:20px;color:#111;margin:0 0 16px">Hi ${b.name || 'there'} — thanks for your interest in our function space</h2>
+        <p style="font-size:14px;color:#555;margin:0 0 18px">Our light-filled venue suits launches, dinners, conferences and celebrations. Here’s a quick overview${hasQuote ? ' and an indicative quote for your dates' : ''}:</p>
+        ${hasQuote ? summaryRows(b) : rateCard}
+        <p style="font-size:13px;color:#555;margin:0 0 8px">Ready to lock it in? Just reply to this email and we’ll send you a secure link to confirm your details, see your total and pay your deposit.</p>
+        <p style="font-size:12px;color:#999;margin:16px 0 0">Questions? Reply any time — we’d love to host you.</p>`
+      const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject: `Hexa Space function space — ${b.eventName || 'your enquiry'}`, html: frame(fromName, inner) })
+      return res.status(ok ? 200 : 500).json({ sent: ok })
+    }
+
     return res.status(400).json({ error: 'Unknown mode.' })
   } catch (err) {
     console.error('function-bookings/notify error:', err)

@@ -27,7 +27,7 @@ function Row({ label, value, strong, muted }) {
 export default function PortalFunction({ spaces, member, company }) {
   const fn = findFunctionSpace(spaces)
   const rate = fn?.hourlyRate ?? fn?.rate
-  const [f, setF] = useState({ eventName: '', eventType: 'Corporate', date: '', startTime: '18:00', endTime: '22:00', guests: '', layout: 'Cocktail', catering: false, addons: { parking: false, nameTags: false, photographer: false }, notes: '', signerName: member?.name || '', ack: false })
+  const [f, setF] = useState({ businessName: company?.businessName || '', abn: company?.abn || '', companyPhone: company?.phone || '', memberPhone: member?.phone || '', eventName: '', eventType: 'Corporate', date: '', startTime: '18:00', endTime: '22:00', guests: '', layout: 'Cocktail', catering: false, addons: { parking: false, nameTags: false, photographer: false }, notes: '', signerName: member?.name || company?.contactName || '', ack: false })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(null)
@@ -40,6 +40,7 @@ export default function PortalFunction({ spaces, member, company }) {
   async function submit(e) {
     e.preventDefault()
     setError('')
+    if (!f.businessName.trim()) return setError('Please enter your company / organisation name.')
     if (!f.date || !f.startTime || !f.endTime || !f.guests) return setError('Please complete date, time and guest numbers.')
     if (!f.signerName.trim()) return setError('Please enter your full name for the signature.')
     if (sigRef.current?.isEmpty()) return setError('Please add your signature.')
@@ -50,8 +51,10 @@ export default function PortalFunction({ spaces, member, company }) {
     const now = new Date().toISOString()
     const record = {
       id, ref, source: 'member', stage: 'pending_approval', read: false,
-      name: f.signerName, organisation: company?.businessName || '', email: company?.email || member?.email || '',
-      phone: member?.phone || company?.phone || '', memberId: member?.id || '', companyId: company?.id || '',
+      name: f.signerName, organisation: f.businessName || company?.businessName || '', email: company?.email || member?.email || '',
+      phone: f.memberPhone || company?.phone || '', memberId: member?.id || '', companyId: company?.id || '',
+      companyInfo: { businessName: f.businessName, abn: f.abn, phone: f.companyPhone, contactName: f.signerName },
+      memberInfo: { name: f.signerName, email: company?.email || member?.email || '', phone: f.memberPhone },
       eventName: f.eventName || `${f.eventType} function`, eventType: f.eventType,
       eventDate: f.date, startTime: f.startTime, endTime: f.endTime, guests: f.guests,
       layout: f.layout, catering: f.catering, addons: f.addons, additionalRequirements: f.notes,
@@ -106,6 +109,16 @@ export default function PortalFunction({ spaces, member, company }) {
         <form onSubmit={submit}>
           <Eyebrow className="mb-4">Request &amp; sign</Eyebrow>
           <Card className="p-7 space-y-5">
+            <div>
+              <div className="hx-eyebrow mb-2">Your details</div>
+              <div className="grid sm:grid-cols-2 gap-5">
+                <div><label className="hx-eyebrow block mb-1.5">Company / organisation *</label><input className="hx-input" value={f.businessName} onChange={up('businessName')} placeholder="Business or organisation name" /></div>
+                <div><label className="hx-eyebrow block mb-1.5">ABN</label><input className="hx-input" value={f.abn} onChange={up('abn')} placeholder="Optional" /></div>
+                <div><label className="hx-eyebrow block mb-1.5">Contact phone</label><input className="hx-input" value={f.memberPhone} onChange={up('memberPhone')} /></div>
+                <div><label className="hx-eyebrow block mb-1.5">Company phone</label><input className="hx-input" value={f.companyPhone} onChange={up('companyPhone')} placeholder="If different" /></div>
+              </div>
+            </div>
+            <div className="border-t border-ink/10 pt-4 hx-eyebrow">Event</div>
             <div className="grid sm:grid-cols-2 gap-5">
               <div><label className="hx-eyebrow block mb-1.5">Event name</label><input className="hx-input" value={f.eventName} onChange={up('eventName')} placeholder="e.g. Brand launch" /></div>
               <div><label className="hx-eyebrow block mb-1.5">Event type</label>

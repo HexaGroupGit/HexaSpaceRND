@@ -143,6 +143,7 @@ export const TERMS = [
 export const STAGES = {
   enquiry:          { label: 'Enquiry',        cls: 'bg-gray-100 text-gray-600' },
   quoted:           { label: 'Quoted',         cls: 'bg-slate-100 text-slate-700' },
+  invited:          { label: 'Invited to Portal', cls: 'bg-indigo-100 text-indigo-700' },
   agreement_sent:   { label: 'Agreement Sent', cls: 'bg-blue-100 text-blue-700' },
   pending_approval: { label: 'Awaiting Approval', cls: 'bg-amber-100 text-amber-700' },
   signed:           { label: 'Signed',         cls: 'bg-yellow-100 text-yellow-700' },

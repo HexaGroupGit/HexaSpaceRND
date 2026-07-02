@@ -4,11 +4,13 @@ import { Users } from 'lucide-react'
 import LeadsBoard from './LeadsBoard.jsx'
 import EnquiriesInbox from './EnquiriesInbox.jsx'
 import ReferralsPanel from './ReferralsPanel.jsx'
+import FunctionEnquiries from './FunctionEnquiries.jsx'
 
 // CRM — the customer pipeline. Leads & Enquiries are the core; Referrals feed it.
 const TABS = [
   { key: 'leads',     label: 'Leads' },
   { key: 'enquiries', label: 'Enquiries' },
+  { key: 'functions', label: 'Function Enquiries' },
   { key: 'referrals', label: 'Referrals' },
 ]
 
@@ -57,6 +59,7 @@ export default function Crm() {
 
       {tab === 'leads' && <LeadsBoard store={store} />}
       {tab === 'enquiries' && <EnquiriesInbox store={store} />}
+      {tab === 'functions' && <FunctionEnquiries store={store} />}
       {tab === 'referrals' && <ReferralsPanel store={store} />}
     </div>
   )

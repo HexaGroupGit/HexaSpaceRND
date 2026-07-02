@@ -7,9 +7,10 @@ import {
   CalendarDays, Users, ChevronRight, RefreshCw, DollarSign,
 } from 'lucide-react'
 import {
-  ADDONS, STAGES, money, computeQuote, bufferedWindow, balanceDueDate,
+  ADDONS, STAGES, money, computeQuote, bufferedWindow,
 } from '../lib/functionBooking.js'
 import { findFunctionSpace } from '../portal/functionSpace.js'
+import { approveFunctionBooking, setDepositPaid, resolveDeposit, declineFunctionBooking } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 const nowIso = () => new Date().toISOString()
@@ -267,7 +268,7 @@ const FILTERS = [
 
 export default function FunctionBookings() {
   const store = useOutletContext()
-  const { addInvoice, addBooking, updateBooking, deleteBooking, spaces } = store
+  const { deleteBooking } = store
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
@@ -307,6 +308,8 @@ export default function FunctionBookings() {
     setShowForm(false); setEditData(null); setSelected(saved)
   }
 
+  const apply = (rec) => { if (rec) { setRows((prev) => (prev.some((r) => r.id === rec.id) ? prev.map((r) => (r.id === rec.id ? rec : r)) : [rec, ...prev])); if (selected?.id === rec.id) setSelected(rec) } return rec }
+
   const actions = {
     async sendAgreement(b) {
       setBusy(true)
@@ -320,56 +323,14 @@ export default function FunctionBookings() {
     },
     async confirm(b) {
       setBusy(true)
-      try {
-        const q = computeQuote({ ...b, bookedOn: today() })
-        const fn = findFunctionSpace(spaces)
-        const clientName = b.organisation || b.name || 'Function client'
-        const tenantId = b.companyId || null
-        const base = { tenantId, source: 'function', status: 'pending', sentStatus: 'not_sent', functionRef: b.ref, clientName, clientEmail: b.email, issueDate: today() }
-        // 50% venue-hire deposit (GST)
-        addInvoice({ ...base, invoiceType: 'function_deposit', dueDate: today(), vatEnabled: true,
-          lineItems: [{ description: `Function venue hire — 50% deposit · ${b.eventName || 'Function'} (${b.eventDate})`, revenueAccount: 'Function Space Hire', unitPrice: q.rentalDeposit, qty: 1, discountPct: 0 }] })
-        // Refundable security deposit (no GST)
-        addInvoice({ ...base, invoiceType: 'deposit', dueDate: today(), vatEnabled: false,
-          lineItems: [{ description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit, qty: 1, discountPct: 0 }] })
-        // Balance (remaining 50% + cleaning + addons + late fee), due 14 days before event
-        const lines = [
-          { description: `Function venue hire — balance (50%) · ${b.eventDate}`, revenueAccount: 'Function Space Hire', unitPrice: q.rentalBalance, qty: 1, discountPct: 0 },
-          { description: 'Cleaning fee', revenueAccount: 'Function Space Hire', unitPrice: q.cleaning, qty: 1, discountPct: 0 },
-        ]
-        if (q.staff) lines.push({ description: `F&B & AV staff — ${q.hours} hrs @ $40/hr`, revenueAccount: 'Function Space Hire', unitPrice: q.staff, qty: 1, discountPct: 0 })
-        ADDONS.forEach((a) => { if (b.addons?.[a.key]) lines.push({ description: a.label, revenueAccount: 'Function Space Hire', unitPrice: a.price, qty: 1, discountPct: 0 }) })
-        if (q.lateFee) lines.push({ description: 'Late booking surcharge', revenueAccount: 'Function Space Hire', unitPrice: q.lateFee, qty: 1, discountPct: 0 })
-        addInvoice({ ...base, invoiceType: 'function_balance', dueDate: balanceDueDate(b.eventDate) || today(), vatEnabled: true, lineItems: lines })
-
-        // Calendar hold with ±30-min buffer
-        let calendarBookingId = b.calendarBookingId
-        if (fn && b.eventDate && !calendarBookingId) {
-          const { blockStart, blockEnd } = bufferedWindow(b.startTime, b.endTime)
-          const item = addBooking({
-            type: 'function', resourceId: fn.id, date: b.eventDate, startTime: blockStart, endTime: blockEnd,
-            title: `${b.eventName || 'Function'} (incl. buffer)`, eventType: b.eventType, guests: Number(b.guests) || null,
-            status: 'Confirmed', approval: 'approved', source: 'Function Bookings', functionRef: b.ref, repeat: 'none', createdBy: 'Admin',
-          })
-          calendarBookingId = item?.id
-        }
-        const updated = await save({ ...b, stage: 'confirmed', confirmedAt: nowIso(), quote: q, calendarBookingId, depositPaid: false })
-        await fetch('/api/function-bookings/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ booking: updated, mode: 'confirmed' }) }).catch(() => {})
-      } finally { setBusy(false) }
+      try { apply(await approveFunctionBooking({ store, booking: b, findFunctionSpace })) } finally { setBusy(false) }
     },
-    toggleDepositPaid(b) { save({ ...b, depositPaid: !b.depositPaid }) },
+    async toggleDepositPaid(b) { apply(await setDepositPaid({ store, booking: b, paid: !b.depositPaid })) },
     complete(b) { save({ ...b, stage: 'completed', completedAt: nowIso() }) },
-    resolveDeposit(b, { damage, refund, overflow, notes }) {
-      const clientName = b.organisation || b.name || 'Function client'
-      const tenantId = b.companyId || null
-      if (refund > 0) addInvoice({ tenantId, source: 'function', invoiceType: 'bond_refund', status: 'pending', sentStatus: 'not_sent', functionRef: b.ref, clientName, clientEmail: b.email, issueDate: today(), dueDate: today(), vatEnabled: false, lineItems: [{ description: `Security deposit refund · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: -refund, qty: 1, discountPct: 0 }] })
-      if (overflow > 0) addInvoice({ tenantId, source: 'function', invoiceType: 'function_damage', status: 'pending', sentStatus: 'not_sent', functionRef: b.ref, clientName, clientEmail: b.email, issueDate: today(), dueDate: today(), vatEnabled: true, lineItems: [{ description: `Damage / excess cleaning · ${b.eventName || 'Function'} — ${notes || ''}`, revenueAccount: 'Function Space Hire', unitPrice: overflow, qty: 1, discountPct: 0 }] })
-      return save({ ...b, stage: 'refunded', refundedAt: nowIso(), refundAmount: refund, damageAmount: damage, damageNotes: notes, securityStatus: damage >= 300 ? 'withheld' : damage > 0 ? 'partial' : 'refunded' })
-    },
-    cancel(b) {
+    async resolveDeposit(b, r) { apply(await resolveDeposit({ store, booking: b, ...r })) },
+    async cancel(b) {
       if (!confirm('Cancel this function booking? Any calendar hold will be released.')) return
-      if (b.calendarBookingId) deleteBooking(b.calendarBookingId)
-      save({ ...b, stage: 'cancelled', calendarBookingId: null })
+      apply(await declineFunctionBooking({ store, booking: b }))
     },
   }
 
