@@ -26,7 +26,7 @@ export default function Login({ onSuccess }) {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="text-3xl font-black tracking-widest text-foreground">HEXA SPACE</div>
-          <p className="text-sm text-muted-foreground mt-3">Management Portal</p>
+          <p className="text-sm text-muted-foreground mt-3">Sign in to your account</p>
         </div>
 
         <div className="bg-card border border-border rounded-xl shadow-sm p-8">

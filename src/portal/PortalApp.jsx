@@ -196,7 +196,8 @@ export default function PortalApp() {
     )
   }
 
-  const basename = window.location.hostname.startsWith('members.') ? '/' : '/portal'
+  // Portal now lives at the domain root (routing is by login, not by /portal path).
+  const basename = '/'
 
   return (
     <BrowserRouter basename={basename}>
