@@ -79,6 +79,7 @@ export default async function handler(req, res) {
       eventDate: b.eventDate || '', startTime: b.startTime || '', endTime: b.endTime || '',
       guests: b.guests || '', total: money(q.total), dueNow: money(q.dueNow), balanceDue: money(q.balanceDue),
       signLink: signUrl || '', website: settings?.company?.website || 'hexaspace.com.au',
+      bookLink: `${settings?.functionBookingUrl || 'https://www.hexaspace.com.au/book-function'}${b.requestToken ? `?ref=${b.requestToken}` : ''}`,
     }
     const pick = (type, fallbackSubject, fallbackHtml) => {
       const tpl = findEmailTemplate(templates, type)
@@ -126,6 +127,20 @@ export default async function handler(req, res) {
       return res.status(ok ? 200 : 500).json({ sent: ok })
     }
 
+    if (mode === 'amend_date') {
+      if (!b.email) return res.status(400).json({ error: 'No client email.' })
+      const inner = `
+        <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Function Space Hire</p>
+        <h2 style="font-size:20px;color:#111;margin:0 0 18px">Hi ${b.name || 'there'} — that date isn't available</h2>
+        <p style="font-size:14px;color:#555;margin:0 0 20px">Thanks for your function request${b.eventDate ? ` for <strong>${b.eventDate}</strong>` : ''}. Unfortunately the space is already booked then. Could you pick another date? Just resubmit and we'll get you locked in.</p>
+        <div style="text-align:center;margin:24px 0">
+          <a href="${vars.bookLink}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 36px;font-size:14px;font-weight:700;border-radius:6px">Choose another date</a>
+        </div>
+        <p style="font-size:12px;color:#999;margin:0">Or just reply to this email with a couple of dates that suit and we'll check availability for you.</p>`
+      const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject: `A new date for your Hexa Space function`, html: frame(fromName, inner) })
+      return res.status(ok ? 200 : 500).json({ sent: ok })
+    }
+
     if (mode === 'brochure') {
       if (!b.email) return res.status(400).json({ error: 'No client email.' })
       const hasQuote = b.quote && b.quote.total
@@ -142,7 +157,8 @@ export default async function handler(req, res) {
         <h2 style="font-size:20px;color:#111;margin:0 0 16px">Hi ${b.name || 'there'} — thanks for your interest in our function space</h2>
         <p style="font-size:14px;color:#555;margin:0 0 18px">Our light-filled venue suits launches, dinners, conferences and celebrations. Here’s a quick overview${hasQuote ? ' and an indicative quote for your dates' : ''}:</p>
         ${hasQuote ? summaryRows(b) : rateCard}
-        <p style="font-size:13px;color:#555;margin:0 0 8px">Ready to lock it in? Just reply to this email and we’ll send you a secure link to confirm your details, see your total and pay your deposit.</p>
+        <p style="font-size:13px;color:#555;margin:0 0 18px">Ready to lock it in? Choose your preferred date and layout — we’ll review availability and get your booking underway.</p>
+        <div style="text-align:center;margin:24px 0"><a href="${vars.bookLink}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 36px;font-size:14px;font-weight:700;border-radius:6px">Book a time</a></div>
         <p style="font-size:12px;color:#999;margin:16px 0 0">Questions? Reply any time — we’d love to host you.</p>`
       const { subject, html } = pick('function_brochure', `Hexa Space function space — ${b.eventName || 'your enquiry'}`, frame(fromName, inner))
       const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject, html })

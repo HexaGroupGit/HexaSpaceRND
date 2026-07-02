@@ -39,7 +39,10 @@ export const DEFAULT_FUNCTION_BROCHURE_HTML = frame(`
     <tr><td style="padding:6px 0;color:#888">Refundable security deposit</td><td style="padding:6px 0;text-align:right;color:#111">$300</td></tr>
     <tr><td style="padding:6px 0;color:#888">Capacity</td><td style="padding:6px 0;text-align:right;color:#111">20–100 guests</td></tr>
   </table>
-  <p style="font-size:13px;color:#555;margin:0 0 8px">Ready to lock it in? Just reply to this email and we'll send you a secure link to confirm your details, see your total and pay your deposit.</p>
+  <p style="font-size:13px;color:#555;margin:0 0 18px">Ready to lock it in? Choose your preferred date and layout — we'll review availability and get your booking underway.</p>
+  <div style="text-align:center;margin:24px 0">
+    <a href="{{bookLink}}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 36px;font-size:14px;font-weight:700;border-radius:6px">Book a time</a>
+  </div>
   <p style="font-size:12px;color:#999;margin:16px 0 0">Questions? Reply any time — we'd love to host you.</p>`)
 
 export const DEFAULT_FUNCTION_AGREEMENT_SUBJECT = 'Your Hexa Space function quote — {{eventName}}'

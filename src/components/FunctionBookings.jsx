@@ -4,13 +4,13 @@ import { supabase } from '../lib/supabase.js'
 import { format } from 'date-fns'
 import {
   Plus, X, Send, Copy, Check, Pencil, Trash2, CheckCircle2,
-  CalendarDays, Users, ChevronRight, RefreshCw, DollarSign,
+  CalendarDays, Users, ChevronRight, RefreshCw, DollarSign, UserPlus,
 } from 'lucide-react'
 import {
-  ADDONS, STAGES, money, computeQuote, bufferedWindow,
+  ADDONS, STAGES, money, computeQuote, bufferedWindow, dateClashes,
 } from '../lib/functionBooking.js'
 import { findFunctionSpace } from '../portal/functionSpace.js'
-import { approveFunctionBooking, setDepositPaid, resolveDeposit, declineFunctionBooking } from '../lib/functionActions.js'
+import { approveFunctionBooking, confirmDepositPaid, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 const nowIso = () => new Date().toISOString()
@@ -158,7 +158,7 @@ function RefundBox({ booking, onResolve }) {
 }
 
 // ── Detail panel ─────────────────────────────────────────────────────────────
-function Detail({ booking, onClose, onEdit, onDelete, actions, busy, copied, onCopyLink }) {
+function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash }) {
   const b = booking
   const passed = b.eventDate && b.eventDate < today()
   return (
@@ -214,39 +214,57 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, copied, onC
 
         {/* Actions */}
         <div className="space-y-2 pt-1">
-          {['enquiry', 'quoted', 'agreement_sent'].includes(b.stage) && (
-            <button onClick={() => actions.sendAgreement(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
-              <Send size={14} /> {busy ? 'Sending…' : b.stage === 'agreement_sent' ? 'Resend Agreement' : 'Send Agreement to Sign'}
-            </button>
+          {['enquiry', 'quoted'].includes(b.stage) && (
+            <>
+              <button onClick={() => actions.brochure(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40">
+                <Send size={14} /> {busy ? 'Sending…' : b.brochureSentAt ? 'Resend brochure' : 'Send brochure & info'}
+              </button>
+              <button onClick={() => actions.invite(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
+                <UserPlus size={14} /> Send booking invite
+              </button>
+            </>
           )}
-          {b.signingToken && !['cancelled'].includes(b.stage) && (
-            <button onClick={() => onCopyLink(b)} className="w-full flex items-center justify-center gap-2 border border-input py-2 rounded-md text-xs hover:bg-muted/50 text-muted-foreground">
-              {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />} {copied ? 'Copied!' : 'Copy signing link'}
-            </button>
+          {b.stage === 'requested' && (
+            <>
+              {clash?.length > 0 && (
+                <div className="bg-red-50 border border-red-100 rounded-md px-3 py-2 text-xs text-red-700">
+                  ⚠ {clash.length} other booking{clash.length > 1 ? 's' : ''} already hold {b.eventDate}. Ask them to pick another date, or approve if it's fine.
+                </div>
+              )}
+              <button onClick={() => actions.approve(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
+                <CheckCircle2 size={14} /> {busy ? 'Working…' : 'Approve'}
+              </button>
+              <button onClick={() => actions.amend(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40">
+                <CalendarDays size={14} /> Ask to amend date
+              </button>
+            </>
           )}
-          {b.stage === 'pending_approval' && (
-            <button onClick={() => actions.confirm(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
-              <CheckCircle2 size={14} /> {busy ? 'Confirming…' : 'Approve & Confirm Booking'}
-            </button>
+          {b.stage === 'invited' && (
+            <div className="bg-indigo-50 border border-indigo-100 rounded-md px-3 py-2.5 text-xs text-indigo-800">
+              Portal invite sent{b.inviteSentAt ? ` ${format(new Date(b.inviteSentAt), 'dd MMM')}` : ''}. Waiting for the client to complete their details &amp; deposit in the portal.
+              <button onClick={() => actions.invite(b)} className="block mt-2 underline">Resend invite</button>
+            </div>
           )}
-          {b.stage === 'signed' && (
-            <button onClick={() => actions.confirm(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
-              <CheckCircle2 size={14} /> {busy ? 'Confirming…' : 'Confirm & Raise Invoices'}
-            </button>
+          {b.stage === 'awaiting_deposit' && (
+            <>
+              <div className="bg-orange-50 border border-orange-100 rounded-md px-3 py-2.5 text-xs text-orange-800">Deposit &amp; security invoices raised. The venue is secured once the deposit is paid.</div>
+              <button onClick={() => actions.markPaid(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
+                <DollarSign size={14} /> {busy ? 'Securing…' : 'Mark deposit paid → secure venue'}
+              </button>
+            </>
           )}
           {b.stage === 'confirmed' && (
             <>
-              <button onClick={() => actions.toggleDepositPaid(b)} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50">
-                <DollarSign size={14} /> Mark deposit {b.depositPaid ? 'unpaid' : 'paid'}
-              </button>
+              <div className="bg-green-50 border border-green-100 rounded-md px-3 py-2.5 text-xs text-green-800">Confirmed — venue secured and on the calendar (±30-min buffer). Balance due 14 days before the event.</div>
               {passed && <button onClick={() => actions.complete(b)} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50"><Check size={14} /> Mark event completed</button>}
             </>
           )}
           {b.stage === 'completed' && <RefundBox booking={b} onResolve={(r) => actions.resolveDeposit(b, r)} />}
+          {b.stage === 'declined' && <div className="text-xs text-muted-foreground">This request was declined.</div>}
 
-          {!['cancelled', 'refunded'].includes(b.stage) && (
+          {!['cancelled', 'refunded', 'declined'].includes(b.stage) && (
             <div className="flex gap-2 pt-1">
-              <button onClick={() => actions.cancel(b)} className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 px-2 py-1.5 rounded border border-red-100"><X size={12} /> Cancel</button>
+              <button onClick={() => actions.decline(b)} className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 px-2 py-1.5 rounded border border-red-100"><X size={12} /> Decline</button>
               <button onClick={onDelete} className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 px-2 py-1.5 rounded border border-red-100"><Trash2 size={12} /> Delete</button>
             </div>
           )}
@@ -268,7 +286,7 @@ const FILTERS = [
 
 export default function FunctionBookings() {
   const store = useOutletContext()
-  const { deleteBooking } = store
+  const { deleteBooking, settings } = store
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
@@ -310,26 +328,17 @@ export default function FunctionBookings() {
 
   const apply = (rec) => { if (rec) { setRows((prev) => (prev.some((r) => r.id === rec.id) ? prev.map((r) => (r.id === rec.id ? rec : r)) : [rec, ...prev])); if (selected?.id === rec.id) setSelected(rec) } return rec }
 
+  const run = async (fn) => { setBusy(true); try { apply(await fn()) } finally { setBusy(false) } }
   const actions = {
-    async sendAgreement(b) {
-      setBusy(true)
-      try {
-        const token = b.signingToken || randToken()
-        const quote = computeQuote({ ...b, bookedOn: today() })
-        const updated = await save({ ...b, signingToken: token, quote, stage: 'agreement_sent', agreementSentAt: nowIso() })
-        const signUrl = `${window.location.origin}/book/function/${token}`
-        await fetch('/api/function-bookings/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ booking: updated, signUrl, mode: 'agreement' }) }).catch(() => {})
-      } finally { setBusy(false) }
-    },
-    async confirm(b) {
-      setBusy(true)
-      try { apply(await approveFunctionBooking({ store, booking: b, findFunctionSpace })) } finally { setBusy(false) }
-    },
-    async toggleDepositPaid(b) { apply(await setDepositPaid({ store, booking: b, paid: !b.depositPaid })) },
-    complete(b) { save({ ...b, stage: 'completed', completedAt: nowIso() }) },
+    brochure: (b) => run(() => sendBrochure({ booking: b, settings })),
+    invite: (b) => run(() => sendBookingInvite({ store, booking: b, settings })),
+    approve: (b) => run(() => approveFunctionBooking({ store, booking: b, settings })),
+    amend: (b) => run(() => askAmendDate({ booking: b, settings })),
+    markPaid: (b) => run(() => confirmDepositPaid({ store, booking: b, findFunctionSpace })),
+    complete: (b) => save({ ...b, stage: 'completed', completedAt: nowIso() }),
     async resolveDeposit(b, r) { apply(await resolveDeposit({ store, booking: b, ...r })) },
-    async cancel(b) {
-      if (!confirm('Cancel this function booking? Any calendar hold will be released.')) return
+    async decline(b) {
+      if (!confirm('Decline this booking? Any calendar hold will be released.')) return
       apply(await declineFunctionBooking({ store, booking: b }))
     },
   }
@@ -342,18 +351,13 @@ export default function FunctionBookings() {
     setSelected(null)
   }
 
-  function copyLink(b) {
-    navigator.clipboard.writeText(`${window.location.origin}/book/function/${b.signingToken}`)
-    setCopied(true); setTimeout(() => setCopied(false), 2000)
-  }
-
   const filtered = rows.filter((b) => {
     if (filter === 'all') return true
-    if (filter === 'active') return !['cancelled', 'refunded', 'completed'].includes(b.stage)
-    if (filter === 'enquiry') return ['enquiry', 'quoted', 'agreement_sent'].includes(b.stage)
+    if (filter === 'active') return !['cancelled', 'refunded', 'completed', 'declined'].includes(b.stage)
+    if (filter === 'enquiry') return ['enquiry', 'quoted', 'requested', 'invited', 'awaiting_deposit', 'pending_approval', 'signed'].includes(b.stage)
     return b.stage === filter
   })
-  const pendingCount = rows.filter((b) => ['signed', 'pending_approval'].includes(b.stage)).length
+  const pendingCount = rows.filter((b) => ['requested', 'awaiting_deposit', 'pending_approval'].includes(b.stage)).length
 
   return (
     <div className="flex h-full">
@@ -402,7 +406,7 @@ export default function FunctionBookings() {
       </div>
 
       {selected && (
-        <Detail booking={selected} onClose={() => setSelected(null)} onEdit={() => { setEditData(selected); setShowForm(true) }} onDelete={() => handleDelete(selected)} actions={actions} busy={busy} copied={copied} onCopyLink={copyLink} />
+        <Detail booking={selected} onClose={() => setSelected(null)} onEdit={() => { setEditData(selected); setShowForm(true) }} onDelete={() => handleDelete(selected)} actions={actions} busy={busy} clash={dateClashes(rows, selected.eventDate, selected.id)} />
       )}
       {showForm && <BookingForm booking={editData} onSave={handleFormSave} onClose={() => { setShowForm(false); setEditData(null) }} />}
     </div>

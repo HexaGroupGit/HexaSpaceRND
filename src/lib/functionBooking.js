@@ -143,14 +143,32 @@ export const TERMS = [
 export const STAGES = {
   enquiry:          { label: 'Enquiry',        cls: 'bg-gray-100 text-gray-600' },
   quoted:           { label: 'Quoted',         cls: 'bg-slate-100 text-slate-700' },
+  requested:        { label: 'Booking Requested', cls: 'bg-amber-100 text-amber-700' },
   invited:          { label: 'Invited to Portal', cls: 'bg-indigo-100 text-indigo-700' },
   agreement_sent:   { label: 'Agreement Sent', cls: 'bg-blue-100 text-blue-700' },
   pending_approval: { label: 'Awaiting Approval', cls: 'bg-amber-100 text-amber-700' },
   signed:           { label: 'Signed',         cls: 'bg-yellow-100 text-yellow-700' },
+  awaiting_deposit: { label: 'Deposit Due',    cls: 'bg-orange-100 text-orange-700' },
   confirmed:        { label: 'Confirmed',      cls: 'bg-green-100 text-green-700' },
   completed:        { label: 'Completed',      cls: 'bg-teal-100 text-teal-700' },
   refunded:         { label: 'Deposit Refunded', cls: 'bg-emerald-100 text-emerald-700' },
   cancelled:        { label: 'Cancelled',      cls: 'bg-red-100 text-red-600' },
+  declined:         { label: 'Declined',       cls: 'bg-red-100 text-red-600' },
+}
+
+// The three room layouts offered for the function space.
+export const LAYOUTS = [
+  { name: 'Cocktail', cap: 'Up to 100' },
+  { name: 'Seminar', cap: 'Up to 80' },
+  { name: 'Classroom', cap: 'Up to 45' },
+]
+
+// Other function bookings that already hold the same date (deposit due or
+// confirmed) — used to warn about double-bookings at review time.
+export function dateClashes(rows, eventDate, exceptId) {
+  if (!eventDate) return []
+  return (rows || []).filter((b) =>
+    b.id !== exceptId && b.eventDate === eventDate && ['awaiting_deposit', 'confirmed'].includes(b.stage))
 }
 
 export function money(v) {

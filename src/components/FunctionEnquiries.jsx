@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { format } from 'date-fns'
 import { Mail, UserPlus, CheckCircle2, X, RefreshCw, CalendarDays, Users, ExternalLink } from 'lucide-react'
-import { STAGES, money, computeQuote } from '../lib/functionBooking.js'
-import { findFunctionSpace } from '../portal/functionSpace.js'
-import { sendBrochure, sendBookingInvite, approveFunctionBooking, declineFunctionBooking } from '../lib/functionActions.js'
+import { STAGES, money, computeQuote, dateClashes } from '../lib/functionBooking.js'
+import { sendBrochure, sendBookingInvite, approveFunctionBooking, declineFunctionBooking, askAmendDate } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 function StageBadge({ stage }) {
@@ -35,8 +34,8 @@ export default function FunctionEnquiries({ store }) {
     if (!b.read) { const upd = { ...b, read: true }; await supabase.from('function_bookings').update({ data: upd, updated_at: new Date().toISOString() }).eq('id', b.id); replace(upd) }
   }
 
-  const funnel = rows.filter((b) => ['enquiry', 'quoted', 'invited', 'pending_approval', 'signed'].includes(b.stage))
-  const unread = rows.filter((b) => !b.read && ['enquiry', 'pending_approval', 'signed'].includes(b.stage)).length
+  const funnel = rows.filter((b) => ['enquiry', 'quoted', 'requested', 'invited', 'awaiting_deposit', 'pending_approval', 'signed'].includes(b.stage))
+  const unread = rows.filter((b) => !b.read && ['enquiry', 'requested', 'awaiting_deposit', 'pending_approval', 'signed'].includes(b.stage)).length
 
   async function run(key, fn) {
     setBusy(key)
@@ -101,17 +100,26 @@ export default function FunctionEnquiries({ store }) {
             {selected.signedAt && <div className="text-xs text-yellow-700">Signed {format(new Date(selected.signedAt), 'dd MMM')} by {selected.signerName}</div>}
 
             <div className="space-y-2 pt-1">
-              {['enquiry', 'quoted', 'invited'].includes(selected.stage) && (
+              {['enquiry', 'quoted'].includes(selected.stage) && (
                 <>
-                  <button disabled={busy} onClick={() => run('brochure', () => sendBrochure(selected))} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40"><Mail size={14} /> {busy === 'brochure' ? 'Sending…' : 'Send brochure & info'}</button>
-                  <button disabled={busy} onClick={() => run('invite', () => sendBookingInvite({ store, booking: selected, settings }))} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40"><UserPlus size={14} /> {busy === 'invite' ? 'Sending…' : selected.inviteSentAt ? 'Resend booking invite' : 'Send booking invite'}</button>
+                  <button disabled={busy} onClick={() => run('brochure', () => sendBrochure({ booking: selected, settings }))} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40"><Mail size={14} /> {busy === 'brochure' ? 'Sending…' : selected.brochureSentAt ? 'Resend brochure' : 'Send brochure & info'}</button>
+                  <button disabled={busy} onClick={() => run('invite', () => sendBookingInvite({ store, booking: selected, settings }))} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40"><UserPlus size={14} /> {busy === 'invite' ? 'Sending…' : 'Send booking invite'}</button>
                 </>
               )}
-              {['pending_approval', 'signed'].includes(selected.stage) && (
+              {selected.stage === 'requested' && (
                 <>
-                  <button disabled={busy} onClick={() => run('approve', () => approveFunctionBooking({ store, booking: selected, findFunctionSpace }))} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40"><CheckCircle2 size={14} /> {busy === 'approve' ? 'Approving…' : 'Approve & raise invoices'}</button>
+                  {dateClashes(rows, selected.eventDate, selected.id).length > 0 && (
+                    <div className="bg-red-50 border border-red-100 rounded-md px-3 py-2 text-xs text-red-700">⚠ {dateClashes(rows, selected.eventDate, selected.id).length} other booking(s) already hold {selected.eventDate}.</div>
+                  )}
+                  <button disabled={busy} onClick={() => run('approve', () => approveFunctionBooking({ store, booking: selected, settings }))} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40"><CheckCircle2 size={14} /> {busy === 'approve' ? 'Working…' : 'Approve'}</button>
+                  <button disabled={busy} onClick={() => run('amend', () => askAmendDate({ booking: selected, settings }))} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40"><CalendarDays size={14} /> Ask to amend date</button>
                   <button disabled={busy} onClick={() => { if (confirm('Decline this booking?')) run('decline', () => declineFunctionBooking({ store, booking: selected })) }} className="w-full flex items-center justify-center gap-2 border border-red-200 text-red-600 py-2.5 rounded-md text-sm font-medium hover:bg-red-50 disabled:opacity-40"><X size={14} /> Decline</button>
                 </>
+              )}
+              {selected.stage === 'invited' && <div className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-md px-3 py-2.5">Invite sent — awaiting the client to complete details &amp; deposit in the portal. <button onClick={() => run('invite', () => sendBookingInvite({ store, booking: selected, settings }))} className="underline ml-1">Resend</button></div>}
+              {selected.stage === 'awaiting_deposit' && <div className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded-md px-3 py-2.5">Deposit invoice raised — mark it paid in Function Space Bookings to secure the venue.</div>}
+              {['pending_approval', 'signed'].includes(selected.stage) && (
+                <button disabled={busy} onClick={() => run('approve', () => approveFunctionBooking({ store, booking: selected, settings }))} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40"><CheckCircle2 size={14} /> {busy === 'approve' ? 'Working…' : 'Approve'}</button>
               )}
               <a href="/function-bookings" className="w-full flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-foreground py-1"><ExternalLink size={12} /> Manage in Function Space Bookings</a>
             </div>

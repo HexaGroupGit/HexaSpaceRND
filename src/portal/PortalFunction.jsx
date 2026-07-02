@@ -1,17 +1,10 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Users, Clock, ShieldCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { Page, PageHeader, Card, Eyebrow, Empty, money0 } from './ui.jsx'
 import { findFunctionSpace } from './functionSpace.js'
 import SignatureCanvas from '../components/SignatureCanvas.jsx'
-import { ADDONS, TERMS, TERMS_INTRO, computeQuote, money } from '../lib/functionBooking.js'
-
-const LAYOUTS = [
-  { name: 'Cocktail', cap: 'Up to 100' },
-  { name: 'Seminar', cap: 'Up to 80' },
-  { name: 'Classroom', cap: 'Up to 45' },
-  { name: 'Boardroom', cap: 'Up to 26' },
-]
+import { ADDONS, LAYOUTS, TERMS, TERMS_INTRO, computeQuote, money } from '../lib/functionBooking.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 
@@ -27,13 +20,41 @@ function Row({ label, value, strong, muted }) {
 export default function PortalFunction({ spaces, member, company }) {
   const fn = findFunctionSpace(spaces)
   const rate = fn?.hourlyRate ?? fn?.rate
-  const [f, setF] = useState({ businessName: company?.businessName || '', abn: company?.abn || '', companyPhone: company?.phone || '', memberPhone: member?.phone || '', eventName: '', eventType: 'Corporate', date: '', startTime: '18:00', endTime: '22:00', guests: '', layout: 'Cocktail', catering: false, addons: { parking: false, nameTags: false, photographer: false }, notes: '', signerName: member?.name || company?.contactName || '', ack: false })
+  const [existing, setExisting] = useState(null)
+  const [f, setF] = useState({
+    businessName: company?.businessName || '', abn: company?.abn || '', companyPhone: company?.phone || '', memberPhone: member?.phone || '',
+    eventName: '', eventType: 'Corporate', date: '', startTime: '18:00', endTime: '22:00', guests: '', layout: 'Cocktail',
+    catering: false, addons: { parking: false, nameTags: false, photographer: false }, notes: '', signerName: member?.name || company?.contactName || '', ack: false,
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [done, setDone] = useState(null)
+  const [done, setDone] = useState(null) // { mode: 'deposit' | 'pending', ref }
   const sigRef = useRef(null)
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const setAddon = (k, v) => setF((p) => ({ ...p, addons: { ...p.addons, [k]: v } }))
+
+  // Find this client's active function booking (created from the website request /
+  // approval) so we prefill it and complete the same record.
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('function_bookings').select('id, data')
+      const email = (company?.email || member?.email || '').toLowerCase()
+      const mine = (data ?? []).map((r) => r.data).filter((x) =>
+        (x.companyId && x.companyId === company?.id) || (email && (x.email || '').toLowerCase() === email))
+      const active = mine.find((x) => ['invited', 'requested', 'quoted', 'enquiry'].includes(x.stage))
+      if (active) {
+        setExisting(active)
+        setF((p) => ({
+          ...p,
+          businessName: p.businessName || active.organisation || active.companyInfo?.businessName || '',
+          eventName: active.eventName || p.eventName, eventType: active.eventType || p.eventType,
+          date: active.eventDate || p.date, startTime: active.startTime || p.startTime, endTime: active.endTime || p.endTime,
+          guests: active.guests || p.guests, layout: active.layout || p.layout,
+          addons: { ...p.addons, ...(active.addons || {}) }, catering: !!active.catering,
+        }))
+      }
+    })()
+  }, [company?.id])
 
   const quote = computeQuote({ eventDate: f.date, startTime: f.startTime, endTime: f.endTime, guests: f.guests, addons: f.addons, bookedOn: today() })
 
@@ -46,27 +67,38 @@ export default function PortalFunction({ spaces, member, company }) {
     if (sigRef.current?.isEmpty()) return setError('Please add your signature.')
     if (!f.ack) return setError('Please accept the Terms & Conditions to continue.')
 
-    const ref = `FN-${Math.floor(100000 + Math.random() * 900000)}`
-    const id = `fn${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    setSaving(true)
     const now = new Date().toISOString()
+    const id = existing?.id || `fn${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    const ref = existing?.ref || `FN-${Math.floor(100000 + Math.random() * 900000)}`
+    // Website-approved records arrive as 'invited' → raise deposit immediately.
+    // Member self-serve (no invite) → 'requested' for admin review first.
+    const viaInvite = existing?.stage === 'invited'
     const record = {
-      id, ref, source: 'member', stage: 'pending_approval', read: false,
-      name: f.signerName, organisation: f.businessName || company?.businessName || '', email: company?.email || member?.email || '',
-      phone: f.memberPhone || company?.phone || '', memberId: member?.id || '', companyId: company?.id || '',
+      ...(existing || {}), id, ref, source: existing?.source || 'member',
+      stage: viaInvite ? 'invited' : 'requested',
+      name: f.signerName, organisation: f.businessName, email: company?.email || member?.email || '',
+      phone: f.memberPhone || company?.phone || '', memberId: member?.id || existing?.memberId || '', companyId: company?.id || existing?.companyId || '',
+      eventName: f.eventName || `${f.eventType} function`, eventType: f.eventType,
+      eventDate: f.date, startTime: f.startTime, endTime: f.endTime, guests: f.guests, layout: f.layout,
+      catering: f.catering, addons: f.addons, additionalRequirements: f.notes,
       companyInfo: { businessName: f.businessName, abn: f.abn, phone: f.companyPhone, contactName: f.signerName },
       memberInfo: { name: f.signerName, email: company?.email || member?.email || '', phone: f.memberPhone },
-      eventName: f.eventName || `${f.eventType} function`, eventType: f.eventType,
-      eventDate: f.date, startTime: f.startTime, endTime: f.endTime, guests: f.guests,
-      layout: f.layout, catering: f.catering, addons: f.addons, additionalRequirements: f.notes,
       quote, signerName: f.signerName.trim(), signatureData: sigRef.current.toDataURL(), signedAt: now, agreed: true,
-      createdAt: today(), updatedAt: now,
+      createdAt: existing?.createdAt || today(), updatedAt: now,
     }
-    setSaving(true)
     const { error: dbErr } = await supabase.from('function_bookings').upsert({ id, data: record, updated_at: now })
-    fetch('/api/function-bookings/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ booking: record, mode: 'signed' }) }).catch(() => {})
+    if (dbErr) { setSaving(false); return setError(dbErr.message) }
+
+    if (viaInvite) {
+      // Raise the deposit + email it, move to awaiting_deposit.
+      await fetch('/api/function-bookings/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).catch(() => {})
+      setDone({ mode: 'deposit', ref })
+    } else {
+      fetch('/api/function-bookings/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ booking: record, mode: 'signed' }) }).catch(() => {})
+      setDone({ mode: 'pending', ref })
+    }
     setSaving(false)
-    if (dbErr) return setError(dbErr.message)
-    setDone({ ref })
   }
 
   if (!fn) {
@@ -84,40 +116,43 @@ export default function PortalFunction({ spaces, member, company }) {
         <PageHeader kicker="Events · By request" title="Function Space" />
         <Card className="p-10 text-center max-w-xl mx-auto">
           <CheckCircle2 size={28} className="mx-auto text-hexa-green" />
-          <h2 className="hx-display text-2xl mt-4">Request received</h2>
-          <p className="hx-prose mt-3">Thank you — your signed function request <span className="text-ink font-heading tracking-nav text-[12px]">{done.ref}</span> has been sent to our events team for approval. Once approved we’ll raise your deposit &amp; security invoices and lock in your date (with a 30-minute buffer each side).</p>
-          <button onClick={() => setDone(null)} className="hx-btn mt-7">Submit another request</button>
+          <h2 className="hx-display text-2xl mt-4">{done.mode === 'deposit' ? 'Almost there — deposit due' : 'Request received'}</h2>
+          <p className="hx-prose mt-3">
+            {done.mode === 'deposit'
+              ? <>Thanks! Your booking <span className="text-ink font-heading tracking-nav text-[12px]">{done.ref}</span> is ready. We’ve emailed you the <strong>deposit due now</strong> ({money(quote.dueNow)}) with payment details — your date is secured once the deposit is received. You can also view it under Billing.</>
+              : <>Thanks — your function request <span className="text-ink font-heading tracking-nav text-[12px]">{done.ref}</span> has been sent to our team for approval. Once approved we’ll email your deposit to secure the date.</>}
+          </p>
         </Card>
       </Page>
     )
   }
 
+  const depositScreen = existing?.stage === 'invited'
+
   return (
     <Page>
-      <PageHeader kicker="Events · By request" title="Function Space">
-        A light-filled venue for launches, dinners and conferences — request, sign and we’ll confirm.
+      <PageHeader kicker="Events · By request" title={depositScreen ? 'Complete your function booking' : 'Function Space'}>
+        {depositScreen ? 'Your date is approved — confirm your details below to secure it with a deposit.' : 'A light-filled venue for launches, dinners and conferences — request, sign and we’ll confirm.'}
       </PageHeader>
 
       <div className="bg-charcoal text-paper px-8 md:px-10 py-8 flex flex-wrap items-center gap-x-12 gap-y-4 mb-9">
         <div><Eyebrow className="text-paper/50">The Function Space</Eyebrow><div className="font-display font-extralight text-2xl mt-1">{fn.unitNumber}</div></div>
         <div className="flex items-center gap-2"><Users size={15} className="text-hexa-green" /><span className="font-heading uppercase tracking-nav text-[11px]">{fn.size || '20–100 guests'}</span></div>
         {rate ? <div className="flex items-center gap-2"><Clock size={15} className="text-hexa-green" /><span className="font-heading uppercase tracking-nav text-[11px]">{money0(rate)}/hr weekday</span></div> : null}
-        <div className="flex items-center gap-2"><ShieldCheck size={15} className="text-hexa-green" /><span className="font-heading uppercase tracking-nav text-[11px]">Approval required</span></div>
+        <div className="flex items-center gap-2"><ShieldCheck size={15} className="text-hexa-green" /><span className="font-heading uppercase tracking-nav text-[11px]">Deposit secures your date</span></div>
       </div>
 
       <div className="grid lg:grid-cols-[1.3fr_1fr] gap-8 items-start">
         <form onSubmit={submit}>
-          <Eyebrow className="mb-4">Request &amp; sign</Eyebrow>
+          <Eyebrow className="mb-4">Your details</Eyebrow>
           <Card className="p-7 space-y-5">
-            <div>
-              <div className="hx-eyebrow mb-2">Your details</div>
-              <div className="grid sm:grid-cols-2 gap-5">
-                <div><label className="hx-eyebrow block mb-1.5">Company / organisation *</label><input className="hx-input" value={f.businessName} onChange={up('businessName')} placeholder="Business or organisation name" /></div>
-                <div><label className="hx-eyebrow block mb-1.5">ABN</label><input className="hx-input" value={f.abn} onChange={up('abn')} placeholder="Optional" /></div>
-                <div><label className="hx-eyebrow block mb-1.5">Contact phone</label><input className="hx-input" value={f.memberPhone} onChange={up('memberPhone')} /></div>
-                <div><label className="hx-eyebrow block mb-1.5">Company phone</label><input className="hx-input" value={f.companyPhone} onChange={up('companyPhone')} placeholder="If different" /></div>
-              </div>
+            <div className="grid sm:grid-cols-2 gap-5">
+              <div><label className="hx-eyebrow block mb-1.5">Company / organisation *</label><input className="hx-input" value={f.businessName} onChange={up('businessName')} placeholder="Business or organisation name" /></div>
+              <div><label className="hx-eyebrow block mb-1.5">ABN</label><input className="hx-input" value={f.abn} onChange={up('abn')} placeholder="For your invoice" /></div>
+              <div><label className="hx-eyebrow block mb-1.5">Contact phone</label><input className="hx-input" value={f.memberPhone} onChange={up('memberPhone')} /></div>
+              <div><label className="hx-eyebrow block mb-1.5">Company phone</label><input className="hx-input" value={f.companyPhone} onChange={up('companyPhone')} placeholder="If different" /></div>
             </div>
+
             <div className="border-t border-ink/10 pt-4 hx-eyebrow">Event</div>
             <div className="grid sm:grid-cols-2 gap-5">
               <div><label className="hx-eyebrow block mb-1.5">Event name</label><input className="hx-input" value={f.eventName} onChange={up('eventName')} placeholder="e.g. Brand launch" /></div>
@@ -150,10 +185,7 @@ export default function PortalFunction({ spaces, member, company }) {
 
             <div><label className="hx-eyebrow block mb-1.5">Anything else</label><textarea rows={3} className="hx-input" value={f.notes} onChange={up('notes')} placeholder="Run sheet, accessibility, special requests…" /></div>
 
-            <div>
-              <label className="hx-eyebrow block mb-1.5">Full name (signature)</label>
-              <input className="hx-input" value={f.signerName} onChange={up('signerName')} placeholder="Your full legal name" />
-            </div>
+            <div><label className="hx-eyebrow block mb-1.5">Full name (signature)</label><input className="hx-input" value={f.signerName} onChange={up('signerName')} placeholder="Your full legal name" /></div>
             <div>
               <div className="flex items-center justify-between mb-1.5"><label className="hx-eyebrow">Signature</label><button type="button" onClick={() => sigRef.current?.clear()} className="hx-prose text-[12px] underline">Clear</button></div>
               <SignatureCanvas ref={sigRef} height={130} />
@@ -161,11 +193,11 @@ export default function PortalFunction({ spaces, member, company }) {
 
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={f.ack} onChange={(e) => setF({ ...f, ack: e.target.checked })} className="mt-1 accent-[#7F8B2F]" />
-              <span className="hx-prose text-[13px]">I have read and accept the Function Space Hire Terms &amp; Conditions and the quoted pricing, and understand this request is subject to team approval and payment of the deposit.</span>
+              <span className="hx-prose text-[13px]">I have read and accept the Function Space Hire Terms &amp; Conditions and the quoted pricing, and understand my date is secured once the deposit is paid.</span>
             </label>
 
             {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>}
-            <button type="submit" disabled={saving} className="hx-btn w-full disabled:opacity-50">{saving ? 'Sending…' : 'Sign & submit request'}</button>
+            <button type="submit" disabled={saving} className="hx-btn w-full disabled:opacity-50">{saving ? 'Submitting…' : depositScreen ? 'Confirm & get deposit invoice' : 'Sign & submit request'}</button>
           </Card>
         </form>
 
@@ -183,7 +215,7 @@ export default function PortalFunction({ spaces, member, company }) {
                 <Row label="Total (inc GST)" value={money(quote.total)} strong />
               </div>
               <div className="mt-3 border-t border-ink/10 pt-3">
-                <Row label="Payable now — 50% deposit + $300 security" value={money(quote.dueNow)} strong />
+                <Row label="Deposit due now — 50% + $300 security" value={money(quote.dueNow)} strong />
                 <Row label="Balance (14 days before event)" value={money(quote.balanceDue)} muted />
               </div>
               <p className="hx-prose text-[12px] mt-4">The $300 security deposit is refundable within 5 business days after your event if there’s no damage or excessive cleaning.</p>

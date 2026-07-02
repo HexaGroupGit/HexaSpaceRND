@@ -64,7 +64,7 @@ const VARS_BY_TYPE = {
   lead_office: [...LEAD_VARS, '{{officeOptions}}'],
   lead_followup: LEAD_VARS,
   lead_final: LEAD_VARS,
-  function_brochure: ['{{company}}', '{{name}}', '{{organisation}}', '{{eventName}}', '{{eventDate}}', '{{startTime}}', '{{endTime}}', '{{guests}}', '{{total}}', '{{dueNow}}', '{{website}}'],
+  function_brochure: ['{{company}}', '{{name}}', '{{organisation}}', '{{eventName}}', '{{eventDate}}', '{{startTime}}', '{{endTime}}', '{{guests}}', '{{total}}', '{{dueNow}}', '{{bookLink}}', '{{website}}'],
   function_agreement: ['{{company}}', '{{name}}', '{{eventName}}', '{{eventType}}', '{{eventDate}}', '{{startTime}}', '{{endTime}}', '{{guests}}', '{{total}}', '{{dueNow}}', '{{balanceDue}}', '{{signLink}}', '{{website}}'],
   function_confirmed: ['{{company}}', '{{name}}', '{{eventName}}', '{{eventDate}}', '{{startTime}}', '{{endTime}}', '{{guests}}', '{{total}}', '{{dueNow}}', '{{balanceDue}}', '{{website}}'],
 }
@@ -81,6 +81,7 @@ const PREVIEW_VARS = {
   organisation: 'Acme Pty Ltd', eventName: 'Product Launch', eventType: 'Corporate',
   eventDate: '15 Aug 2026', startTime: '18:00', endTime: '22:00', guests: '60',
   total: '$2,145.00', dueNow: '$850.00', balanceDue: '$1,295.00',
+  bookLink: 'https://www.hexaspace.com.au/book-function',
 }
 const fillPreview = (html) => String(html || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in PREVIEW_VARS ? PREVIEW_VARS[k] : m))
 
