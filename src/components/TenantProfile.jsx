@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { format, parseISO } from 'date-fns'
-import { ArrowLeft, Pencil, Building2, Mail, Phone, Hash, Plus, FileDown, Send, MessageSquare, Users, CreditCard, Receipt, Trash2, User } from 'lucide-react'
+import { ArrowLeft, Pencil, Building2, Mail, Phone, Hash, Plus, FileDown, Send, MessageSquare, Users, CreditCard, Receipt, Trash2, User, UserPlus } from 'lucide-react'
 import InvoiceForm from './InvoiceForm.jsx'
 import DocumentsPanel from './DocumentsPanel.jsx'
 import { jsPDF } from 'jspdf'
@@ -31,6 +31,35 @@ function fmt(d) {
 
 function fmtAud(n) {
   return `$${Number(n ?? 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}`
+}
+
+// Per-company portal invite: checks the member-portal status for the company's
+// email, then sends an invite (or reports it's already invited/active).
+function PortalInviteButton({ email }) {
+  const [state, setState] = useState('idle') // idle | working | invited | active | error
+  if (!email) return null
+  async function invite() {
+    setState('working')
+    try {
+      const st = await fetch(`/api/portal/status?email=${encodeURIComponent(email)}`).then((r) => r.json()).catch(() => ({}))
+      if (st.status === 'active') { setState('active'); return }
+      if (st.status === 'invited') { setState('invited'); return }
+      const res = await fetch('/api/auth/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) })
+      setState(res.ok ? 'invited' : 'error')
+    } catch { setState('error') }
+  }
+  const label = state === 'working' ? 'Inviting…'
+    : state === 'invited' ? 'Invite sent'
+    : state === 'active' ? 'On portal'
+    : state === 'error' ? 'Retry invite'
+    : 'Invite to portal'
+  const done = state === 'invited' || state === 'active'
+  return (
+    <button onClick={invite} disabled={state === 'working' || done}
+      className={`flex items-center gap-1.5 text-xs rounded px-3 py-1.5 border ${done ? 'border-green-300 text-green-700 bg-green-50' : 'border-blue-300 text-blue-600 hover:bg-blue-50'} disabled:opacity-70`}>
+      <UserPlus size={13} /> {label}
+    </button>
+  )
 }
 
 function Section({ title, action, children }) {
@@ -192,6 +221,7 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
             <span className="text-sm font-semibold text-gray-800">{tenant.businessName}</span>
           </div>
           <div className="flex items-center gap-2">
+            <PortalInviteButton email={tenant.email} />
             <button onClick={generateStatement} className="flex items-center gap-1.5 text-xs border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50 text-gray-600">
               <FileDown size={13} /> Statement PDF
             </button>

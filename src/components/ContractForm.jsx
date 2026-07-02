@@ -181,7 +181,7 @@ const selectCls = (err) =>
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ContractForm({ editLease, leases, tenants, spaces, templates = [], onSave, onDiscard }) {
+export default function ContractForm({ editLease, leases, tenants, spaces, templates = [], onSave, onDiscard, lockTenant = false }) {
   const [form, setForm] = useState(() => initForm(editLease, leases))
   const [errors, setErrors] = useState({})
 
@@ -409,6 +409,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                   value={form.tenantId}
                   onChange={(e) => setForm({ ...form, tenantId: e.target.value, memberName: '' })}
                   className={selectCls(errors.tenantId)}
+                  disabled={lockTenant}
                 >
                   <option value="">Select company…</option>
                   {tenants.map((t) => (

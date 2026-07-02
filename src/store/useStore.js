@@ -731,6 +731,7 @@ export function useStore() {
   const feesRef = useRef([]);     useEffect(() => { feesRef.current = fees }, [fees])
   // Late-bound ref so updateLease can invoke offboardLease without a dependency cycle.
   const offboardLeaseRef = useRef(null)
+  const raiseSigningInvoicesRef = useRef(null)
 
   // ── Load all data from Supabase on mount ──────────────────────────────
   useEffect(() => {
@@ -1227,16 +1228,22 @@ export function useStore() {
 
   const updateLease = useCallback((id, updates) => {
     let endedLeaseId = null
+    let signedLeaseId = null
+    const SIGNED = ['manually_signed', 'e_signed']
     setLeases((prev) => {
+      const old = prev.find((l) => l.id === id)
       const next = prev.map((l) => (l.id === id ? { ...l, ...updates } : l))
       const updated = next.find((l) => l.id === id)
       if (updated) { syncRow('leases', id, updated); logAudit('update', 'lease', id, updated.contractNumber ?? id, Object.keys(updates).join(', ')) }
       // Detect an end-of-lease transition; the heavy lifting runs in offboardLease.
       if (updated && ['expired', 'terminated'].includes(updates.status) && !updated.offboardedAt) endedLeaseId = id
+      // Detect a just-signed transition → raise the deposit + first invoice now.
+      if (SIGNED.includes(updates.signatureStatus) && !SIGNED.includes(old?.signatureStatus)) signedLeaseId = id
       return next
     })
-    // Run offboarding after state settles so the data refs are fresh.
+    // Run side-effects after state settles so the data refs are fresh.
     if (endedLeaseId) setTimeout(() => offboardLeaseRef.current?.(endedLeaseId), 0)
+    if (signedLeaseId) setTimeout(() => raiseSigningInvoicesRef.current?.(signedLeaseId), 0)
   }, [])
 
   // Payment-time (and reconcile) entry point: if a lease has just cleared the
@@ -1307,7 +1314,7 @@ export function useStore() {
       const nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 1
       const newInv = {
         ...invoice,
-        id: `inv${Date.now()}`,
+        id: invoice.id || `inv${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
         number: invoice.number || invTemplate.replace('{{number}}', String(nextNum).padStart(4, '0')),
         createdAt: new Date().toISOString().split('T')[0],
         payments: invoice.payments ?? [],
@@ -1317,6 +1324,62 @@ export function useStore() {
       return [...prev, newInv]
     })
   }, [])
+
+  // When a contract is signed, raise its security deposit and first (prorated)
+  // membership invoice immediately — no waiting for the monthly bill run. Both
+  // are dedup-guarded so a later bill run won't double-bill.
+  const raiseSigningInvoices = useCallback((leaseId) => {
+    const lease = leasesRef.current.find((l) => l.id === leaseId)
+    if (!lease) return
+    const invs = invoicesRef.current
+    const s = settingsRef.current || {}
+    const space = spacesRef.current.find((sp) => sp.id === lease.spaceId)
+    const dueDays = s.invoicing?.dueDateDays ?? 14
+    const fmt = (d) => d.toISOString().split('T')[0]
+    const dueFrom = (from) => { const d = new Date(from); d.setDate(d.getDate() + dueDays); return fmt(d) }
+    const today = new Date()
+
+    // 1) Security deposit
+    const deposit = Number(lease.items?.[0]?.deposit ?? lease.bondAmount ?? 0)
+    const hasDeposit = invs.some((i) => i.leaseId === leaseId && i.invoiceType === 'deposit' && i.status !== 'voided')
+    if (deposit > 0 && !hasDeposit) {
+      addInvoice({
+        tenantId: lease.tenantId, leaseId, status: 'pending', sentStatus: 'not_sent', source: 'signing',
+        invoiceType: 'deposit', issueDate: fmt(today), dueDate: dueFrom(today), periodStart: null, periodEnd: null, vatEnabled: true,
+        lineItems: [{ description: `Security Deposit — ${space?.unitNumber ?? lease.spaceId}`, revenueAccount: 'Security Deposit', unitPrice: deposit, qty: 1, discountPct: 0 }],
+      })
+    }
+
+    // 2) First membership invoice for the lease's opening month (prorated), unless prepaid
+    const prepaid = lease.paidInFull && lease.paidUntil
+    const hasRecurring = invs.some((i) => i.leaseId === leaseId && i.status !== 'voided' && !['deposit', 'bond_refund'].includes(i.invoiceType))
+    const rent = Number(lease.monthlyRent || 0)
+    if (!prepaid && !hasRecurring && rent > 0 && lease.startDate) {
+      const start = new Date(lease.startDate)
+      const anchor = start > today ? start : today
+      const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
+      const monthEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0)
+      const end = lease.endDate ? new Date(lease.endDate) : monthEnd
+      const periodStart = start > monthStart ? start : monthStart
+      const periodEnd = end < monthEnd ? end : monthEnd
+      if (periodEnd >= periodStart) {
+        const daysInMonth = Math.floor((monthEnd - monthStart) / 86400000) + 1
+        const daysOcc = Math.floor((periodEnd - periodStart) / 86400000) + 1
+        const prorate = (s.billingRules?.prorate ?? true) && daysOcc < daysInMonth
+        const amount = prorate ? Math.round((rent * daysOcc / daysInMonth) * 100) / 100 : rent
+        const label = `${periodStart.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })} – ${periodEnd.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}${prorate ? ' (prorated)' : ''}`
+        const unit = space?.unitNumber ?? lease.resource
+        const desc = unit ? `${unit} · ${label}` : `${lease.contractNumber ?? 'Membership'} · ${label}`
+        const issue = monthStart > today ? monthStart : today
+        addInvoice({
+          tenantId: lease.tenantId, leaseId, status: 'pending', sentStatus: 'not_sent', source: 'signing',
+          issueDate: fmt(issue), dueDate: dueFrom(issue), periodStart: fmt(periodStart), periodEnd: fmt(periodEnd), vatEnabled: true, isProrated: prorate,
+          lineItems: [{ description: desc, revenueAccount: 'Membership Fees', unitPrice: amount, qty: 1, discountPct: 0 }],
+        })
+      }
+    }
+  }, [addInvoice])
+  useEffect(() => { raiseSigningInvoicesRef.current = raiseSigningInvoices }, [raiseSigningInvoices])
 
   const updateInvoice = useCallback((id, updates) => {
     setInvoices((prev) => {

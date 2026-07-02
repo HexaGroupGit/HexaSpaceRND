@@ -193,6 +193,7 @@ export default function SignupWizard({ onClose }) {
               templates={templates}
               onSave={saveContract}
               onDiscard={() => setStep(1)}
+              lockTenant
             />
           )}
 
