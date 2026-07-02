@@ -5,6 +5,7 @@
 // mode='confirmed'  — booking confirmed → email the Client their confirmation (body: booking)
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from '../_email.js'
+import { fillVars, findEmailTemplate } from '../_leads.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -65,6 +66,25 @@ export default async function handler(req, res) {
     const replyTo = settings?.emails?.replyTo || settings?.emails?.notificationEmail
     const adminTo = settings?.emails?.notificationEmail
 
+    // Load editable templates + build placeholder values. Client-facing emails
+    // (agreement / confirmed / brochure) use the saved Templates → Emails copy
+    // if present, else the built-in fallback below.
+    const { data: tmplRows } = await supabase.from('templates').select('data')
+    const templates = (tmplRows ?? []).map((r) => r.data)
+    const q = b.quote || {}
+    const vars = {
+      company: settings?.company?.name || 'Hexa Space',
+      name: b.name || 'there', organisation: b.organisation || '',
+      eventName: b.eventName || 'your function', eventType: b.eventType || '',
+      eventDate: b.eventDate || '', startTime: b.startTime || '', endTime: b.endTime || '',
+      guests: b.guests || '', total: money(q.total), dueNow: money(q.dueNow), balanceDue: money(q.balanceDue),
+      signLink: signUrl || '', website: settings?.company?.website || 'hexaspace.com.au',
+    }
+    const pick = (type, fallbackSubject, fallbackHtml) => {
+      const tpl = findEmailTemplate(templates, type)
+      return tpl ? { subject: fillVars(tpl.subject, vars), html: fillVars(tpl.content, vars) } : { subject: fallbackSubject, html: fallbackHtml }
+    }
+
     if (mode === 'agreement') {
       if (!b.email || !signUrl) return res.status(400).json({ error: 'Missing email or signUrl.' })
       const inner = `
@@ -76,7 +96,8 @@ export default async function handler(req, res) {
           <a href="${signUrl}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 36px;font-size:14px;font-weight:700;border-radius:6px">Review &amp; Sign Agreement</a>
         </div>
         <p style="font-size:12px;color:#999;margin:0">If the button doesn’t work, copy this link:<br><a href="${signUrl}" style="color:#888;word-break:break-all">${signUrl}</a></p>`
-      const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject: `Your Hexa Space function quote — ${b.eventName || 'Function Space Hire'}`, html: frame(fromName, inner) })
+      const { subject, html } = pick('function_agreement', `Your Hexa Space function quote — ${b.eventName || 'Function Space Hire'}`, frame(fromName, inner))
+      const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject, html })
       return res.status(ok ? 200 : 500).json({ sent: ok })
     }
 
@@ -100,7 +121,8 @@ export default async function handler(req, res) {
         <p style="font-size:14px;color:#555;margin:0 0 20px">Your function at Hexa Space is confirmed. We've reserved your time (plus a 30-minute setup buffer each side). Your deposit and security invoices are on their way; the balance is due 14 days before your event.</p>
         ${summaryRows(b)}
         <p style="font-size:13px;color:#555;margin:0">Questions? Just reply to this email — we can’t wait to host you.</p>`
-      const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject: `Confirmed — your function at Hexa Space (${b.eventDate || ''} ${win})`, html: frame(fromName, inner) })
+      const { subject, html } = pick('function_confirmed', `Confirmed — your function at Hexa Space (${b.eventDate || ''} ${win})`, frame(fromName, inner))
+      const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject, html })
       return res.status(ok ? 200 : 500).json({ sent: ok })
     }
 
@@ -122,7 +144,8 @@ export default async function handler(req, res) {
         ${hasQuote ? summaryRows(b) : rateCard}
         <p style="font-size:13px;color:#555;margin:0 0 8px">Ready to lock it in? Just reply to this email and we’ll send you a secure link to confirm your details, see your total and pay your deposit.</p>
         <p style="font-size:12px;color:#999;margin:16px 0 0">Questions? Reply any time — we’d love to host you.</p>`
-      const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject: `Hexa Space function space — ${b.eventName || 'your enquiry'}`, html: frame(fromName, inner) })
+      const { subject, html } = pick('function_brochure', `Hexa Space function space — ${b.eventName || 'your enquiry'}`, frame(fromName, inner))
+      const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject, html })
       return res.status(ok ? 200 : 500).json({ sent: ok })
     }
 

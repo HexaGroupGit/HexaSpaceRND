@@ -11,6 +11,11 @@ import {
   DEFAULT_TOUR_CONFIRMATION_SUBJECT, DEFAULT_TOUR_CONFIRMATION_HTML,
 } from '../lib/sendEmail.js'
 import {
+  DEFAULT_FUNCTION_BROCHURE_SUBJECT, DEFAULT_FUNCTION_BROCHURE_HTML,
+  DEFAULT_FUNCTION_AGREEMENT_SUBJECT, DEFAULT_FUNCTION_AGREEMENT_HTML,
+  DEFAULT_FUNCTION_CONFIRMED_SUBJECT, DEFAULT_FUNCTION_CONFIRMED_HTML,
+} from '../lib/functionEmails.js'
+import {
   accessGateMet, desiredSpaceStatus, shouldOnboard, requiresAccessGate, depositAmount,
   onboardingEmailHtml, resolveOnboardingCopy, renderOnboardingTemplate,
   DEFAULT_ONBOARDING_EMAIL_SUBJECT, DEFAULT_ONBOARDING_EMAIL_HTML,
@@ -392,6 +397,9 @@ const SAMPLE_TEMPLATES = [
   { id: 'tmpl_email_lead_final', category: 'email', emailType: 'lead_final', name: 'Lead — Final follow-up', version: 'v1.0', subject: DEFAULT_LEAD_FINAL_SUBJECT, content: DEFAULT_LEAD_FINAL_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
   { id: 'tmpl_email_proposal', category: 'email', emailType: 'proposal', name: 'Proposal (cover email)', version: 'v1.0', subject: DEFAULT_PROPOSAL_EMAIL_SUBJECT, content: DEFAULT_PROPOSAL_EMAIL_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
   { id: 'tmpl_email_tour_confirmation', category: 'email', emailType: 'tour_confirmation', name: 'Tour confirmation', version: 'v1.0', subject: DEFAULT_TOUR_CONFIRMATION_SUBJECT, content: DEFAULT_TOUR_CONFIRMATION_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
+  { id: 'tmpl_email_function_brochure', category: 'email', emailType: 'function_brochure', name: 'Function — Brochure / info', version: 'v1.0', subject: DEFAULT_FUNCTION_BROCHURE_SUBJECT, content: DEFAULT_FUNCTION_BROCHURE_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
+  { id: 'tmpl_email_function_agreement', category: 'email', emailType: 'function_agreement', name: 'Function — Agreement (review & sign)', version: 'v1.0', subject: DEFAULT_FUNCTION_AGREEMENT_SUBJECT, content: DEFAULT_FUNCTION_AGREEMENT_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
+  { id: 'tmpl_email_function_confirmed', category: 'email', emailType: 'function_confirmed', name: 'Function — Booking confirmed', version: 'v1.0', subject: DEFAULT_FUNCTION_CONFIRMED_SUBJECT, content: DEFAULT_FUNCTION_CONFIRMED_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
 ]
 
 // ── Real Found Huntingdale data (PDF: 17 April 2026) ──────────────────────────

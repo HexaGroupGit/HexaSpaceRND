@@ -32,6 +32,9 @@ const EMAIL_TYPES = [
   { value: 'lead_office', label: 'Lead — Private Office enquiry' },
   { value: 'lead_followup', label: 'Lead — Follow-up (no reply)' },
   { value: 'lead_final', label: 'Lead — Final follow-up' },
+  { value: 'function_brochure', label: 'Function — Brochure / info' },
+  { value: 'function_agreement', label: 'Function — Agreement (review & sign)' },
+  { value: 'function_confirmed', label: 'Function — Booking confirmed' },
   { value: 'custom', label: 'Custom' },
 ]
 const EMAIL_TYPE_BADGE = {
@@ -44,6 +47,9 @@ const EMAIL_TYPE_BADGE = {
   lead_office: 'bg-amber-50 text-amber-700 border-amber-200',
   lead_followup: 'bg-yellow-50 text-yellow-700 border-yellow-200',
   lead_final: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  function_brochure: 'bg-purple-50 text-purple-700 border-purple-200',
+  function_agreement: 'bg-purple-50 text-purple-700 border-purple-200',
+  function_confirmed: 'bg-purple-50 text-purple-700 border-purple-200',
   custom: 'bg-gray-100 text-gray-600 border-gray-200',
 }
 // Placeholders available per email type (filled at send time).
@@ -58,6 +64,9 @@ const VARS_BY_TYPE = {
   lead_office: [...LEAD_VARS, '{{officeOptions}}'],
   lead_followup: LEAD_VARS,
   lead_final: LEAD_VARS,
+  function_brochure: ['{{company}}', '{{name}}', '{{organisation}}', '{{eventName}}', '{{eventDate}}', '{{startTime}}', '{{endTime}}', '{{guests}}', '{{total}}', '{{dueNow}}', '{{website}}'],
+  function_agreement: ['{{company}}', '{{name}}', '{{eventName}}', '{{eventType}}', '{{eventDate}}', '{{startTime}}', '{{endTime}}', '{{guests}}', '{{total}}', '{{dueNow}}', '{{balanceDue}}', '{{signLink}}', '{{website}}'],
+  function_confirmed: ['{{company}}', '{{name}}', '{{eventName}}', '{{eventDate}}', '{{startTime}}', '{{endTime}}', '{{guests}}', '{{total}}', '{{dueNow}}', '{{balanceDue}}', '{{website}}'],
 }
 const varsFor = (emailType) => VARS_BY_TYPE[emailType] || ['{{company}}', '{{tenantName}}', '{{website}}']
 const PREVIEW_VARS = {
@@ -69,6 +78,9 @@ const PREVIEW_VARS = {
   name: 'Jane Smith', membershipType: 'Dedicated Desk', tourLink: 'https://hexaspace.com.au/book-a-tour', officeOptions: '',
   acceptLink: 'https://app.hexaspace.com.au/proposal/sample-token',
   tourWhen: ' for 5 Aug 2026 at 10:00', tourDate: '5 Aug 2026', tourTime: '10:00',
+  organisation: 'Acme Pty Ltd', eventName: 'Product Launch', eventType: 'Corporate',
+  eventDate: '15 Aug 2026', startTime: '18:00', endTime: '22:00', guests: '60',
+  total: '$2,145.00', dueNow: '$850.00', balanceDue: '$1,295.00',
 }
 const fillPreview = (html) => String(html || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in PREVIEW_VARS ? PREVIEW_VARS[k] : m))
 
