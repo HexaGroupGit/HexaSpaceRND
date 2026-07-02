@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Trash2, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, UserPlus } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import TenantProfile from './TenantProfile.jsx'
+import SignupWizard from './SignupWizard.jsx'
 
 const today = () => new Date().toISOString().split('T')[0]
 
@@ -32,6 +33,7 @@ export default function Tenants() {
   const [selectedTenant, setSelectedTenant] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'Active' | 'Former'
+  const [showWizard, setShowWizard] = useState(false)
 
   const activeLeases = (tid) => leases.filter((l) => l.tenantId === tid && l.status === 'active')
   const spaceName = (id) => spaces.find((s) => s.id === id)?.unitNumber
@@ -83,8 +85,11 @@ export default function Tenants() {
         <h1 className="text-2xl font-bold text-gray-900">Companies</h1>
         <div className="flex items-center gap-2">
           <BulkPortalInviteButton tenants={tenants} />
-          <button onClick={openAdd} className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-800">
+          <button onClick={openAdd} className="flex items-center gap-2 border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50">
             <Plus size={15} /> Add Company
+          </button>
+          <button onClick={() => setShowWizard(true)} className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-800">
+            <UserPlus size={15} /> Sign up company
           </button>
         </div>
       </div>
@@ -152,6 +157,7 @@ export default function Tenants() {
       </div>
 
       <CompanyModal open={showForm} editId={editId} form={form} setForm={setForm} onClose={() => setShowForm(false)} onSubmit={handleSubmit} />
+      {showWizard && <SignupWizard onClose={() => setShowWizard(false)} />}
     </div>
   )
 }
