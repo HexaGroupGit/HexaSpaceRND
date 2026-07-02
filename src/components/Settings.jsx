@@ -483,6 +483,26 @@ function EmailsSection({ settings, updateSettings }) {
       <h1 className="text-xl font-bold text-foreground mb-1">Emails & Notifications</h1>
       <p className="text-sm text-muted-foreground mb-6">Configure email addresses for invoices, contracts, and system notifications.</p>
 
+      {/* Safe mode — global outbound-email block */}
+      <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-amber-900">Safe mode — block outbound email</div>
+            <div className="text-xs text-amber-700 mt-0.5">When ON, every email (invoices, confirmations, reminders, invites…) is redirected to the single test address below — no client, member or lead receives anything until you turn this off.</div>
+          </div>
+          <Toggle checked={form.safeMode !== false} onChange={(v) => setForm((p) => ({ ...p, safeMode: v }))} />
+        </div>
+        <div className="mt-3">
+          <label className="block text-xs font-medium text-amber-900 mb-1">Test recipient (receives all email while safe mode is on)</label>
+          <TextInput type="email" value={form.safeRecipient ?? 'eric@hexaspace.com.au'} onChange={set('safeRecipient')} placeholder="eric@hexaspace.com.au" />
+        </div>
+        <div className="mt-2 text-xs font-medium">
+          {form.safeMode !== false
+            ? <span className="text-amber-800">● Blocking — only {form.safeRecipient || 'eric@hexaspace.com.au'} will receive email. Remember to Save.</span>
+            : <span className="text-green-700">● Live — emails send to real recipients.</span>}
+        </div>
+      </div>
+
       <FormRow label="Notification Email" description="Receive system notifications at this address">
         <TextInput type="email" value={form.notificationEmail} onChange={set('notificationEmail')} />
       </FormRow>

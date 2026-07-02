@@ -10,6 +10,7 @@
 //   `website` is a honeypot.
 
 import { createClient } from '@supabase/supabase-js'
+import { sendResendEmail } from './_email.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -93,9 +94,5 @@ async function notifyAdmin(supabase, reg) {
     </div>
   </div></body></html>`
 
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to, subject: `New RSVP — ${reg.eventName || reg.eventSlug}`, html }),
-  })
+  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `New RSVP — ${reg.eventName || reg.eventSlug}`, html })
 }

@@ -10,6 +10,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { leadTypeFor, findEmailTemplate, renderLead, sendResend } from './_leads.js'
+import { sendResendEmail } from './_email.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -135,11 +136,7 @@ async function notifyAdmin(supabase, lead, space) {
     </div>
   </div></body></html>`
 
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to, subject: `New enquiry — ${unit}`, html }),
-  })
+  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `New enquiry — ${unit}`, html })
 }
 
 // Sends the membership-specific brochure email to the enquirer on Day 0.

@@ -6,6 +6,7 @@
 // Requires env: SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY.
 
 import { createClient } from '@supabase/supabase-js'
+import { sendResendEmail } from './_email.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SANITY = 'https://w4zxsbqi.api.sanity.io/v2021-06-07/data/query/production'
@@ -91,13 +92,9 @@ export default async function handler(req, res) {
       const links = calendarLinks(ev, baseUrl)
       const fromName = settings?.emails?.fromName || settings?.company?.name || 'HexaHub'
       const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
-      const resp = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: req.body.testEmail, subject: `[TEST] Reminder: ${ev.title}`, html: reminderHtml({ name: 'there' }, ev, links, settings) }),
-      })
-      const out = await resp.json().catch(() => ({}))
-      if (!resp.ok) return res.status(resp.status).json({ error: out?.message || 'Resend rejected the email', detail: out })
+      const r = await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: req.body.testEmail, subject: `[TEST] Reminder: ${ev.title}`, html: reminderHtml({ name: 'there' }, ev, links, settings) })
+      const out = r.data ?? {}
+      if (!r.ok) return res.status(r.status || 500).json({ error: out?.message || 'Resend rejected the email', detail: out })
       return res.status(200).json({ test: true, to: req.body.testEmail, event: ev.title, id: out?.id })
     }
 
@@ -127,11 +124,7 @@ export default async function handler(req, res) {
           if (resendKey) {
             const fromName = settings?.emails?.fromName || settings?.company?.name || 'HexaHub'
             const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
-            await fetch('https://api.resend.com/emails', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: reg.email, subject: `Reminder: ${ev.title} is coming up`, html: reminderHtml(reg, ev, links, settings) }),
-            })
+            await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: reg.email, subject: `Reminder: ${ev.title} is coming up`, html: reminderHtml(reg, ev, links, settings) })
           }
           await supabase.from('event_registrations').upsert({ id: reg.id, data: { ...reg, reminderSentAt: new Date().toISOString() }, updated_at: new Date().toISOString() })
           sent++; remindedIds.push(reg.id)

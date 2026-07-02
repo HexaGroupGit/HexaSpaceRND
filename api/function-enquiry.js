@@ -3,6 +3,7 @@
 // function_bookings record in the 'enquiry' stage and notifies the events team,
 // who then quote + send the digital agreement from the admin hub.
 import { createClient } from '@supabase/supabase-js'
+import { sendResendEmail } from './_email.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -77,9 +78,5 @@ async function notifyAdmin(supabase, b) {
       <p style="font-size:12px;color:#888;margin-top:20px">Open Function Space Bookings to quote and send the agreement.</p>
     </div>
   </div></body></html>`
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to, subject: `Function enquiry — ${b.name || b.email}`, html }),
-  })
+  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `Function enquiry — ${b.name || b.email}`, html })
 }

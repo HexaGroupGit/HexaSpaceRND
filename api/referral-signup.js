@@ -11,6 +11,7 @@
 // }
 
 import { createClient } from '@supabase/supabase-js'
+import { sendResendEmail } from './_email.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SITE = 'https://www.hexahub.com.au'
@@ -158,11 +159,7 @@ async function emailReferrer(supabase, referrer) {
       </div>
     </div></body></html>`
 
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: referrer.email, subject: `Your ${fromName} referral link`, html }),
-  })
+  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: referrer.email, subject: `Your ${fromName} referral link`, html })
 }
 
 async function notifyAdmin(supabase, referrer, { alreadyEnrolled, directLeadCreated, referralName }) {
@@ -188,9 +185,5 @@ async function notifyAdmin(supabase, referrer, { alreadyEnrolled, directLeadCrea
       </div>
     </div></body></html>`
 
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to, subject: `${headline} — ${referrer.name}`, html }),
-  })
+  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `${headline} — ${referrer.name}`, html })
 }

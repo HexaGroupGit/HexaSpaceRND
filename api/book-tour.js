@@ -4,6 +4,7 @@
 // nurture sequence. Requires SUPABASE_SERVICE_ROLE_KEY; RESEND_API_KEY optional.
 import { createClient } from '@supabase/supabase-js'
 import { fillVars, findEmailTemplate, sendResend } from './_leads.js'
+import { sendResendEmail } from './_email.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -105,11 +106,7 @@ async function notifyAdmin(supabase, lead) {
       <p style="font-size:12px;color:#888;margin-top:20px">Added to your Leads pipeline. Confirm a time with them to lock in the inspection.</p>
     </div>
   </div></body></html>`
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to, subject: `Tour request — ${lead.name || lead.email}`, html }),
-  })
+  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `Tour request — ${lead.name || lead.email}`, html })
 }
 
 // Branded confirmation to the enquirer (editable "Tour confirmation" template).

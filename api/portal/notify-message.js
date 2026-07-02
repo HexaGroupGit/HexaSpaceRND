@@ -1,5 +1,7 @@
 // POST /api/portal/notify-message
 // Sends an email to the admin when a portal member sends a message.
+import { sendResendEmail } from '../_email.js'
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
@@ -42,24 +44,16 @@ export default async function handler(req, res) {
   </div>
 </div>`
 
-  const emailRes = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${resendKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: 'HexaHub Portal <info@hexahub.com.au>',
-      to: ['info@hexahub.com.au'],
-      reply_to: tenantEmail || undefined,
-      subject: `New message from ${tenantName} — HexaHub Portal`,
-      html,
-    }),
+  const r = await sendResendEmail({
+    from: 'HexaHub Portal <info@hexahub.com.au>',
+    to: ['info@hexahub.com.au'],
+    replyTo: tenantEmail || undefined,
+    subject: `New message from ${tenantName} — HexaHub Portal`,
+    html,
   })
 
-  if (!emailRes.ok) {
-    const body = await emailRes.text()
-    return res.status(500).json({ error: body })
+  if (!r.ok) {
+    return res.status(500).json({ error: 'Email send failed' })
   }
 
   return res.status(200).json({ success: true })

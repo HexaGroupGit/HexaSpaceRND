@@ -3,6 +3,7 @@
 // Schedule set in vercel.json
 
 import { createClient } from '@supabase/supabase-js'
+import { sendResendEmail } from './_email.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -97,15 +98,11 @@ export default async function handler(req, res) {
   </div>
 </div></body></html>`
 
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: `${fromName} <${fromEmail}>`,
-          to: tenant.email,
-          subject: `Payment reminder — ${invs.length} overdue invoice${invs.length > 1 ? 's' : ''} from ${fromName}`,
-          html,
-        }),
+      await sendResendEmail({
+        from: `${fromName} <${fromEmail}>`,
+        to: tenant.email,
+        subject: `Payment reminder — ${invs.length} overdue invoice${invs.length > 1 ? 's' : ''} from ${fromName}`,
+        html,
       })
       reminded++
     }

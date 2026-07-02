@@ -4,6 +4,7 @@
 // mode='signed'     — Client signed → notify the events team               (body: booking)
 // mode='confirmed'  — booking confirmed → email the Client their confirmation (body: booking)
 import { createClient } from '@supabase/supabase-js'
+import { sendResendEmail } from '../_email.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -41,12 +42,8 @@ function summaryRows(b) {
 }
 
 async function sendMail(resendKey, { from, to, subject, html, replyTo }) {
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to: Array.isArray(to) ? to : [to], subject, html, ...(replyTo ? { reply_to: replyTo } : {}) }),
-  })
-  return res.ok
+  const r = await sendResendEmail({ from, to: Array.isArray(to) ? to : [to], subject, html, replyTo })
+  return r.ok
 }
 
 export default async function handler(req, res) {

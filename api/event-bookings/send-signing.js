@@ -4,6 +4,8 @@
 // mode='admin_notify'   — Vendor signed → notify admin
 // mode='insurance_deferred' — Vendor deferred insurance → remind admin
 
+import { sendResendEmail } from '../_email.js'
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 
 const EVENT = {
@@ -342,20 +344,13 @@ function buildInsuranceDeferredEmail({ booking }) {
 }
 
 async function sendMail({ to, subject, html }) {
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: 'HexaHub <info@hexahub.com.au>',
-      to: Array.isArray(to) ? to : [to],
-      subject,
-      html,
-    }),
+  const r = await sendResendEmail({
+    from: 'HexaHub <info@hexahub.com.au>',
+    to: Array.isArray(to) ? to : [to],
+    subject,
+    html,
   })
-  return res.ok
+  return r.ok
 }
 
 export default async function handler(req, res) {

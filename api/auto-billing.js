@@ -5,6 +5,7 @@
 // then emails each tenant their invoice.
 
 import { createClient } from '@supabase/supabase-js'
+import { sendResendEmail } from './_email.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -192,15 +193,11 @@ export default async function handler(req, res) {
       const total    = subtotal + gst
       const html     = invoiceEmail(invoice, tenant, settings, subtotal, gst, total)
 
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: 'HexaHub <info@hexahub.com.au>',
-          to: [tenant.email],
-          subject: `Invoice ${invoiceNum} — ${monthLabel(periodStart)}`,
-          html,
-        }),
+      await sendResendEmail({
+        from: 'HexaHub <info@hexahub.com.au>',
+        to: [tenant.email],
+        subject: `Invoice ${invoiceNum} — ${monthLabel(periodStart)}`,
+        html,
       }).catch(() => {})
     }
 
@@ -213,10 +210,7 @@ export default async function handler(req, res) {
       `<tr><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;">${typeof i === 'string' ? i : `${i.number} — ${i.tenant}`}</td></tr>`
     ).join('')
 
-    await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    await sendResendEmail({
         from: 'HexaHub <info@hexahub.com.au>',
         to: ['info@hexahub.com.au'],
         subject: `Auto Bill Run — ${periodStart} → ${periodEnd}`,
@@ -268,7 +262,6 @@ export default async function handler(req, res) {
     <p style="color:#999;font-size:11px;margin:0;text-align:center;">HexaHub Pty Ltd · hexahub.com.au</p>
   </div>
 </div>`,
-      }),
     }).catch(() => {})
   }
 

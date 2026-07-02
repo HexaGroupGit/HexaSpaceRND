@@ -2,6 +2,7 @@
 // Creates a Supabase auth user and sends a branded "set your password" email via Resend.
 // Uses a recovery-type link so the portal shows the SetPassword screen on arrival.
 import { createClient } from '@supabase/supabase-js'
+import { sendResendEmail } from '../_email.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -46,13 +47,7 @@ export default async function handler(req, res) {
   const actionLink = linkData.properties.action_link
 
   // Send branded invite email via Resend
-  const emailRes = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${resendKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  const r = await sendResendEmail({
       from: 'Hexa Space <info@hexaspace.com.au>',
       to: [email],
       subject: SUBJECT,
@@ -84,12 +79,10 @@ export default async function handler(req, res) {
     </p>
   </div>
 </div>`,
-    }),
   })
 
-  if (!emailRes.ok) {
-    const body = await emailRes.text()
-    return res.status(500).json({ error: `Email send failed: ${body}` })
+  if (!r.ok) {
+    return res.status(500).json({ error: `Email send failed` })
   }
 
   return res.status(200).json({ success: true, email })

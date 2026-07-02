@@ -7,6 +7,7 @@
 // Only sends on Sanity "create" operations (not edits/deletes).
 
 import { createClient } from '@supabase/supabase-js'
+import { sendResendEmail } from '../_email.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -119,15 +120,11 @@ export default async function handler(req, res) {
 
   let sent = 0
   for (const tenant of recipients) {
-    const ok = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'HexaHub <info@hexahub.com.au>',
-        to: [tenant.email],
-        subject: `New Event: ${event.title}`,
-        html,
-      }),
+    const ok = await sendResendEmail({
+      from: 'HexaHub <info@hexahub.com.au>',
+      to: [tenant.email],
+      subject: `New Event: ${event.title}`,
+      html,
     }).then(r => r.ok).catch(() => false)
     if (ok) sent++
   }

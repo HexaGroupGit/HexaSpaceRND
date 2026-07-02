@@ -1,5 +1,7 @@
 // POST /api/portal/notify-reply
 // Sends an email to the tenant when admin replies to their portal message.
+import { sendResendEmail } from '../_email.js'
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
@@ -46,20 +48,15 @@ export default async function handler(req, res) {
   </div>
 </div>`
 
-  const emailRes = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: 'HexaHub <info@hexahub.com.au>',
-      to: [tenantEmail],
-      subject: `New message from HexaHub`,
-      html,
-    }),
+  const r = await sendResendEmail({
+    from: 'HexaHub <info@hexahub.com.au>',
+    to: [tenantEmail],
+    subject: `New message from HexaHub`,
+    html,
   })
 
-  if (!emailRes.ok) {
-    const body = await emailRes.text()
-    return res.status(500).json({ error: body })
+  if (!r.ok) {
+    return res.status(500).json({ error: 'Email send failed' })
   }
 
   return res.status(200).json({ success: true })

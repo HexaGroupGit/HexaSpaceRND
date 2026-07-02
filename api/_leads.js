@@ -41,12 +41,13 @@ export function renderLead(template, { lead, membershipType, settings, tourLink,
   return { subject: fillVars(template?.subject || '', vars), html: fillVars(template?.content || '', vars) }
 }
 
+// Routes through the central safe-mode guard. `resendKey` is kept for signature
+// compatibility but the guard reads RESEND_API_KEY itself. Returns a fetch-like
+// object exposing `.ok`.
 export async function sendResend(resendKey, { fromName, fromEmail, to, subject, html, replyTo }) {
-  return fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to, subject, html, ...(replyTo ? { reply_to: replyTo } : {}) }),
-  })
+  const { sendResendEmail } = await import('./_email.js')
+  const r = await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject, html, replyTo })
+  return { ok: r.ok, status: r.status ?? (r.ok ? 200 : 500) }
 }
 
 // Days between two yyyy-mm-dd (or ISO) dates.
