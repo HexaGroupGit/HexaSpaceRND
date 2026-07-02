@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { differenceInDays, parseISO, format, addYears, addMonths } from 'date-fns'
+import { differenceInDays, parseISO, format, addYears, addMonths, isValid } from 'date-fns'
 import { FileText, RefreshCw, Mail, X } from 'lucide-react'
 import { sendEmail } from '../lib/sendEmail.js'
 import ContractForm from './ContractForm.jsx'
@@ -10,6 +10,11 @@ export default function Renewals() {
   const [sending, setSending] = useState(null) // leaseId being sent
   const [renewLease, setRenewLease] = useState(null) // lease to renew (opens ContractForm)
   const today = new Date()
+  // Date-safe helpers: leases can have an empty/invalid endDate (e.g. rolling
+  // month-to-month), which would otherwise crash format()/parseISO().
+  const parse = (s) => { if (!s) return null; const d = parseISO(s); return isValid(d) ? d : null }
+  const fmt = (s) => { const d = parse(s); return d ? format(d, 'dd/MM/yyyy') : '—' }
+  const daysTo = (s) => { const d = parse(s); return d ? differenceInDays(d, today) : null }
 
   // Leases that auto-renewed (rolled forward past their end date) and are awaiting
   // an admin decision. Billing continues in the meantime so no invoices are missed.
@@ -33,17 +38,18 @@ export default function Renewals() {
   const expiring = leases
     .filter((l) => {
       if (l.status !== 'active') return false
-      const days = differenceInDays(parseISO(l.endDate), today)
-      return days >= 0 && days <= 60
+      const days = daysTo(l.endDate)
+      return days !== null && days >= 0 && days <= 60
     })
-    .sort((a, b) => differenceInDays(parseISO(a.endDate), today) - differenceInDays(parseISO(b.endDate), today))
+    .sort((a, b) => (daysTo(a.endDate) ?? 9e9) - (daysTo(b.endDate) ?? 9e9))
 
   const expired = leases
     .filter((l) => {
-      const days = differenceInDays(parseISO(l.endDate), today)
-      return days < 0 && l.status === 'active'
+      if (l.status !== 'active') return false
+      const days = daysTo(l.endDate)
+      return days !== null && days < 0
     })
-    .sort((a, b) => differenceInDays(parseISO(b.endDate), today) - differenceInDays(parseISO(a.endDate), today))
+    .sort((a, b) => (daysTo(b.endDate) ?? -9e9) - (daysTo(a.endDate) ?? -9e9))
 
   function urgencyBadge(days) {
     if (days <= 14) return 'bg-red-100 text-red-800 border border-red-200'
@@ -59,7 +65,7 @@ export default function Renewals() {
     try {
       const companyName = settings?.company?.name ?? 'Hexa Space'
       const contractNum = lease.contractNumber ?? `CON-${lease.id.slice(-3).toUpperCase()}`
-      const expiryDate = format(parseISO(lease.endDate), 'dd MMM yyyy')
+      const expiryDate = parse(lease.endDate) ? format(parse(lease.endDate), 'dd MMM yyyy') : 'the end of your term'
       await sendEmail({
         to: tenant.email,
         subject: `Renewal notice — ${contractNum} expires ${expiryDate}`,
@@ -88,8 +94,10 @@ export default function Renewals() {
 
   function handleOpenRenew(lease) {
     // Pre-fill a new contract based on this lease, starting from expiry date
-    const newStart = lease.endDate // start the day after expiry
-    const newEnd = format(addYears(parseISO(lease.endDate), 1), 'yyyy-MM-dd')
+    // (fall back to today when the current lease has no valid end date).
+    const base = parse(lease.endDate) ?? today
+    const newStart = format(base, 'yyyy-MM-dd')
+    const newEnd = format(addYears(base, 1), 'yyyy-MM-dd')
     setRenewLease({
       ...lease,
       id: null, // will get new id
@@ -120,7 +128,7 @@ export default function Renewals() {
         <td className="px-4 py-3 text-gray-600">{tenant?.email ?? '—'}</td>
         <td className="px-4 py-3 text-gray-600">{tenant?.phone ?? '—'}</td>
         <td className="px-4 py-3 text-gray-600">{space?.unitNumber ?? '—'}</td>
-        <td className="px-4 py-3 text-gray-600">{format(parseISO(lease.endDate), 'dd/MM/yyyy')}</td>
+        <td className="px-4 py-3 text-gray-600">{fmt(lease.endDate)}</td>
         <td className="px-4 py-3">
           <span className={`text-xs font-semibold px-2 py-0.5 rounded ${badgeStyle}`}>{daysLabel}</span>
         </td>
@@ -183,9 +191,9 @@ export default function Renewals() {
                     <tr key={lease.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-gray-900">{tenant?.businessName ?? '—'}</td>
                       <td className="px-4 py-3 text-gray-600">{space?.unitNumber ?? '—'}</td>
-                      <td className="px-4 py-3 text-gray-600">{format(parseISO(lease.endDate), 'dd/MM/yyyy')}</td>
+                      <td className="px-4 py-3 text-gray-600">{fmt(lease.endDate)}</td>
                       <td className="px-4 py-3 text-gray-500">
-                        {lease.previousEndDate ? `from ${format(parseISO(lease.previousEndDate), 'dd/MM/yyyy')}` : '—'}
+                        {lease.previousEndDate ? `from ${fmt(lease.previousEndDate)}` : '—'}
                         {lease.renewalCount ? ` · renewal #${lease.renewalCount}` : ''}
                       </td>
                       <td className="px-4 py-3">
@@ -229,7 +237,7 @@ export default function Renewals() {
               </thead>
               <tbody>
                 {expiring.map((lease) => {
-                  const days = differenceInDays(parseISO(lease.endDate), today)
+                  const days = daysTo(lease.endDate) ?? 0
                   return <LeaseRow key={lease.id} lease={lease} daysLabel={`${days} days left`} badgeStyle={urgencyBadge(days)} />
                 })}
               </tbody>
@@ -254,7 +262,7 @@ export default function Renewals() {
               </thead>
               <tbody>
                 {expired.map((lease) => {
-                  const days = Math.abs(differenceInDays(parseISO(lease.endDate), today))
+                  const days = Math.abs(daysTo(lease.endDate) ?? 0)
                   return <LeaseRow key={lease.id} lease={lease} daysLabel={`${days}d overdue`} badgeStyle="bg-red-100 text-red-800 border border-red-200" />
                 })}
               </tbody>

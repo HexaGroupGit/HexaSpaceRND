@@ -498,6 +498,11 @@ export default function Billing() {
                   const total = calcInvoiceTotal(inv, taxRate)
                   const dueDate = inv.dueDate ? parseISO(inv.dueDate) : null
                   const daysLeft = dueDate ? differenceInDays(dueDate, today) : null
+                  // Voided invoices owe nothing; amount due is red only once overdue.
+                  const isVoided = inv._status === 'voided'
+                  const overdue = inv._status === 'overdue'
+                  const due = isVoided ? 0 : amountDue
+                  const amountColor = overdue ? 'text-red-600' : 'text-gray-900'
 
                   return (
                     <tr
@@ -543,12 +548,12 @@ export default function Billing() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className={`font-semibold text-sm ${amountDue > 0 && inv._status !== 'paid' ? 'text-red-600' : 'text-gray-900'}`}>
-                          ${total.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                        <div className={`font-semibold text-sm ${amountColor}`}>
+                          ${(isVoided ? 0 : total).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
                         </div>
-                        {amountDue > 0 && inv._status !== 'paid' && (
-                          <div className="text-xs text-red-500">
-                            ${amountDue.toLocaleString('en-AU', { minimumFractionDigits: 2 })} due
+                        {due > 0 && (
+                          <div className={`text-xs ${overdue ? 'text-red-500' : 'text-gray-400'}`}>
+                            ${due.toLocaleString('en-AU', { minimumFractionDigits: 2 })} due
                           </div>
                         )}
                       </td>
