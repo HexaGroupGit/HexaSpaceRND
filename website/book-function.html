@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Book the Function Space · Hexa Space</title>
+<!--
+  Drop-in "Book a time" page for www.hexaspace.com.au.
+  1. Set API_BASE below to your admin app's domain (where /api/function-request lives).
+  2. Host this at /book-function so the brochure "Book a time" link (…/book-function?ref=…) resolves here.
+  Uses the Hexa Space brand palette + font families (with fallbacks). If your site
+  already loads Big Daily Short / Rework Micro / GT America they'll apply automatically.
+-->
+<style>
+  :root{
+    --ink:#000; --paper:#fff; --bone:#F6F5F1; --charcoal:#161614; --green:#7F8B2F; --muted:#6B6B66;
+    --display:'Big Daily Short','Times New Roman',serif;
+    --heading:'Rework Micro',Arial,sans-serif;
+    --body:'GT America',Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bone);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.6}
+  .eyebrow{font-family:var(--heading);text-transform:uppercase;letter-spacing:.24em;font-size:11px;color:var(--muted)}
+  .display{font-family:var(--display);font-weight:300;line-height:1.05}
+  header{background:var(--charcoal);color:var(--paper);padding:40px 24px}
+  .wrap{max-width:760px;margin:0 auto;padding:0 24px}
+  header .brand{font-family:var(--heading);text-transform:uppercase;letter-spacing:.3em;font-size:13px}
+  header h1{font-family:var(--display);font-weight:300;font-size:44px;margin:16px 0 8px}
+  header p{color:rgba(255,255,255,.7);max-width:34rem;margin:0}
+  main{padding:48px 0 24px}
+  section{margin-bottom:34px}
+  label{display:block}
+  .lab{font-family:var(--heading);text-transform:uppercase;letter-spacing:.24em;font-size:11px;color:var(--muted);margin-bottom:6px;display:block}
+  input,select,textarea{width:100%;border:1px solid rgba(0,0,0,.18);background:var(--paper);padding:.6rem .85rem;font-family:var(--body);font-size:14px;color:var(--ink)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--green)}
+  .grid{display:grid;gap:20px}
+  .g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr 1fr}.g4{grid-template-columns:2fr 1fr 1fr}
+  @media(max-width:620px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .layouts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  @media(max-width:620px){.layouts{grid-template-columns:1fr}}
+  .layout{border:1px solid rgba(0,0,0,.15);background:var(--paper);padding:16px;text-align:left;cursor:pointer}
+  .layout.sel{border-color:var(--green)}
+  .layout .n{font-family:var(--display);font-weight:300;font-size:20px}
+  .layout .c{font-family:var(--heading);text-transform:uppercase;letter-spacing:.18em;font-size:11px;color:var(--green);margin-top:4px}
+  .chk{display:flex;align-items:center;gap:10px;font-size:14px;margin:8px 0}
+  .chk input{width:auto}
+  .card{background:var(--paper);border:1px solid rgba(0,0,0,.10);padding:24px}
+  .terms{max-height:280px;overflow:auto;padding-right:8px}
+  .terms p{font-size:12px;color:var(--muted);margin:0 0 10px}
+  .terms strong{color:var(--ink)}
+  .btn{font-family:var(--heading);text-transform:uppercase;letter-spacing:.18em;font-size:12px;padding:.85rem 1.8rem;border:1px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer}
+  .btn:hover{background:var(--ink);color:var(--paper)}
+  .muted{color:var(--muted);font-size:12px}
+  .hide{display:none}
+  .err{background:#fdecec;border:1px solid #f5c2c2;color:#8a1f1f;padding:12px 16px;font-size:14px}
+  footer{background:var(--charcoal);color:rgba(255,255,255,.6);padding:28px 24px;margin-top:24px;font-family:var(--heading);text-transform:uppercase;letter-spacing:.18em;font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="brand">Hexa&nbsp;Space</div>
+    <h1>Book the Function Space</h1>
+    <p>Tell us about your event and pick a date. We’ll review availability and send everything you need to confirm — 20–100 guests, cocktail, seminar or classroom.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="done" class="hide card" style="text-align:center">
+    <div class="eyebrow" style="color:var(--green)">Request received</div>
+    <h2 class="display" style="font-size:30px;margin:10px 0">Thank you.</h2>
+    <p class="muted" id="doneMsg">We’ve received your function request. Our team will check availability and be in touch shortly.</p>
+  </div>
+
+  <form id="form">
+    <section>
+      <div class="eyebrow" style="margin-bottom:16px">Your details</div>
+      <div class="grid g2">
+        <div><label class="lab">Name *</label><input name="name" required></div>
+        <div><label class="lab">Organisation</label><input name="organisation"></div>
+        <div><label class="lab">Email *</label><input type="email" name="email" required></div>
+        <div><label class="lab">Phone</label><input name="phone"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="eyebrow" style="margin-bottom:16px">Your event</div>
+      <div class="grid g2">
+        <div><label class="lab">Event name</label><input name="eventName" placeholder="e.g. Product launch"></div>
+        <div><label class="lab">Event type</label>
+          <select name="eventType">
+            <option>Corporate</option><option>Conference / Seminar</option><option>Launch</option>
+            <option>Dinner</option><option>Celebration</option><option>Wedding</option><option>Workshop</option><option>Other</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:20px">
+        <label class="lab">Layout</label>
+        <div class="layouts" id="layouts">
+          <button type="button" class="layout sel" data-layout="Cocktail"><div class="n">Cocktail</div><div class="c">Up to 100</div></button>
+          <button type="button" class="layout" data-layout="Seminar"><div class="n">Seminar</div><div class="c">Up to 80</div></button>
+          <button type="button" class="layout" data-layout="Classroom"><div class="n">Classroom</div><div class="c">Up to 45</div></button>
+        </div>
+      </div>
+      <div class="grid g4" style="margin-top:20px">
+        <div><label class="lab">Preferred date *</label><input type="date" name="eventDate" required></div>
+        <div><label class="lab">From</label><input type="time" name="startTime" value="18:00"></div>
+        <div><label class="lab">To</label><input type="time" name="endTime" value="22:00"></div>
+      </div>
+      <div style="margin-top:20px;max-width:12rem"><label class="lab">Estimated guests</label><input type="number" min="1" max="120" name="guests" placeholder="e.g. 60"></div>
+    </section>
+
+    <section>
+      <div class="eyebrow" style="margin-bottom:16px">Anything extra?</div>
+      <label class="chk"><input type="checkbox" name="catering"> I’d like catering (quoted separately)</label>
+      <label class="chk"><input type="checkbox" name="parking"> Additional onsite parking</label>
+      <label class="chk"><input type="checkbox" name="nameTags"> Name tags</label>
+      <label class="chk"><input type="checkbox" name="photographer"> Event photographer</label>
+      <div style="margin-top:16px"><label class="lab">Anything else we should know?</label><textarea name="message" rows="3" placeholder="Run sheet, AV, accessibility, special requests…"></textarea></div>
+    </section>
+
+    <section>
+      <div class="eyebrow" style="margin-bottom:12px">Terms &amp; Conditions</div>
+      <div class="card">
+        <p class="muted" style="font-style:italic;margin-bottom:12px">“Hexa Space” refers to the function space within our workspace, available for rental. “Client” refers to the individual or entity renting Hexa Space for an event. “Event” refers to the specific gathering or occasion for which the Client is renting Hexa Space.</p>
+        <div class="terms" id="terms"></div>
+        <p class="muted" style="margin-top:14px">By submitting a request you acknowledge these terms. Your date is only secured once your deposit is received.</p>
+      </div>
+    </section>
+
+    <!-- honeypot -->
+    <input type="text" name="website" tabindex="-1" autocomplete="off" class="hide" aria-hidden="true">
+
+    <div id="err" class="err hide"></div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <button class="btn" type="submit" id="submit">Request booking</button>
+      <span class="muted">We’ll review availability and reply by email.</span>
+    </div>
+  </form>
+</main>
+
+<footer><div class="wrap">Hexa Space · 7 Distribution Circuit, Huntingdale VIC 3166 · hexaspace.com.au</div></footer>
+
+<script>
+  // ── SET THIS to your admin app domain (where /api/function-request is hosted) ──
+  var API_BASE = 'https://YOUR-APP-DOMAIN';
+
+  var TERMS = [
+    ['Rental Fees','The venue hire rate is $250 +GST per hour on weekdays and $325 +GST per hour on weekends, payable in full at least 14 days prior to the event date. A non-refundable deposit of 50% of the total rental fee is required at the time of booking to secure the reservation.'],
+    ['Booking Confirmation','Bookings only commence once the deposit has been paid. No reservation is confirmed or held until Hexa Space has received the required deposit.'],
+    ['Cleaning Fee','A mandatory cleaning fee of $200 +GST is added to the total rental cost, covering basic cleaning and maintenance after the event.'],
+    ['Security Deposit','A refundable security deposit of $300 is required at the time of booking, refunded within 5 business days after the event provided no damages or additional fees have been incurred.'],
+    ['Bump-In / Bump-Out','Each booking includes 1 hour of complimentary bump-in and 1 hour of complimentary bump-out. A 30-minute turnover buffer is reserved before and after your event.'],
+    ['Meeting Rooms','All meeting rooms remain locked by default. Where access is required, the Hexa team will book them internally to avoid clashes.'],
+    ['Liability','The Client agrees to indemnify and hold harmless Hexa Space from any claims, liabilities, damages or expenses arising from the use of Hexa Space for the Event, except where caused solely by the negligence or misconduct of Hexa Space.'],
+    ['Damages & Additional Charges','The Client is responsible for any damage caused by the Client, their guests or third-party vendors. Costs are deducted from the security deposit; if they exceed it, the Client will be billed for the difference. Additional cleaning and/or damage fees apply for misconduct, excessive cleaning or venue damage.'],
+    ['Rules and Regulations','The Client is responsible for any required permits, licenses or approvals, must keep noise within legal limits, must not smoke inside, and must comply with all applicable laws during the Event.'],
+    ['Late Booking Fee','A $250 surcharge applies to any booking made within 7 days of the event date.'],
+    ['Cancellation Policy','Cancellation more than 30 days prior forfeits the deposit; within 14–30 days the Client is responsible for 75% of the total rental fee; within 14 days, 100%.'],
+    ['Force Majeure','Neither party is liable for failure to perform caused by events beyond reasonable control, such as acts of God, war, natural disasters or similar occurrences.']
+  ];
+  var td = document.getElementById('terms');
+  TERMS.forEach(function(t,i){ var p=document.createElement('p'); p.innerHTML='<strong>'+(i+1)+'. '+t[0]+'.</strong> '+t[1]; td.appendChild(p); });
+
+  var layout = 'Cocktail';
+  document.getElementById('layouts').addEventListener('click', function(e){
+    var b = e.target.closest('.layout'); if(!b) return;
+    layout = b.getAttribute('data-layout');
+    [].forEach.call(this.children, function(c){ c.classList.toggle('sel', c===b); });
+  });
+
+  var ref = new URLSearchParams(location.search).get('ref') || '';
+  var form = document.getElementById('form');
+  var errBox = document.getElementById('err');
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    errBox.classList.add('hide');
+    var d = new FormData(form);
+    if(!d.get('name') || !d.get('email')){ return showErr('Please add your name and email.'); }
+    if(!d.get('eventDate')){ return showErr('Please choose a preferred date.'); }
+    var payload = {
+      ref: ref, source:'website',
+      name:d.get('name'), organisation:d.get('organisation'), email:d.get('email'), phone:d.get('phone'),
+      eventName:d.get('eventName'), eventType:d.get('eventType'), layout:layout,
+      eventDate:d.get('eventDate'), startTime:d.get('startTime'), endTime:d.get('endTime'), guests:d.get('guests'),
+      catering: !!d.get('catering'),
+      addons:{ parking: !!d.get('parking'), nameTags: !!d.get('nameTags'), photographer: !!d.get('photographer') },
+      message:d.get('message'), website:d.get('website')
+    };
+    var btn=document.getElementById('submit'); btn.disabled=true; btn.textContent='Sending…';
+    fetch(API_BASE + '/api/function-request', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) })
+      .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+      .then(function(){ form.classList.add('hide'); document.getElementById('done').classList.remove('hide'); window.scrollTo(0,0); })
+      .catch(function(){ btn.disabled=false; btn.textContent='Request booking'; showErr('Something went wrong — please try again or email events@hexaspace.com.au.'); });
+  });
+  function showErr(m){ errBox.textContent=m; errBox.classList.remove('hide'); }
+</script>
+</body>
+</html>

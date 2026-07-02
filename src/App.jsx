@@ -28,6 +28,7 @@ import Login from './components/Login.jsx'
 import SignPage from './components/SignPage.jsx'
 import EventBookingSignPage from './components/EventBookingSignPage.jsx'
 import FunctionSignPage from './components/FunctionSignPage.jsx'
+import FunctionBookPage from './components/FunctionBookPage.jsx'
 import ReferrerDashboard from './components/ReferrerDashboard.jsx'
 import ProposalAccept from './components/ProposalAccept.jsx'
 import PortalApp from './portal/PortalApp.jsx'
@@ -40,6 +41,9 @@ export default function App() {
     window.location.hostname.startsWith('members.') ||
     window.location.pathname.startsWith('/portal')
   ) return <PortalApp />
+
+  // Public function "book a time" request page — no auth needed
+  if (window.location.pathname.startsWith('/book-function')) return <FunctionBookPage />
 
   // Public sign pages — no auth needed
   const functionSignMatch = window.location.pathname.match(/^\/book\/function\/([^/]+)/)

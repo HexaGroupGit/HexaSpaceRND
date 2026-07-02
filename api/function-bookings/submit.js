@@ -70,14 +70,17 @@ export default async function handler(req, res) {
     const clientName = b.organisation || ci.businessName || b.name || 'Function client'
     const base = { tenantId, source: 'function', status: 'pending', sentStatus: 'not_sent', functionRef: b.ref, clientName, clientEmail: b.email, issueDate: now.split('T')[0], payments: [], comments: [], createdAt: now.split('T')[0] }
 
+    // One deposit invoice, two lines: 50% of the booking cost (GST applies) and
+    // the $300 refundable security deposit (GST-exempt).
     const depId = `inv${Date.now()}${Math.random().toString(36).slice(2, 6)}`
-    const depInv = { ...base, id: depId, number: numFor(), invoiceType: 'function_deposit', dueDate: now.split('T')[0], vatEnabled: true, lineItems: [{ description: `Function venue hire — 50% deposit · ${b.eventName || 'Function'} (${b.eventDate})`, revenueAccount: 'Function Space Hire', unitPrice: q.rentalDeposit ?? 0, qty: 1, discountPct: 0 }] }
-    const secId = `inv${Date.now() + 1}${Math.random().toString(36).slice(2, 6)}`
-    const secInv = { ...base, id: secId, number: numFor(), invoiceType: 'deposit', dueDate: now.split('T')[0], vatEnabled: false, lineItems: [{ description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit ?? 300, qty: 1, discountPct: 0 }] }
-    await supabase.from('invoices').upsert([{ id: depId, data: depInv, updated_at: now }, { id: secId, data: secInv, updated_at: now }])
+    const depInv = { ...base, id: depId, number: numFor(), invoiceType: 'function_deposit', dueDate: now.split('T')[0], vatEnabled: true, lineItems: [
+      { description: `50% deposit — function booking · ${b.eventName || 'Function'} (${b.eventDate})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf ?? 0, qty: 1, discountPct: 0 },
+      { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit ?? 300, qty: 1, discountPct: 0, vatExempt: true },
+    ] }
+    await supabase.from('invoices').upsert([{ id: depId, data: depInv, updated_at: now }])
 
     // ── Update booking ──
-    const updated = { ...b, stage: 'awaiting_deposit', depositRaisedAt: now, tenantId, companyId: tenantId, memberId, depositInvoiceId: depId, securityInvoiceId: secId, read: false, updatedAt: now }
+    const updated = { ...b, stage: 'awaiting_deposit', depositRaisedAt: now, tenantId, companyId: tenantId, memberId, depositInvoiceId: depId, read: false, updatedAt: now }
     await supabase.from('function_bookings').upsert({ id: b.id, data: updated, updated_at: now })
 
     // ── Email the deposit-due notice ──

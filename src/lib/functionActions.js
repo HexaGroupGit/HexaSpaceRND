@@ -103,21 +103,18 @@ export async function confirmDepositPaid({ store, booking, findFunctionSpace }) 
   const has = (type) => invs.some((i) => i.functionRef === b.ref && i.invoiceType === type && i.status !== 'voided')
   const base = { tenantId, source: 'function', status: 'pending', sentStatus: 'not_sent', functionRef: b.ref, clientName, clientEmail: b.email, issueDate: today() }
 
-  // Safety net: raise deposit/security if they were never raised (e.g. a manual
-  // hub booking that skipped the portal). Normally already raised at submit.
-  if (!has('function_deposit')) store.addInvoice({ ...base, invoiceType: 'function_deposit', dueDate: today(), vatEnabled: true, lineItems: [{ description: `Function venue hire — 50% deposit · ${b.eventName || 'Function'} (${b.eventDate})`, revenueAccount: 'Function Space Hire', unitPrice: q.rentalDeposit, qty: 1, discountPct: 0 }] })
-  if (!has('deposit')) store.addInvoice({ ...base, invoiceType: 'deposit', dueDate: today(), vatEnabled: false, lineItems: [{ description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit, qty: 1, discountPct: 0 }] })
+  // Safety net: raise the deposit (50% + $300 security) if it was never raised
+  // (e.g. a manual hub booking that skipped the portal). One invoice, two lines.
+  if (!has('function_deposit')) store.addInvoice({ ...base, invoiceType: 'function_deposit', dueDate: today(), vatEnabled: true, lineItems: [
+    { description: `50% deposit — function booking · ${b.eventName || 'Function'} (${b.eventDate})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf, qty: 1, discountPct: 0 },
+    { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit, qty: 1, discountPct: 0, vatExempt: true },
+  ] })
 
-  // Balance (remaining 50% + cleaning + add-ons + late fee), due 14 days before.
+  // Balance = the remaining 50% of the booking cost (GST), due 14 days before.
   if (!has('function_balance')) {
-    const lines = [
-      { description: `Function venue hire — balance (50%) · ${b.eventDate}`, revenueAccount: 'Function Space Hire', unitPrice: q.rentalBalance, qty: 1, discountPct: 0 },
-      { description: 'Cleaning fee', revenueAccount: 'Function Space Hire', unitPrice: q.cleaning, qty: 1, discountPct: 0 },
-    ]
-    if (q.staff) lines.push({ description: `F&B & AV staff — ${q.hours} hrs @ $40/hr`, revenueAccount: 'Function Space Hire', unitPrice: q.staff, qty: 1, discountPct: 0 })
-    ADDONS.forEach((a) => { if (b.addons?.[a.key]) lines.push({ description: a.label, revenueAccount: 'Function Space Hire', unitPrice: a.price, qty: 1, discountPct: 0 }) })
-    if (q.lateFee) lines.push({ description: 'Late booking surcharge', revenueAccount: 'Function Space Hire', unitPrice: q.lateFee, qty: 1, discountPct: 0 })
-    store.addInvoice({ ...base, invoiceType: 'function_balance', dueDate: balanceDueDate(b.eventDate) || today(), vatEnabled: true, lineItems: lines })
+    store.addInvoice({ ...base, invoiceType: 'function_balance', dueDate: balanceDueDate(b.eventDate) || today(), vatEnabled: true, lineItems: [
+      { description: `50% balance — function booking · ${b.eventName || 'Function'} (${b.eventDate})`, revenueAccount: 'Function Space Hire', unitPrice: q.balanceHalf, qty: 1, discountPct: 0 },
+    ] })
   }
 
   // Place the calendar booking (venue secured) with ±30-min buffer.

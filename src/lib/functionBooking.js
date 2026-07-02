@@ -75,8 +75,6 @@ export function computeQuote(input = {}) {
   const hours = round(hoursBetween(startTime, endTime))
 
   const rental = round(rate * hours)
-  const rentalDeposit = round(rental * DEPOSIT_PCT)
-  const rentalBalance = round(rental - rentalDeposit)
 
   const cleaning = CLEANING_FEE
   const staffApplies = Number(guests) > STAFF_GUEST_THRESHOLD
@@ -89,23 +87,27 @@ export function computeQuote(input = {}) {
   const days = daysBetween(bookedOn, eventDate)
   const lateFee = days != null && days >= 0 && days < LATE_WINDOW_DAYS ? LATE_FEE : 0
 
+  // Booking cost = everything except the refundable security deposit. GST applies.
   const taxable = round(rental + cleaning + addonsTotal + lateFee)
   const gst = round(taxable * GST_RATE)
   const total = round(taxable + gst)
 
-  // Payable now = 50% rental deposit (+ its GST) + refundable security deposit.
-  const depositGst = round(rentalDeposit * GST_RATE)
-  const dueNow = round(rentalDeposit + depositGst + SECURITY_DEPOSIT)
-  const balanceDue = round(total - (rentalDeposit + depositGst))
+  // Deposit invoice (due now) = 50% of the booking cost (GST applies) + the flat
+  // $300 refundable security deposit (no GST). Balance = the other 50% (GST).
+  const depositHalf = round(taxable * DEPOSIT_PCT)          // ex-GST invoice line
+  const balanceHalf = round(taxable - depositHalf)          // ex-GST invoice line
+  const securityDeposit = SECURITY_DEPOSIT                  // no GST
+  const depositIncGst = round(depositHalf * (1 + GST_RATE))
+  const dueNow = round(depositIncGst + securityDeposit)     // display
+  const balanceDue = round(total - depositIncGst)           // display
 
   return {
     isWeekend, rate, hours,
-    rental, rentalDeposit, rentalBalance,
+    rental, depositHalf, balanceHalf,
     cleaning, staff, staffApplies, parking, nameTags, photographer, addonsTotal,
     lateFee,
     taxable, gst, total,
-    securityDeposit: SECURITY_DEPOSIT,
-    depositGst, dueNow, balanceDue,
+    securityDeposit, depositIncGst, dueNow, balanceDue,
   }
 }
 
