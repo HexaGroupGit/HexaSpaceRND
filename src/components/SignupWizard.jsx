@@ -27,7 +27,7 @@ const STEP_META = [
 // progressively so nothing is lost if the admin steps away mid-way.
 export default function SignupWizard({ onClose }) {
   const ctx = useOutletContext()
-  const { addTenant, addMember, addLease, addInvoice, updateLease,
+  const { addTenant, addMember, addLease, addInvoice, updateLease, updateTenant,
     leases = [], tenants = [], spaces = [], templates = [] } = ctx
   const navigate = useNavigate()
 
@@ -63,6 +63,11 @@ export default function SignupWizard({ onClose }) {
     setErr('')
     const m = addMember({ ...contact, companyId: tenant.id, startDate: today(), status: 'Active' })
     setMember(m)
+    // Make the contact selectable in the contract step — ContractForm's Member
+    // dropdown reads the tenant's contactName, so mirror it onto the company.
+    const patch = { contactName: contact.name, email: tenant.email || contact.email, phone: tenant.phone || contact.phone }
+    updateTenant(tenant.id, patch)
+    setTenant((t) => ({ ...t, ...patch }))
     setStep(2)
   }
 
