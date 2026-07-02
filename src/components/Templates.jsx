@@ -27,6 +27,7 @@ const EMAIL_TYPES = [
   { value: 'esign', label: 'E-Signature request' },
   { value: 'signedContract', label: 'Signed contract copy' },
   { value: 'proposal', label: 'Proposal (cover email)' },
+  { value: 'tour_confirmation', label: 'Tour confirmation' },
   { value: 'lead_desk', label: 'Lead — Desk / Virtual Office enquiry' },
   { value: 'lead_office', label: 'Lead — Private Office enquiry' },
   { value: 'lead_followup', label: 'Lead — Follow-up (no reply)' },
@@ -38,6 +39,7 @@ const EMAIL_TYPE_BADGE = {
   esign: 'bg-blue-50 text-blue-700 border-blue-200',
   signedContract: 'bg-green-50 text-green-700 border-green-200',
   proposal: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  tour_confirmation: 'bg-teal-50 text-teal-700 border-teal-200',
   lead_desk: 'bg-amber-50 text-amber-700 border-amber-200',
   lead_office: 'bg-amber-50 text-amber-700 border-amber-200',
   lead_followup: 'bg-yellow-50 text-yellow-700 border-yellow-200',
@@ -51,6 +53,7 @@ const VARS_BY_TYPE = {
   esign: ['{{company}}', '{{tenantName}}', '{{contract}}', '{{signLink}}', '{{signerName}}', '{{website}}'],
   signedContract: ['{{company}}', '{{tenantName}}', '{{contract}}', '{{signedDate}}', '{{website}}'],
   proposal: ['{{company}}', '{{name}}', '{{acceptLink}}', '{{website}}'],
+  tour_confirmation: ['{{company}}', '{{name}}', '{{tourWhen}}', '{{tourDate}}', '{{tourTime}}', '{{website}}'],
   lead_desk: LEAD_VARS,
   lead_office: [...LEAD_VARS, '{{officeOptions}}'],
   lead_followup: LEAD_VARS,
@@ -65,6 +68,7 @@ const PREVIEW_VARS = {
   signedDate: '2 July 2026',
   name: 'Jane Smith', membershipType: 'Dedicated Desk', tourLink: 'https://hexaspace.com.au/book-a-tour', officeOptions: '',
   acceptLink: 'https://app.hexaspace.com.au/proposal/sample-token',
+  tourWhen: ' for 5 Aug 2026 at 10:00', tourDate: '5 Aug 2026', tourTime: '10:00',
 }
 const fillPreview = (html) => String(html || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in PREVIEW_VARS ? PREVIEW_VARS[k] : m))
 

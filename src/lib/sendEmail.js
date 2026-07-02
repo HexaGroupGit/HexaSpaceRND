@@ -318,6 +318,27 @@ const LEAD_DEFAULTS = {
   lead_final: { subject: DEFAULT_LEAD_FINAL_SUBJECT, html: DEFAULT_LEAD_FINAL_HTML },
 }
 
+// ── Editable TOUR-CONFIRMATION email TEMPLATE (Templates → Emails) ───────────────
+// Sent to the enquirer when they book a tour on the website. To be rebranded to
+// match www.hexaspace.com.au later. {{company}} {{name}} {{tourDate}} {{tourTime}} {{website}}.
+export const DEFAULT_TOUR_CONFIRMATION_SUBJECT = 'Your tour request — {{company}}'
+export const DEFAULT_TOUR_CONFIRMATION_HTML = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
+  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
+    <div style="background:#000;padding:24px 32px"><span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">{{company}}</span></div>
+    <div style="padding:32px">
+      <h2 style="font-size:20px;margin:0 0 16px">Thanks for booking a tour 🙌</h2>
+      <p style="margin:0 0 16px;font-size:14px">Hi {{name}},</p>
+      <p style="margin:0 0 16px;font-size:14px">We've received your tour request{{tourWhen}} and will be in touch shortly to confirm a time.</p>
+      <p style="margin:0 0 16px;font-size:14px">Looking forward to showing you around.</p>
+      <p style="font-size:12px;color:#888;margin:16px 0 0">{{company}} &middot; <a href="https://{{website}}" style="color:#888">{{website}}</a></p>
+    </div>
+  </div>
+</body>
+</html>`
+
 // ── Editable PROPOSAL email TEMPLATE (Templates → Emails) ───────────────────────
 // Cover email for the proposal PDF (attached). {{company}} {{name}} {{website}}.
 export const DEFAULT_PROPOSAL_EMAIL_SUBJECT = 'Your proposal from {{company}}'

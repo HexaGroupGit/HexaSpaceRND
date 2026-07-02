@@ -18,13 +18,13 @@ export function findEmailTemplate(templates, emailType) {
   return (templates || []).find((t) => t?.category === 'email' && t?.emailType === emailType && t?.content) || null
 }
 
-// The book-a-tour page is served by this app; default to its own domain
-// (Vercel production URL) so the button always resolves. Overridable via
-// settings.leads.tourUrl.
+// The book-a-tour form lives on the marketing website (www.hexaspace.com.au).
+// Default the tour link there; override with settings.leads.tourUrl.
 export function tourUrlFor(settings) {
-  const appHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL
-  const website = settings?.company?.website || 'hexaspace.com.au'
-  return settings?.leads?.tourUrl || (appHost ? `https://${appHost}/book-a-tour` : `https://${website}/book-a-tour`)
+  if (settings?.leads?.tourUrl) return settings.leads.tourUrl
+  let site = (settings?.company?.website || 'hexaspace.com.au').replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  if (!site.startsWith('www.')) site = `www.${site}`
+  return `https://${site}/book-a-tour`
 }
 
 export function renderLead(template, { lead, membershipType, settings, tourLink, officeOptions }) {

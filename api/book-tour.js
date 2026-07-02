@@ -3,6 +3,7 @@
 // existing) lead in the CRM with source 'book-tour', which also stops the
 // nurture sequence. Requires SUPABASE_SERVICE_ROLE_KEY; RESEND_API_KEY optional.
 import { createClient } from '@supabase/supabase-js'
+import { fillVars, findEmailTemplate, sendResend } from './_leads.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -72,6 +73,7 @@ export default async function handler(req, res) {
     if (error) { console.error('book-tour insert error:', error); return res.status(500).json({ error: 'Could not save request' }) }
 
     notifyAdmin(supabase, lead).catch(() => {})
+    sendTourConfirmation(supabase, lead).catch(() => {})
     return res.status(200).json({ success: true })
   } catch (err) {
     console.error('book-tour error:', err)
@@ -108,4 +110,29 @@ async function notifyAdmin(supabase, lead) {
     headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to, subject: `Tour request — ${lead.name || lead.email}`, html }),
   })
+}
+
+// Branded confirmation to the enquirer (editable "Tour confirmation" template).
+async function sendTourConfirmation(supabase, lead) {
+  const resendKey = process.env.RESEND_API_KEY
+  if (!resendKey || !lead.email) return
+  const [{ data: settRows }, { data: tmplRows }] = await Promise.all([
+    supabase.from('settings').select('data').eq('id', 'global'),
+    supabase.from('templates').select('data'),
+  ])
+  const settings = settRows?.[0]?.data ?? {}
+  const templates = (tmplRows ?? []).map((r) => r.data)
+  const tpl = findEmailTemplate(templates, 'tour_confirmation')
+  if (!tpl) return
+  const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
+  const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
+  const replyTo = settings?.emails?.replyTo || settings?.emails?.notificationEmail
+  const tourWhen = lead.tourDate ? ` for ${lead.tourDate}${lead.tourTime ? ` at ${lead.tourTime}` : ''}` : ''
+  const vars = {
+    company: settings?.company?.name || 'Hexa Space',
+    name: lead.name || 'there',
+    tourWhen, tourDate: lead.tourDate || '', tourTime: lead.tourTime || '',
+    website: settings?.company?.website || 'hexaspace.com.au',
+  }
+  await sendResend(resendKey, { fromName, fromEmail, to: lead.email, subject: fillVars(tpl.subject, vars), html: fillVars(tpl.content, vars), replyTo })
 }

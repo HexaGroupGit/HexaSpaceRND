@@ -27,7 +27,6 @@ import Login from './components/Login.jsx'
 import SignPage from './components/SignPage.jsx'
 import EventBookingSignPage from './components/EventBookingSignPage.jsx'
 import ReferrerDashboard from './components/ReferrerDashboard.jsx'
-import BookTour from './components/BookTour.jsx'
 import ProposalAccept from './components/ProposalAccept.jsx'
 import PortalApp from './portal/PortalApp.jsx'
 import { useStore } from './store/useStore.js'
@@ -50,9 +49,6 @@ export default function App() {
   // Public referrer dashboard — magic link, no auth needed
   const referMatch = window.location.pathname.match(/^\/refer\/([^/]+)/)
   if (referMatch) return <ReferrerDashboard token={referMatch[1]} />
-
-  // Public "book a private tour" page — no auth needed
-  if (window.location.pathname.startsWith('/book-a-tour')) return <BookTour />
 
   // Public proposal accept page — no auth needed
   const proposalMatch = window.location.pathname.match(/^\/proposal\/([^/]+)/)
