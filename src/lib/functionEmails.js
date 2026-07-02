@@ -3,63 +3,86 @@
 // sender can use them. Editable in Templates → Emails; the send endpoint uses
 // the saved template if present, else falls back to these.
 //
+// Branded per the Hexa Space guidelines (olive / greige / ink + brand fonts with
+// web-safe fallbacks). Kept import-free on purpose.
+//
 // Placeholders: {{company}} {{name}} {{organisation}} {{eventName}} {{eventType}}
 // {{eventDate}} {{startTime}} {{endTime}} {{guests}} {{total}} {{dueNow}}
 // {{balanceDue}} {{signLink}} {{website}}
 
+const OLIVE = '#7F8B2F', GREIGE = '#EFEDF2', INK = '#1a1a1a', MUTE = '#6b6b6b', HAIR = '#e3e1e6'
+const SERIF = "'HexaBig', Georgia, 'Times New Roman', serif"
+const SANS = "'HexaGT', 'Helvetica Neue', Arial, sans-serif"
+const CAPS = "'HexaRework', 'Helvetica Neue', Arial, sans-serif"
+const FONTS = `
+    @font-face{font-family:'HexaBig';src:url('https://admin.hexaspace.com.au/fonts/BigDailyShort-ExtraLight.otf') format('opentype');font-weight:400;font-display:swap}
+    @font-face{font-family:'HexaGT';src:url('https://admin.hexaspace.com.au/fonts/GT-America-Standard-Thin.otf') format('opentype');font-weight:400;font-display:swap}
+    @font-face{font-family:'HexaRework';src:url('https://admin.hexaspace.com.au/fonts/ReworkMicro-Semibold.otf') format('opentype');font-weight:600;font-display:swap}`
+
 function frame(inner) {
-  return `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-<div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-  <div style="background:#000;padding:24px 32px"><span style="color:#fff;font-size:18px;font-weight:900;letter-spacing:3px">HEXA SPACE</span>
-    <span style="color:#888;font-size:12px;margin-left:12px">Function Space Hire</span></div>
-  <div style="padding:32px">${inner}</div>
-  <div style="background:#f5f5f5;padding:16px 32px;border-top:1px solid #eee">
-    <p style="color:#999;font-size:11px;margin:0;text-align:center">Hexa Space · 7 Distribution Circuit, Huntingdale VIC 3166 · {{website}}</p>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${FONTS}</style></head>
+<body style="margin:0;padding:0;background:${GREIGE};font-family:${SANS};color:${INK}">
+  <div style="max-width:600px;margin:0 auto;padding:30px 16px">
+    <div style="text-align:center;padding:6px 0 22px">
+      <span style="font-family:${CAPS};font-size:15px;letter-spacing:.34em;color:${INK};text-transform:uppercase">HEXA&nbsp;SPACE</span>
+      <span style="font-family:${SANS};font-size:14px;color:${OLIVE};letter-spacing:.12em">&nbsp;&nbsp;六合空间</span>
+    </div>
+    <div style="background:#ffffff;border:1px solid ${HAIR};border-radius:12px;overflow:hidden">
+      <div style="height:3px;background:${OLIVE}"></div>
+      <div style="padding:38px 40px">${inner}</div>
+    </div>
+    <div style="text-align:center;padding:22px 8px 6px">
+      <div style="font-family:${CAPS};font-size:10px;letter-spacing:.3em;color:${OLIVE};text-transform:uppercase">Function Space Hire</div>
+      <div style="font-family:${SANS};font-size:11px;color:#9a9aa0;margin-top:7px">Hexa Space · 7 Distribution Circuit, Huntingdale VIC 3166 · {{website}}</div>
+    </div>
   </div>
-</div></body></html>`
+</body></html>`
 }
 
-const SUMMARY = `<table style="width:100%;border-collapse:collapse;margin:0 0 24px;font-size:13px">
-    <tr><td style="padding:6px 0;color:#888;width:150px">Event</td><td style="padding:6px 0;color:#111">{{eventName}}</td></tr>
-    <tr><td style="padding:6px 0;color:#888">Date</td><td style="padding:6px 0;color:#111">{{eventDate}} · {{startTime}}–{{endTime}}</td></tr>
-    <tr><td style="padding:6px 0;color:#888">Guests</td><td style="padding:6px 0;color:#111">{{guests}}</td></tr>
-    <tr><td style="padding:6px 0;color:#888">Total (inc GST)</td><td style="padding:6px 0;font-weight:700;color:#111">{{total}}</td></tr>
-    <tr><td style="padding:6px 0;color:#888">Payable now</td><td style="padding:6px 0;color:#111">{{dueNow}} <span style="color:#888">(50% deposit + $300 security)</span></td></tr>
+const kicker = (t) => `<div style="font-family:${CAPS};font-size:11px;letter-spacing:.28em;color:${OLIVE};text-transform:uppercase;margin:0 0 12px">${t}</div>`
+const h1 = (t) => `<h1 style="font-family:${SERIF};font-weight:400;font-size:28px;line-height:1.12;color:${INK};margin:0 0 18px">${t}</h1>`
+const p = (t) => `<p style="font-family:${SANS};font-size:15px;line-height:1.65;color:#3a3a3a;margin:0 0 18px">${t}</p>`
+const small = (t) => `<p style="font-family:${SANS};font-size:12px;line-height:1.6;color:${MUTE};margin:16px 0 0">${t}</p>`
+const btn = (label, href) => `<div style="text-align:center;margin:26px 0"><a href="${href}" style="display:inline-block;background:${OLIVE};color:#fff;text-decoration:none;padding:13px 34px;font-family:${CAPS};font-size:12px;letter-spacing:.14em;text-transform:uppercase;border-radius:6px">${label}</a></div>`
+const row = (label, val, strong) => `    <tr><td style="padding:9px 0;font-family:${SANS};color:${MUTE};font-size:13px;width:170px">${label}</td><td style="padding:9px 0;font-family:${SANS};font-size:13px;color:${INK}${strong ? ';font-weight:600' : ''}">${val}</td></tr>`
+
+const SUMMARY = `<table style="width:100%;border-collapse:collapse;margin:2px 0 22px;border-top:1px solid ${HAIR};border-bottom:1px solid ${HAIR}">
+${row('Event', '{{eventName}}')}
+${row('Date', '{{eventDate}} · {{startTime}}–{{endTime}}')}
+${row('Guests', '{{guests}}')}
+${row('Total (inc GST)', '{{total}}', true)}
+${row('Payable now', '{{dueNow}} <span style="color:' + MUTE + '">(50% deposit + $300 security)</span>')}
   </table>`
 
 export const DEFAULT_FUNCTION_BROCHURE_SUBJECT = 'Hexa Space function space — {{eventName}}'
 export const DEFAULT_FUNCTION_BROCHURE_HTML = frame(`
-  <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Function Space Hire</p>
-  <h2 style="font-size:20px;color:#111;margin:0 0 16px">Hi {{name}} — thanks for your interest in our function space</h2>
-  <p style="font-size:14px;color:#555;margin:0 0 18px">Our light-filled venue suits launches, dinners, conferences and celebrations. Here's a quick overview:</p>
-  <table style="width:100%;border-collapse:collapse;margin:0 0 20px;font-size:13px">
-    <tr><td style="padding:6px 0;color:#888">Venue hire (weekday)</td><td style="padding:6px 0;text-align:right;color:#111">$250 + GST / hour</td></tr>
-    <tr><td style="padding:6px 0;color:#888">Venue hire (weekend)</td><td style="padding:6px 0;text-align:right;color:#111">$325 + GST / hour</td></tr>
-    <tr><td style="padding:6px 0;color:#888">Cleaning fee</td><td style="padding:6px 0;text-align:right;color:#111">$200 + GST</td></tr>
-    <tr><td style="padding:6px 0;color:#888">Refundable security deposit</td><td style="padding:6px 0;text-align:right;color:#111">$300</td></tr>
-    <tr><td style="padding:6px 0;color:#888">Capacity</td><td style="padding:6px 0;text-align:right;color:#111">20–100 guests</td></tr>
+  ${kicker('Function Space Hire')}
+  ${h1('Thanks for your interest, {{name}}.')}
+  ${p("Our light-filled venue suits launches, dinners, conferences and celebrations. Here's a quick overview:")}
+  <table style="width:100%;border-collapse:collapse;margin:0 0 20px;border-top:1px solid ${HAIR};border-bottom:1px solid ${HAIR}">
+${row('Venue hire (weekday)', '$250 + GST / hour')}
+${row('Venue hire (weekend)', '$325 + GST / hour')}
+${row('Cleaning fee', '$200 + GST')}
+${row('Refundable security deposit', '$300')}
+${row('Capacity', '20–100 guests')}
   </table>
-  <p style="font-size:13px;color:#555;margin:0 0 18px">Ready to lock it in? Choose your preferred date and layout — we'll review availability and get your booking underway.</p>
-  <div style="text-align:center;margin:24px 0">
-    <a href="{{bookLink}}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 36px;font-size:14px;font-weight:700;border-radius:6px">Book a time</a>
-  </div>
-  <p style="font-size:12px;color:#999;margin:16px 0 0">Questions? Reply any time — we'd love to host you.</p>`)
+  ${p("Ready to lock it in? Choose your preferred date and layout — we'll review availability and get your booking underway.")}
+  ${btn('Book a time', '{{bookLink}}')}
+  ${small("Questions? Reply any time — we'd love to host you.")}`)
 
 export const DEFAULT_FUNCTION_AGREEMENT_SUBJECT = 'Your Hexa Space function quote — {{eventName}}'
 export const DEFAULT_FUNCTION_AGREEMENT_HTML = frame(`
-  <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Function Space Hire Agreement</p>
-  <h2 style="font-size:20px;color:#111;margin:0 0 18px">Hi {{name}} — your function quote is ready to review &amp; sign</h2>
-  <p style="font-size:14px;color:#555;margin:0 0 20px">Please review your event details, add-ons, pricing and our terms, then sign digitally to secure your date.</p>
+  ${kicker('Function Hire Agreement')}
+  ${h1('Your quote is ready to sign, {{name}}.')}
+  ${p('Please review your event details, add-ons, pricing and our terms, then sign digitally to secure your date.')}
   ${SUMMARY}
-  <div style="text-align:center;margin:28px 0">
-    <a href="{{signLink}}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 36px;font-size:14px;font-weight:700;border-radius:6px">Review &amp; Sign Agreement</a>
-  </div>
-  <p style="font-size:12px;color:#999;margin:0">If the button doesn't work, copy this link:<br><a href="{{signLink}}" style="color:#888;word-break:break-all">{{signLink}}</a></p>`)
+  ${btn('Review &amp; sign agreement', '{{signLink}}')}
+  ${small(`If the button doesn't work, copy this link:<br><a href="{{signLink}}" style="color:${OLIVE};word-break:break-all">{{signLink}}</a>`)}`)
 
 export const DEFAULT_FUNCTION_CONFIRMED_SUBJECT = 'Confirmed — your function at Hexa Space ({{eventDate}})'
 export const DEFAULT_FUNCTION_CONFIRMED_HTML = frame(`
-  <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Booking Confirmed</p>
-  <h2 style="font-size:20px;color:#111;margin:0 0 18px">You're booked in, {{name}}! 🎉</h2>
-  <p style="font-size:14px;color:#555;margin:0 0 20px">Your function at Hexa Space is confirmed. We've reserved your time (plus a 30-minute setup buffer each side). Your deposit and security invoices are on their way; the balance is due 14 days before your event.</p>
+  ${kicker('Booking Confirmed')}
+  ${h1("You're booked in, {{name}}. 🎉")}
+  ${p("Your function at Hexa Space is confirmed. We've reserved your time (plus a 30-minute setup buffer each side). Your deposit and security invoices are on their way; the balance is due 14 days before your event.")}
   ${SUMMARY}
-  <p style="font-size:13px;color:#555;margin:0">Questions? Just reply to this email — we can't wait to host you.</p>`)
+  ${small("Questions? Just reply to this email — we can't wait to host you.")}`)

@@ -69,6 +69,82 @@ export function resolveEmailTemplate(type, vars, settings) {
   return { subject: replace(sub), intro: replace(intro) }
 }
 
+// ── Hexa Space email brand kit ───────────────────────────────────────────────
+// Brand fonts served from the RND (/public/fonts), with web-safe fallbacks for
+// clients that ignore @font-face (Gmail, Outlook). Palette: olive #7F8B2F,
+// greige #EFEDF2, near-black ink — per the Hexa brand guidelines.
+const FONT_HOST = 'https://admin.hexaspace.com.au/fonts'
+const BRAND_FONTS = `
+    @font-face{font-family:'HexaBig';src:url('${FONT_HOST}/BigDailyShort-ExtraLight.otf') format('opentype');font-weight:400;font-display:swap}
+    @font-face{font-family:'HexaGT';src:url('${FONT_HOST}/GT-America-Standard-Thin.otf') format('opentype');font-weight:400;font-display:swap}
+    @font-face{font-family:'HexaRework';src:url('${FONT_HOST}/ReworkMicro-Semibold.otf') format('opentype');font-weight:600;font-display:swap}`
+const SERIF = "'HexaBig', Georgia, 'Times New Roman', serif"
+const SANS = "'HexaGT', 'Helvetica Neue', Arial, sans-serif"
+const CAPS = "'HexaRework', 'Helvetica Neue', Arial, sans-serif"
+const OLIVE = '#7F8B2F', GREIGE = '#EFEDF2', INK = '#1a1a1a', MUTE = '#6b6b6b', HAIR = '#e3e1e6'
+
+// Full branded HTML wrapper. `company`/`website` default to {{placeholders}} so
+// editable templates keep working; pass real values from the *EmailHtml builders.
+export function brandShell(inner, { company = '{{company}}', website = '{{website}}' } = {}) {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${BRAND_FONTS}</style></head>
+<body style="margin:0;padding:0;background:${GREIGE};font-family:${SANS};color:${INK}">
+  <div style="max-width:600px;margin:0 auto;padding:30px 16px">
+    <div style="text-align:center;padding:6px 0 22px">
+      <span style="font-family:${CAPS};font-size:15px;letter-spacing:.34em;color:${INK};text-transform:uppercase">HEXA&nbsp;SPACE</span>
+      <span style="font-family:${SANS};font-size:14px;color:${OLIVE};letter-spacing:.12em">&nbsp;&nbsp;六合空间</span>
+    </div>
+    <div style="background:#ffffff;border:1px solid ${HAIR};border-radius:12px;overflow:hidden">
+      <div style="height:3px;background:${OLIVE}"></div>
+      <div style="padding:38px 40px">
+${inner}
+      </div>
+    </div>
+    <div style="text-align:center;padding:22px 8px 6px">
+      <div style="font-family:${CAPS};font-size:10px;letter-spacing:.3em;color:${OLIVE};text-transform:uppercase">HEXA SPACE &nbsp;·&nbsp; 六合空间</div>
+      <div style="font-family:${SANS};font-size:11px;color:#9a9aa0;margin-top:7px">${company} &middot; <a href="https://${website}" style="color:#9a9aa0;text-decoration:none">${website}</a></div>
+    </div>
+  </div>
+</body>
+</html>`
+}
+export const bKicker = (t) => `      <div style="font-family:${CAPS};font-size:11px;letter-spacing:.28em;color:${OLIVE};text-transform:uppercase;margin:0 0 14px">${t}</div>`
+export const bH1 = (t) => `      <h1 style="font-family:${SERIF};font-weight:400;font-size:30px;line-height:1.12;margin:0 0 18px;color:${INK}">${t}</h1>`
+export const bP = (t) => `      <p style="font-family:${SANS};font-size:15px;line-height:1.65;color:#3a3a3a;margin:0 0 16px">${t}</p>`
+export const bSmall = (t) => `      <p style="font-family:${SANS};font-size:13px;line-height:1.6;color:${MUTE};margin:0 0 16px">${t}</p>`
+export const bBtn = (label, href) => `      <div style="margin:26px 0;text-align:center"><a href="${href}" style="background:${OLIVE};color:#ffffff;padding:13px 34px;border-radius:6px;text-decoration:none;font-family:${CAPS};font-size:12px;letter-spacing:.14em;text-transform:uppercase;display:inline-block">${label}</a></div>`
+// Shared brand tokens for other modules (onboarding, function emails).
+export const BRAND = { SERIF, SANS, CAPS, OLIVE, GREIGE, INK, MUTE, HAIR }
+
+// Wrap a plain-text message (from the ad-hoc Email tab) in the branded shell.
+export function messageEmailHtml({ body, company, website }) {
+  const safe = String(body || '').replace(/</g, '&lt;').replace(/\n/g, '<br>')
+  return brandShell(bP(safe), { company: company || 'Hexa Space', website: website || 'hexaspace.com.au' })
+}
+
+// Signature block for the proposal cover email, built from Settings → Company/Emails.
+export function buildSignature(settings) {
+  const c = settings?.company || {}, e = settings?.emails || {}
+  const name = e.signName || c.salesContact || c.name || 'The Hexa Space Team'
+  const title = c.salesTitle || ''
+  const phone = c.phone || ''
+  const email = e.replyTo || c.email || e.fromEmail || ''
+  const website = c.website || 'hexaspace.com.au'
+  const address = c.address || ''
+  const line = (label, val, href) => val
+    ? `<div style="margin-top:4px"><span style="color:${OLIVE};font-family:${CAPS};font-size:10px;letter-spacing:.16em">${label}</span>&nbsp;&nbsp;${href ? `<a href="${href}" style="color:#3a3a3a;text-decoration:none">${val}</a>` : val}</div>`
+    : ''
+  return `<div style="margin:28px 0 0;border-top:1px solid ${HAIR};padding-top:22px">
+      <div style="font-family:${SERIF};font-size:19px;color:${INK}">${name}</div>
+      ${title ? `<div style="font-family:${CAPS};font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:${OLIVE};margin-top:5px">${title}</div>` : ''}
+      <div style="font-family:${SANS};font-size:13px;color:#3a3a3a;margin-top:12px">
+        ${line('CALL', phone)}${line('EMAIL', email, 'mailto:' + email)}${line('WEB', website, 'https://' + website)}${line('VISIT', address)}
+      </div>
+      <p style="font-family:${SANS};font-size:11px;line-height:1.6;color:#9a9aa0;margin:20px 0 0">${c.name || 'Hexa Space'} presents a considered approach to work — members-only workspaces blending architecturally-designed amenities and bespoke private offices with genuine community and first-class service.</p>
+    </div>`
+}
+
 // ── Email templates ────────────────────────────────────────────────────────────
 
 export function invoiceEmailHtml({ invoice, tenant, settings }) {
@@ -87,50 +163,23 @@ export function invoiceEmailHtml({ invoice, tenant, settings }) {
   const gst = invoice.vatEnabled !== false ? Math.round(total * 0.1 * 100) / 100 : 0
   const grandTotal = total + gst
 
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px">
-      <span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">${name.toUpperCase()}</span>
-    </div>
-    <div style="padding:32px">
-      <p style="margin:0 0 8px;color:#555;font-size:14px">Hi ${tenant?.contactName ?? tenant?.businessName ?? 'there'},</p>
-      <p style="margin:0 0 24px;font-size:14px">${settings?.emailTemplates?.invoice?.intro?.replace(/\{\{number\}\}/g, invoice.number ?? '').replace(/\{\{dueDate\}\}/g, invoice.dueDate ?? '') ?? 'Please find your invoice details below.'}</p>
-
-      <table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:14px">
-        <tr style="background:#f5f5f5">
-          <td style="padding:10px 14px;font-weight:bold">Invoice Number</td>
-          <td style="padding:10px 14px">${invoice.number}</td>
-        </tr>
-        <tr>
-          <td style="padding:10px 14px;font-weight:bold">Period</td>
-          <td style="padding:10px 14px">${invoice.periodStart ?? ''} – ${invoice.periodEnd ?? ''}</td>
-        </tr>
-        <tr style="background:#f5f5f5">
-          <td style="padding:10px 14px;font-weight:bold">Due Date</td>
-          <td style="padding:10px 14px">${invoice.dueDate ?? '—'}</td>
-        </tr>
-        <tr>
-          <td style="padding:10px 14px;font-weight:bold">Amount Due</td>
-          <td style="padding:10px 14px;font-size:18px;font-weight:bold">$${grandTotal.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD</td>
-        </tr>
+  const intro = settings?.emailTemplates?.invoice?.intro?.replace(/\{\{number\}\}/g, invoice.number ?? '').replace(/\{\{dueDate\}\}/g, invoice.dueDate ?? '') ?? 'Please find your invoice details below.'
+  const cell = `padding:11px 15px;font-family:${SANS};font-size:14px`
+  const inner = `${bKicker('Invoice')}${bH1('Your invoice from ' + name + '.')}` +
+    bP(`Hi ${tenant?.contactName ?? tenant?.businessName ?? 'there'},`) +
+    bP(intro) +
+    `      <table style="width:100%;border-collapse:collapse;margin:6px 0 22px">
+        <tr style="background:${GREIGE}"><td style="${cell};font-weight:600;color:${INK}">Invoice Number</td><td style="${cell}">${invoice.number}</td></tr>
+        <tr><td style="${cell};font-weight:600;color:${INK}">Period</td><td style="${cell}">${invoice.periodStart ?? ''} – ${invoice.periodEnd ?? ''}</td></tr>
+        <tr style="background:${GREIGE}"><td style="${cell};font-weight:600;color:${INK}">Due Date</td><td style="${cell}">${invoice.dueDate ?? '—'}</td></tr>
+        <tr><td style="${cell};font-weight:600;color:${INK}">Amount Due</td><td style="${cell};font-family:${SERIF};font-size:22px;color:${OLIVE}">$${grandTotal.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD</td></tr>
       </table>
-
-      <div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:4px;padding:16px;margin-bottom:24px;font-size:13px">
-        <p style="margin:0 0 4px;font-weight:bold">Payment Details</p>
-        <p style="margin:0;color:#555">Account Name: ${name}<br>BSB: ${bsb}<br>ACC: ${acc}</p>
+      <div style="background:${GREIGE};border-radius:8px;padding:16px 18px;margin:0 0 8px">
+        <div style="font-family:${CAPS};font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:${OLIVE};margin-bottom:8px">Payment details</div>
+        <div style="font-family:${SANS};font-size:13px;color:#3a3a3a;line-height:1.7">Account Name: ${name}<br>BSB: ${bsb}<br>ACC: ${acc}</div>
       </div>
-
-      <p style="font-size:12px;color:#888;margin:0">
-        ${name} &middot; ${address} &middot; <a href="https://${website}" style="color:#888">${website}</a>
-      </p>
-    </div>
-  </div>
-</body>
-</html>`
+      ${bSmall(`${name} · ${address}`)}`
+  return brandShell(inner, { company: name, website })
 }
 
 export function eSignEmailHtml({ lease, tenant, settings }) {
@@ -141,63 +190,30 @@ export function eSignEmailHtml({ lease, tenant, settings }) {
   const memberLink = lease.eSignMemberLink ?? `https://esign.hexaspace.com.au/member/${lease.id}`
   const contractNum = lease.contractNumber ?? lease.id
 
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px">
-      <span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">${name.toUpperCase()}</span>
-    </div>
-    <div style="padding:32px">
-      <p style="margin:0 0 16px;font-size:14px">Hi ${tenant?.contactName ?? tenant?.businessName ?? 'there'},</p>
-      <p style="margin:0 0 16px;font-size:14px">
-        <strong>${signerName}</strong> has sent you a licence agreement to review and sign.
-      </p>
-      <p style="margin:0 0 8px;font-size:13px;color:#555">Contract: ${contractNum}</p>
-      <div style="margin:24px 0;text-align:center">
-        <a href="${memberLink}"
-           style="background:#000;color:#fff;padding:12px 32px;border-radius:4px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block">
-          Review &amp; Sign Document
-        </a>
-      </div>
-      <p style="font-size:12px;color:#888;margin:0">
-        If the button doesn't work, copy this link: <a href="${memberLink}" style="color:#888">${memberLink}</a>
-      </p>
-    </div>
-  </div>
-</body>
-</html>`
+  const website = company.website || 'hexaspace.com.au'
+  const inner = `${bKicker('Agreement')}${bH1('Your agreement is ready to sign.')}` +
+    bP(`Hi ${tenant?.contactName ?? tenant?.businessName ?? 'there'},`) +
+    bP(`<strong style="color:${INK}">${signerName}</strong> has sent you a licence agreement to review and sign electronically.`) +
+    bSmall(`Contract: <strong style="color:${INK}">${contractNum}</strong>`) +
+    bBtn('Review &amp; sign document', memberLink) +
+    bSmall(`If the button doesn't work, copy this link: <a href="${memberLink}" style="color:${OLIVE}">${memberLink}</a>`)
+  return brandShell(inner, { company: name, website })
 }
 
 // ── Editable e-signature request TEMPLATE (Templates → Emails) ──────────────────
 // Full HTML so the design is preserved; {{placeholders}} filled at send time.
 // Supported: {{company}} {{tenantName}} {{contract}} {{signLink}} {{signerName}} {{website}}.
 export const DEFAULT_ESIGN_EMAIL_SUBJECT = 'Please sign: {{contract}} — {{company}}'
-export const DEFAULT_ESIGN_EMAIL_HTML = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px">
-      <span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">{{company}}</span>
-    </div>
-    <div style="padding:32px">
-      <h2 style="font-size:20px;margin:0 0 16px">Your agreement is ready to sign</h2>
-      <p style="margin:0 0 16px;font-size:14px">Hi {{tenantName}},</p>
-      <p style="margin:0 0 16px;font-size:14px"><strong>{{signerName}}</strong> has sent you a licence agreement to review and sign electronically.</p>
-      <p style="margin:0 0 8px;font-size:13px;color:#555">Contract: <strong>{{contract}}</strong></p>
-      <div style="margin:24px 0;text-align:center">
-        <a href="{{signLink}}" style="background:#000;color:#fff;padding:12px 32px;border-radius:4px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block">Review &amp; sign document</a>
-      </div>
-      <p style="margin:0 0 16px;font-size:13px;color:#555">The link is unique to you. Please review the terms carefully before signing — reply to this email if you have any questions.</p>
-      <p style="font-size:12px;color:#888;margin:0">If the button doesn't work, copy this link: <a href="{{signLink}}" style="color:#888">{{signLink}}</a></p>
-      <p style="font-size:12px;color:#888;margin:16px 0 0">{{company}} &middot; <a href="https://{{website}}" style="color:#888">{{website}}</a></p>
-    </div>
-  </div>
-</body>
-</html>`
+export const DEFAULT_ESIGN_EMAIL_HTML = brandShell(
+  bKicker('Agreement') +
+  bH1('Your agreement is ready to sign.') +
+  bP('Hi {{tenantName}},') +
+  bP(`<strong style="color:${INK}">{{signerName}}</strong> has sent you a licence agreement to review and sign electronically.`) +
+  bSmall(`Contract: <strong style="color:${INK}">{{contract}}</strong>`) +
+  bBtn('Review &amp; sign document', '{{signLink}}') +
+  bSmall('The link is unique to you. Please review the terms carefully before signing — reply to this email if you have any questions.') +
+  bSmall(`If the button doesn't work, copy this link: <a href="{{signLink}}" style="color:${OLIVE}">{{signLink}}</a>`)
+)
 
 function fillEmailVars(str, vars) {
   return String(str || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vars ? (vars[k] ?? '') : m))
@@ -223,24 +239,13 @@ export function renderEsignTemplate({ template, lease, tenant, settings, signLin
 // Sent (with the signed PDF attached) to both the client and us once fully signed.
 // Supported: {{company}} {{tenantName}} {{contract}} {{signedDate}} {{website}}.
 export const DEFAULT_SIGNED_EMAIL_SUBJECT = 'Signed copy: {{contract}} — {{company}}'
-export const DEFAULT_SIGNED_EMAIL_HTML = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px">
-      <span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">{{company}}</span>
-    </div>
-    <div style="padding:32px">
-      <h2 style="font-size:20px;margin:0 0 16px">Your agreement is fully executed ✅</h2>
-      <p style="margin:0 0 16px;font-size:14px">Hi {{tenantName}},</p>
-      <p style="margin:0 0 16px;font-size:14px">Licence agreement <strong>{{contract}}</strong> has been signed by all parties as of {{signedDate}}. A PDF copy of the fully signed contract is attached to this email for your records.</p>
-      <p style="margin:0 0 16px;font-size:13px;color:#555">Please keep this copy for your records — you can also view it any time from your member portal.</p>
-      <p style="font-size:12px;color:#888;margin:16px 0 0">{{company}} &middot; <a href="https://{{website}}" style="color:#888">{{website}}</a></p>
-    </div>
-  </div>
-</body>
-</html>`
+export const DEFAULT_SIGNED_EMAIL_HTML = brandShell(
+  bKicker('Fully executed') +
+  bH1('Your agreement is signed.') +
+  bP('Hi {{tenantName}},') +
+  bP(`Licence agreement <strong style="color:${INK}">{{contract}}</strong> has been signed by all parties as of {{signedDate}}. A PDF copy of the fully signed contract is attached to this email for your records.`) +
+  bSmall('Please keep this copy safe — you can also view it any time from your member portal. Welcome aboard.')
+)
 
 export function renderSignedTemplate({ template, lease, tenant, settings, signedDate }) {
   const name = settings?.company?.name || 'Hexa Space'
@@ -263,53 +268,47 @@ export function renderSignedTemplate({ template, lease, tenant, settings, signed
 // {{tourLink}} = book-a-tour URL; {{officeOptions}} = available offices (private
 // office only, filled later); {{website}}. Brochure content is designed into the
 // template body itself.
-const _emailShell = (inner) => `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px"><span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">{{company}}</span></div>
-    <div style="padding:32px">
-${inner}
-      <p style="font-size:12px;color:#888;margin:16px 0 0">{{company}} &middot; <a href="https://{{website}}" style="color:#888">{{website}}</a></p>
-    </div>
-  </div>
-</body>
-</html>`
-const _tourBtn = `      <div style="margin:24px 0;text-align:center"><a href="{{tourLink}}" style="background:#000;color:#fff;padding:12px 32px;border-radius:4px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block">Book a tour</a></div>`
+const _emailShell = (inner) => brandShell(inner)
+const _tourBtn = bBtn('Book a tour', '{{tourLink}}')
 
 export const DEFAULT_LEAD_DESK_SUBJECT = "Your {{membershipType}} at {{company}} — what's included"
-export const DEFAULT_LEAD_DESK_HTML = _emailShell(`      <h2 style="font-size:20px;margin:0 0 16px">Thanks for your interest in a {{membershipType}} 👋</h2>
-      <p style="margin:0 0 16px;font-size:14px">Hi {{name}},</p>
-      <p style="margin:0 0 16px;font-size:14px">Thanks for enquiring about a {{membershipType}} at {{company}}. Here's a rundown of what's included — the community, amenities, meeting-room credits and flexible month-to-month terms.</p>
-      <!-- BROCHURE: design your "what's included" section here -->
-      <p style="margin:0 0 16px;font-size:14px">The best way to get a feel for it is to come see the space. Book a quick tour and we'll show you around.</p>
-${_tourBtn}
-      <p style="margin:0;font-size:13px;color:#555">Prefer to chat first? Just reply to this email.</p>`)
+export const DEFAULT_LEAD_DESK_HTML = _emailShell(
+  bKicker('Welcome') +
+  bH1('Thanks for your interest.') +
+  bP('Hi {{name}},') +
+  bP("Thanks for enquiring about a {{membershipType}} at {{company}}. Here's what's included — a considered community, architecturally-designed amenities, meeting-room credits and flexible month-to-month terms.") +
+  bP('The best way to get a feel for it is to see the space in person. Book a quick tour and we\'ll show you around.') +
+  _tourBtn +
+  bSmall('Prefer to chat first? Just reply to this email.'))
 
 export const DEFAULT_LEAD_OFFICE_SUBJECT = 'Private offices at {{company}} — availability & tour'
-export const DEFAULT_LEAD_OFFICE_HTML = _emailShell(`      <h2 style="font-size:20px;margin:0 0 16px">Private offices at {{company}} 🏢</h2>
-      <p style="margin:0 0 16px;font-size:14px">Hi {{name}},</p>
-      <p style="margin:0 0 16px;font-size:14px">Thanks for enquiring about a private office. Based on your team size, here are the options currently available — with the floorplan and a closer look at each suite.</p>
-      {{officeOptions}}
-      <!-- BROCHURE: availability, floorplan + suite zoom + terms (design later) -->
-      <p style="margin:0 0 16px;font-size:14px">Come see them in person — book a tour and we'll walk you through the available offices.</p>
-${_tourBtn}
-      <p style="margin:0;font-size:13px;color:#555">Happy to answer any questions — just reply to this email.</p>`)
+export const DEFAULT_LEAD_OFFICE_HTML = _emailShell(
+  bKicker('Private Offices') +
+  bH1('Room to grow at {{company}}.') +
+  bP('Hi {{name}},') +
+  bP('Thanks for enquiring about a private office. Based on your team size, here are the options currently available — with a closer look at each suite.') +
+  '      {{officeOptions}}' +
+  bP('Come see them in person — book a tour and we\'ll walk you through the available offices.') +
+  _tourBtn +
+  bSmall('Happy to answer any questions — just reply to this email.'))
 
 export const DEFAULT_LEAD_FOLLOWUP_SUBJECT = "Still keen to see {{company}}? Let's book your tour"
-export const DEFAULT_LEAD_FOLLOWUP_HTML = _emailShell(`      <h2 style="font-size:20px;margin:0 0 16px">Still keen to see {{company}}?</h2>
-      <p style="margin:0 0 16px;font-size:14px">Hi {{name}},</p>
-      <p style="margin:0 0 16px;font-size:14px">Just following up on your enquiry about a {{membershipType}}. The easiest next step is a quick tour so you can see if it's the right fit.</p>
-${_tourBtn}
-      <p style="margin:0;font-size:13px;color:#555">If now isn't the right time, no problem — reply and let us know.</p>`)
+export const DEFAULT_LEAD_FOLLOWUP_HTML = _emailShell(
+  bKicker('Following up') +
+  bH1('Still keen to see {{company}}?') +
+  bP('Hi {{name}},') +
+  bP("Just following up on your enquiry about a {{membershipType}}. The easiest next step is a quick tour so you can see if it's the right fit.") +
+  _tourBtn +
+  bSmall("If now isn't the right time, no problem — reply and let us know."))
 
 export const DEFAULT_LEAD_FINAL_SUBJECT = 'One last check-in from {{company}}'
-export const DEFAULT_LEAD_FINAL_HTML = _emailShell(`      <h2 style="font-size:20px;margin:0 0 16px">One last check-in</h2>
-      <p style="margin:0 0 16px;font-size:14px">Hi {{name}},</p>
-      <p style="margin:0 0 16px;font-size:14px">We haven't heard back, so we'll pause things here for now. If a {{membershipType}} at {{company}} is still on your radar, we'd love to show you around — the door's always open.</p>
-${_tourBtn}
-      <p style="margin:0;font-size:13px;color:#555">Reach out any time — we'll be here.</p>`)
+export const DEFAULT_LEAD_FINAL_HTML = _emailShell(
+  bKicker('Keeping in touch') +
+  bH1('One last check-in.') +
+  bP('Hi {{name}},') +
+  bP("We haven't heard back, so we'll pause things here for now. If a {{membershipType}} at {{company}} is still on your radar, we'd love to show you around — the door's always open.") +
+  _tourBtn +
+  bSmall("Reach out any time — we'll be here."))
 
 const LEAD_DEFAULTS = {
   lead_desk: { subject: DEFAULT_LEAD_DESK_SUBJECT, html: DEFAULT_LEAD_DESK_HTML },
@@ -322,49 +321,39 @@ const LEAD_DEFAULTS = {
 // Sent to the enquirer when they book a tour on the website. To be rebranded to
 // match www.hexaspace.com.au later. {{company}} {{name}} {{tourDate}} {{tourTime}} {{website}}.
 export const DEFAULT_TOUR_CONFIRMATION_SUBJECT = 'Your tour request — {{company}}'
-export const DEFAULT_TOUR_CONFIRMATION_HTML = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px"><span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">{{company}}</span></div>
-    <div style="padding:32px">
-      <h2 style="font-size:20px;margin:0 0 16px">Thanks for booking a tour 🙌</h2>
-      <p style="margin:0 0 16px;font-size:14px">Hi {{name}},</p>
-      <p style="margin:0 0 16px;font-size:14px">We've received your tour request{{tourWhen}} and will be in touch shortly to confirm a time.</p>
-      <p style="margin:0 0 16px;font-size:14px">Looking forward to showing you around.</p>
-      <p style="font-size:12px;color:#888;margin:16px 0 0">{{company}} &middot; <a href="https://{{website}}" style="color:#888">{{website}}</a></p>
-    </div>
-  </div>
-</body>
-</html>`
+export const DEFAULT_TOUR_CONFIRMATION_HTML = brandShell(
+  bKicker('Tour request received') +
+  bH1('Thanks for booking in.') +
+  bP('Hi {{name}},') +
+  bP("We've received your tour request{{tourWhen}} and will be in touch shortly to confirm a time.") +
+  bP('Looking forward to showing you around Hexa Space.'))
 
 // ── Editable PROPOSAL email TEMPLATE (Templates → Emails) ───────────────────────
 // Cover email for the proposal PDF (attached). {{company}} {{name}} {{website}}.
-export const DEFAULT_PROPOSAL_EMAIL_SUBJECT = 'Your proposal from {{company}}'
-export const DEFAULT_PROPOSAL_EMAIL_HTML = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px"><span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">{{company}}</span></div>
-    <div style="padding:32px">
-      <h2 style="font-size:20px;margin:0 0 16px">Your proposal is ready 📄</h2>
-      <p style="margin:0 0 16px;font-size:14px">Hi {{name}},</p>
-      <p style="margin:0 0 16px;font-size:14px">Thanks for coming in to see us. Please find your proposal attached — it covers the option(s) we discussed along with pricing and terms.</p>
-      <p style="margin:0 0 16px;font-size:14px">Happy with it? Accept online and we'll set everything up for you — you'll get your licence agreement to e-sign straight after.</p>
-      <div style="margin:24px 0;text-align:center"><a href="{{acceptLink}}" style="background:#000;color:#fff;padding:12px 32px;border-radius:4px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block">Review &amp; accept proposal</a></div>
-      <p style="margin:0 0 16px;font-size:13px;color:#555">Prefer to chat first? Just reply to this email.</p>
-      <p style="font-size:12px;color:#888;margin:16px 0 0">{{company}} &middot; <a href="https://{{website}}" style="color:#888">{{website}}</a></p>
-    </div>
-  </div>
-</body>
-</html>`
+export const DEFAULT_PROPOSAL_EMAIL_SUBJECT = 'Your office suites & pricing — {{company}}'
+export const DEFAULT_PROPOSAL_EMAIL_HTML = brandShell(
+  bKicker('Your Proposal') +
+  bH1('Great to have you in.') +
+  bP('Hi {{name}},') +
+  bP('Hope you\'re well 😊') +
+  bP("Thanks so much for coming in to tour with us at {{company}} — we hope you enjoyed seeing the space and getting a feel for what we're all about.") +
+  bP('As discussed, please find attached our available office suites along with pricing details.') +
+  bP("If you're happy to go ahead, you can review and accept online using the button below — your licence agreement follows straight after to e-sign. Any questions at all, feel free to give me a call.") +
+  bBtn('Review &amp; accept proposal', '{{acceptLink}}') +
+  bP('Look forward to hearing from you.') +
+  bP('Thanks so much,') +
+  '      {{signature}}')
 
 export function renderProposalTemplate({ template, lead, settings, acceptLink }) {
   const name = settings?.company?.name || 'Hexa Space'
   const website = settings?.company?.website || 'hexaspace.com.au'
-  const vars = { company: name, name: lead?.name || lead?.contactName || 'there', website, acceptLink: acceptLink || '#' }
+  const vars = {
+    company: name,
+    name: lead?.name || lead?.contactName || 'there',
+    website,
+    acceptLink: acceptLink || '#',
+    signature: buildSignature(settings),
+  }
   return {
     subject: fillEmailVars(template?.subject || DEFAULT_PROPOSAL_EMAIL_SUBJECT, vars),
     html: fillEmailVars(template?.content || DEFAULT_PROPOSAL_EMAIL_HTML, vars),

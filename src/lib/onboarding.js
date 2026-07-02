@@ -168,6 +168,42 @@ export function resolveOnboardingCopy({ lease, tenant, space, settings }) {
   return { subject, intro }
 }
 
+// ── Hexa Space email branding (local, import-free) ──────────────────────────────
+const _OLIVE = '#7F8B2F', _GREIGE = '#EFEDF2', _INK = '#1a1a1a', _MUTE = '#6b6b6b', _HAIR = '#e3e1e6'
+const _SERIF = "'HexaBig', Georgia, 'Times New Roman', serif"
+const _SANS = "'HexaGT', 'Helvetica Neue', Arial, sans-serif"
+const _CAPS = "'HexaRework', 'Helvetica Neue', Arial, sans-serif"
+const _FONTS = `
+    @font-face{font-family:'HexaBig';src:url('https://admin.hexaspace.com.au/fonts/BigDailyShort-ExtraLight.otf') format('opentype');font-weight:400;font-display:swap}
+    @font-face{font-family:'HexaGT';src:url('https://admin.hexaspace.com.au/fonts/GT-America-Standard-Thin.otf') format('opentype');font-weight:400;font-display:swap}
+    @font-face{font-family:'HexaRework';src:url('https://admin.hexaspace.com.au/fonts/ReworkMicro-Semibold.otf') format('opentype');font-weight:600;font-display:swap}`
+function oShell(inner, { company = '{{company}}', website = '{{website}}' } = {}) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${_FONTS}</style></head>
+<body style="margin:0;padding:0;background:${_GREIGE};font-family:${_SANS};color:${_INK}">
+  <div style="max-width:600px;margin:0 auto;padding:30px 16px">
+    <div style="text-align:center;padding:6px 0 22px">
+      <span style="font-family:${_CAPS};font-size:15px;letter-spacing:.34em;color:${_INK};text-transform:uppercase">HEXA&nbsp;SPACE</span>
+      <span style="font-family:${_SANS};font-size:14px;color:${_OLIVE};letter-spacing:.12em">&nbsp;&nbsp;六合空间</span>
+    </div>
+    <div style="background:#ffffff;border:1px solid ${_HAIR};border-radius:12px;overflow:hidden">
+      <div style="height:3px;background:${_OLIVE}"></div>
+      <div style="padding:38px 40px">${inner}</div>
+    </div>
+    <div style="text-align:center;padding:22px 8px 6px">
+      <div style="font-family:${_CAPS};font-size:10px;letter-spacing:.3em;color:${_OLIVE};text-transform:uppercase">HEXA SPACE &nbsp;·&nbsp; 六合空间</div>
+      <div style="font-family:${_SANS};font-size:11px;color:#9a9aa0;margin-top:7px">${company} &middot; <a href="https://${website}" style="color:#9a9aa0;text-decoration:none">${website}</a></div>
+    </div>
+  </div>
+</body></html>`
+}
+const _k = (t) => `<div style="font-family:${_CAPS};font-size:11px;letter-spacing:.28em;color:${_OLIVE};text-transform:uppercase;margin:0 0 12px">${t}</div>`
+const _h = (t) => `<h1 style="font-family:${_SERIF};font-weight:400;font-size:30px;line-height:1.12;margin:0 0 18px;color:${_INK}">${t}</h1>`
+const _p = (t) => `<p style="font-family:${_SANS};font-size:15px;line-height:1.65;color:#3a3a3a;margin:0 0 16px">${t}</p>`
+const _small = (t) => `<p style="font-family:${_SANS};font-size:12px;line-height:1.6;color:${_MUTE};margin:8px 0 0">${t}</p>`
+const _btn = (label, href) => `<a href="${href}" style="display:inline-block;background:${_OLIVE};color:#fff;padding:11px 26px;border-radius:6px;text-decoration:none;font-family:${_CAPS};font-size:11px;letter-spacing:.14em;text-transform:uppercase">${label}</a>`
+const _box = (title, body) => `<div style="background:${_GREIGE};border-radius:8px;padding:18px 20px;margin:0 0 20px"><div style="font-family:${_CAPS};font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:${_OLIVE};margin-bottom:8px">${title}</div>${body}</div>`
+const _startList = `<div style="margin:4px 0 18px"><div style="font-family:${_CAPS};font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:${_OLIVE};margin-bottom:10px">Getting started</div><ul style="margin:0;padding-left:18px;font-family:${_SANS};color:#3a3a3a;font-size:13px;line-height:1.85"><li>Access is 24/7 via your mobile key or access card.</li><li>Add your team members from the portal — each gets their own access.</li><li>Loading, parking and waste follow the House Rules attached to your agreement.</li><li>Report any maintenance or questions through the portal messages.</li></ul></div>`
+
 export function onboardingEmailHtml({ lease, tenant, space, settings, saltoLink }) {
   const company = settings?.company ?? {}
   const name = company.name || 'Hexa Space'
@@ -180,52 +216,13 @@ export function onboardingEmailHtml({ lease, tenant, space, settings, saltoLink 
   const { intro } = resolveOnboardingCopy({ lease, tenant, space, settings })
 
   const saltoBlock = saltoLink
-    ? `<div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:4px;padding:16px;margin:0 0 24px">
-         <p style="margin:0 0 8px;font-weight:bold;font-size:14px">Door access</p>
-         <p style="margin:0 0 12px;color:#555;font-size:13px">Set up your mobile key for ${unit} with Salto. Access is valid from your commencement date.</p>
-         <a href="${saltoLink}" style="background:#000;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none;font-weight:bold;font-size:13px;display:inline-block">Activate door access</a>
-       </div>`
+    ? _box('Door access', `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">Set up your mobile key for ${unit} with Salto. Access is valid from your commencement date.</p>${_btn('Activate door access', saltoLink)}`)
     : ''
 
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px">
-      <span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">${name.toUpperCase()}</span>
-    </div>
-    <div style="padding:32px">
-      <h2 style="font-size:20px;margin:0 0 16px">Welcome to ${name} 🎉</h2>
-      <p style="margin:0 0 16px;font-size:14px">Hi ${greeting},</p>
-      <p style="margin:0 0 20px;font-size:14px">${intro}</p>
-
-      <div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:4px;padding:16px;margin:0 0 24px">
-        <p style="margin:0 0 8px;font-weight:bold;font-size:14px">Your client portal</p>
-        <p style="margin:0 0 12px;color:#555;font-size:13px">View invoices, manage your team, book meeting rooms and message our team. You'll receive a separate email to set your password.</p>
-        <a href="${PORTAL_URL}" style="background:#000;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none;font-weight:bold;font-size:13px;display:inline-block">Open the portal</a>
-      </div>
-
-      ${saltoBlock}
-
-      <div style="margin:0 0 24px">
-        <p style="margin:0 0 8px;font-weight:bold;font-size:14px">Getting started</p>
-        <ul style="margin:0;padding-left:18px;color:#555;font-size:13px;line-height:1.7">
-          <li>Access is 24/7 via your mobile key or access card.</li>
-          <li>Add your team members from the portal — each gets their own access.</li>
-          <li>Loading, parking and waste follow the House Rules attached to your agreement.</li>
-          <li>Report any maintenance or questions through the portal messages.</li>
-        </ul>
-      </div>
-
-      <p style="font-size:12px;color:#888;margin:0">
-        ${name} &middot; ${address || website} &middot; <a href="https://${website}" style="color:#888">${website}</a>
-      </p>
-    </div>
-  </div>
-</body>
-</html>`
+  const inner = _k('Welcome') + _h(`Welcome to ${name}.`) + _p(`Hi ${greeting},`) + _p(intro) +
+    _box('Your client portal', `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">View invoices, manage your team, book meeting rooms and message our team. You'll receive a separate email to set your password.</p>${_btn('Open the portal', PORTAL_URL)}`) +
+    saltoBlock + _startList + _small(`${name} · ${address || website}`)
+  return oShell(inner, { company: name, website })
 }
 
 // ── Editable onboarding email TEMPLATE (Templates → Emails) ─────────────────────
@@ -234,50 +231,19 @@ export function onboardingEmailHtml({ lease, tenant, space, settings, saltoLink 
 // at send time. Supported: {{company}} {{tenantName}} {{unit}} {{startDate}}
 // {{contract}} {{portalUrl}} {{website}} {{address}} {{saltoBlock}}.
 export const DEFAULT_ONBOARDING_EMAIL_SUBJECT = 'Welcome to {{company}} — your space is ready'
-export const DEFAULT_ONBOARDING_EMAIL_HTML = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px">
-      <span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">{{company}}</span>
-    </div>
-    <div style="padding:32px">
-      <h2 style="font-size:20px;margin:0 0 16px">Welcome to {{company}} 🎉</h2>
-      <p style="margin:0 0 16px;font-size:14px">Hi {{tenantName}},</p>
-      <p style="margin:0 0 20px;font-size:14px">Your agreement for {{unit}} is signed and settled — welcome aboard. Here's everything you need to get started from {{startDate}}.</p>
-
-      <div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:4px;padding:16px;margin:0 0 24px">
-        <p style="margin:0 0 8px;font-weight:bold;font-size:14px">Your member portal</p>
-        <p style="margin:0 0 12px;color:#555;font-size:13px">Log in to view invoices, manage your team, book meeting rooms and message our team. You'll receive a separate email to set your password.</p>
-        <a href="{{portalUrl}}" style="background:#000;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none;font-weight:bold;font-size:13px;display:inline-block">Log in to the portal</a>
-      </div>
-
-      {{saltoBlock}}
-
-      <div style="margin:0 0 24px">
-        <p style="margin:0 0 8px;font-weight:bold;font-size:14px">Getting started</p>
-        <ul style="margin:0;padding-left:18px;color:#555;font-size:13px;line-height:1.7">
-          <li>Access is 24/7 via your mobile key or access card.</li>
-          <li>Add your team members from the portal — each gets their own login.</li>
-          <li>Loading, parking and waste follow the House Rules attached to your agreement.</li>
-          <li>Report maintenance or questions through the portal messages.</li>
-        </ul>
-      </div>
-
-      <p style="font-size:12px;color:#888;margin:0">{{company}} &middot; {{address}} &middot; <a href="https://{{website}}" style="color:#888">{{website}}</a></p>
-    </div>
-  </div>
-</body>
-</html>`
+export const DEFAULT_ONBOARDING_EMAIL_HTML = oShell(
+  _k('Welcome') +
+  _h('Welcome to {{company}}.') +
+  _p('Hi {{tenantName}},') +
+  _p("Your agreement for {{unit}} is signed and settled — welcome aboard. Here's everything you need to get started from {{startDate}}.") +
+  _box('Your member portal', `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">Log in to view invoices, manage your team, book meeting rooms and message our team. You'll receive a separate email to set your password.</p>${_btn('Log in to the portal', '{{portalUrl}}')}`) +
+  '{{saltoBlock}}' +
+  _startList +
+  _small('{{address}}'))
 
 export function saltoBlockHtml(unit, saltoLink) {
   if (!saltoLink) return ''
-  return `<div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:4px;padding:16px;margin:0 0 24px">
-         <p style="margin:0 0 8px;font-weight:bold;font-size:14px">Door access</p>
-         <p style="margin:0 0 12px;color:#555;font-size:13px">Set up your mobile key for ${unit} with Salto. Access is valid from your commencement date.</p>
-         <a href="${saltoLink}" style="background:#000;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none;font-weight:bold;font-size:13px;display:inline-block">Activate door access</a>
-       </div>`
+  return _box('Door access', `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">Set up your mobile key for ${unit} with Salto. Access is valid from your commencement date.</p>${_btn('Activate door access', saltoLink)}`)
 }
 
 // Fill an editable email template (subject + full-HTML body) with live values.
@@ -321,28 +287,14 @@ export function bondRefundEmailHtml({ invoice, tenant, space, settings, amount }
   const { intro } = resolveBondRefundCopy({ invoice, tenant, space, settings, amount })
   const amountStr = `$${Number(amount ?? 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}`
 
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px">
-      <span style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:2px">${name.toUpperCase()}</span>
-    </div>
-    <div style="padding:32px">
-      <p style="margin:0 0 16px;font-size:14px">Hi ${greeting},</p>
-      <p style="margin:0 0 20px;font-size:14px">${intro}</p>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:14px">
-        <tr style="background:#f5f5f5"><td style="padding:10px 14px;font-weight:bold">Credit note</td><td style="padding:10px 14px">${invoice?.number ?? '—'}</td></tr>
-        <tr><td style="padding:10px 14px;font-weight:bold">Refund amount</td><td style="padding:10px 14px;font-size:18px;font-weight:bold">${amountStr} AUD</td></tr>
-      </table>
-      <p style="font-size:13px;color:#555;margin:0 0 20px">The refund will be processed to your nominated account. Please allow a few business days for it to appear.</p>
-      <p style="font-size:12px;color:#888;margin:0">${name} &middot; <a href="https://${website}" style="color:#888">${website}</a></p>
-    </div>
-  </div>
-</body>
-</html>`
+  const cell = `padding:11px 15px;font-family:${_SANS};font-size:14px`
+  const inner = _k('Bond refund') + _h('Your deposit is on its way.') + _p(`Hi ${greeting},`) + _p(intro) +
+    `<table style="width:100%;border-collapse:collapse;margin:6px 0 20px">
+        <tr style="background:${_GREIGE}"><td style="${cell};font-weight:600;color:${_INK}">Credit note</td><td style="${cell}">${invoice?.number ?? '—'}</td></tr>
+        <tr><td style="${cell};font-weight:600;color:${_INK}">Refund amount</td><td style="${cell};font-family:${_SERIF};font-size:22px;color:${_OLIVE}">${amountStr} AUD</td></tr>
+      </table>` +
+    _p('The refund will be processed to your nominated account. Please allow a few business days for it to appear.')
+  return oShell(inner, { company: name, website })
 }
 
 export { PORTAL_URL }

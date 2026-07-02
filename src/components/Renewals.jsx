@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { differenceInDays, parseISO, format, addYears, addMonths, isValid } from 'date-fns'
 import { FileText, RefreshCw, Mail, X } from 'lucide-react'
-import { sendEmail } from '../lib/sendEmail.js'
+import { sendEmail, brandShell, bKicker, bH1, bP, bSmall } from '../lib/sendEmail.js'
 import ContractForm from './ContractForm.jsx'
 
 export default function Renewals() {
@@ -70,18 +70,16 @@ export default function Renewals() {
         to: tenant.email,
         subject: `Renewal notice — ${contractNum} expires ${expiryDate}`,
         tenantId: tenant.id, emailType: 'renewal',
-        html: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
-<div style="max-width:560px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-  <div style="background:#000;padding:20px 32px"><span style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px">${companyName.toUpperCase()}</span></div>
-  <div style="padding:32px">
-    <h2 style="margin:0 0 12px;font-size:16px">Lease Renewal Notice</h2>
-    <p style="color:#555;font-size:14px;margin:0 0 16px">Hi ${tenant.contactName ?? tenant.businessName},</p>
-    <p style="color:#555;font-size:14px;margin:0 0 16px">Your licence agreement for <strong>${space?.unitNumber ?? 'your unit'}</strong> (${contractNum}) is due to expire on <strong>${expiryDate}</strong>.</p>
-    <p style="color:#555;font-size:14px;margin:0 0 16px">We would love to continue our arrangement with you. Please contact us to discuss renewal terms at your earliest convenience.</p>
-    <p style="color:#555;font-size:14px;margin:0 0 8px">Current monthly licence fee: <strong>$${Number(lease.monthlyRent).toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD + GST</strong></p>
-    <p style="font-size:12px;color:#888;margin-top:24px">If you do not intend to renew, please provide written notice as per your agreement terms.</p>
-  </div>
-</div></body></html>`,
+        html: brandShell(
+          bKicker('Renewal notice') +
+          bH1('Time to renew.') +
+          bP(`Hi ${tenant.contactName ?? tenant.businessName},`) +
+          bP(`Your licence agreement for <strong style="color:#1a1a1a">${space?.unitNumber ?? 'your unit'}</strong> (${contractNum}) is due to expire on <strong style="color:#1a1a1a">${expiryDate}</strong>.`) +
+          bP('We would love to continue our arrangement with you. Please get in touch to discuss renewal terms at your earliest convenience.') +
+          bP(`Current monthly licence fee: <strong style="color:#1a1a1a">$${Number(lease.monthlyRent).toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD + GST</strong>`) +
+          bSmall('If you do not intend to renew, please provide written notice as per your agreement terms.'),
+          { company: companyName, website: settings?.company?.website || 'hexaspace.com.au' },
+        ),
         settings,
       })
       alert(`Renewal email sent to ${tenant.email}`)

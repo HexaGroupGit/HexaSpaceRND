@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { ArrowLeft, Send, RefreshCw, Ban, FileMinus, FileDown, Plus, MessageSquare, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react'
-import { sendEmail, invoiceEmailHtml, resolveEmailTemplate } from '../lib/sendEmail.js'
+import { sendEmail, invoiceEmailHtml, resolveEmailTemplate, brandShell, bKicker, bH1, bP, bSmall } from '../lib/sendEmail.js'
 import { logAudit } from '../lib/audit.js'
 import { locationLabel, lineDescription } from '../lib/billing.js'
 import { jsPDF } from 'jspdf'
@@ -233,16 +233,14 @@ export default function InvoiceDetail({
         to: email,
         subject: `Payment reminder — ${invoice.number} overdue`,
         tenantId: invoice.tenantId, emailType: 'reminder',
-        html: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
-<div style="max-width:560px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-  <div style="background:#000;padding:20px 32px"><span style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px">${companyName.toUpperCase()}</span></div>
-  <div style="padding:32px">
-    <h2 style="margin:0 0 12px;font-size:16px;color:#c00">Payment Reminder</h2>
-    <p style="color:#555;font-size:14px;margin:0 0 16px">Hi ${tenant?.contactName ?? tenant?.businessName ?? ''},</p>
-    <p style="color:#555;font-size:14px;margin:0 0 20px">Invoice <strong>${invoice.number}</strong> for <strong>$${total.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD</strong> was due on <strong>${invoice.dueDate}</strong> and remains unpaid. Please arrange payment at your earliest convenience.</p>
-    <p style="font-size:12px;color:#888;margin-top:24px">If you have already made payment, please disregard this message.</p>
-  </div>
-</div></body></html>`,
+        html: brandShell(
+          bKicker('Payment reminder') +
+          bH1('A gentle reminder.') +
+          bP(`Hi ${tenant?.contactName ?? tenant?.businessName ?? ''},`) +
+          bP(`Invoice <strong style="color:#1a1a1a">${invoice.number}</strong> for <strong style="color:#1a1a1a">$${total.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD</strong> was due on <strong style="color:#1a1a1a">${invoice.dueDate}</strong> and remains unpaid. Please arrange payment at your earliest convenience.`) +
+          bSmall('If you have already made payment, please disregard this message.'),
+          { company: companyName, website: settings?.company?.website || 'hexaspace.com.au' },
+        ),
         settings,
       })
       alert('Reminder sent.')
@@ -290,17 +288,15 @@ export default function InvoiceDetail({
       await sendEmail({
         to: email,
         subject: `Payment receipt — ${invoice.number}`,
-        html: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
-<div style="max-width:560px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-  <div style="background:#000;padding:20px 32px"><span style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px">${companyName.toUpperCase()}</span></div>
-  <div style="padding:32px">
-    <h2 style="margin:0 0 12px;font-size:16px">Payment Received ✓</h2>
-    <p style="color:#555;font-size:14px;margin:0 0 16px">Hi ${tenant?.contactName ?? ''},</p>
-    <p style="color:#555;font-size:14px;margin:0 0 8px">Thank you — your payment for <strong>${invoice.number}</strong> has been received.</p>
-    <p style="color:#555;font-size:14px;margin:0 0 16px">Amount: <strong>$${Number(payment?.amount ?? total).toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD</strong></p>
-    <p style="font-size:12px;color:#888">A receipt is attached for your records.</p>
-  </div>
-</div></body></html>`,
+        html: brandShell(
+          bKicker('Payment received') +
+          bH1('Thank you.') +
+          bP(`Hi ${tenant?.contactName ?? ''},`) +
+          bP(`Your payment for <strong style="color:#1a1a1a">${invoice.number}</strong> has been received.`) +
+          bP(`Amount: <strong style="color:#1a1a1a">$${Number(payment?.amount ?? total).toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD</strong>`) +
+          bSmall('A receipt is attached for your records.'),
+          { company: companyName, website: settings?.company?.website || 'hexaspace.com.au' },
+        ),
         settings,
         attachments: [{ filename: `Receipt_${invoice.number}_${slug}.pdf`, content: pdfBase64 }],
         tenantId: invoice.tenantId, emailType: 'receipt',

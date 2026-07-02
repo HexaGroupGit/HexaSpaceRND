@@ -4,7 +4,7 @@ import {
   X, Mail, StickyNote, Activity as ActivityIcon, User, Phone, Building2, Tag, DollarSign,
   UserPlus, CheckCircle2, Send, Loader2, ArrowRight, Sparkles, Trash2, FileText, FileDown,
 } from 'lucide-react'
-import { sendEmail, renderProposalTemplate } from '../lib/sendEmail.js'
+import { sendEmail, renderProposalTemplate, messageEmailHtml, brandShell } from '../lib/sendEmail.js'
 import { buildProposalPdf } from '../lib/proposalPdf.js'
 
 const TABS = [
@@ -136,12 +136,7 @@ export default function LeadDetail({ lead, store, onClose }) {
     if (!subject.trim() || !body.trim()) { setMsg('Add a subject and message.'); return }
     setSending(true); setMsg('')
     try {
-      const company = settings?.company?.name ?? 'Hexa Space'
-      const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1a1a1a;background:#f5f5f5;margin:0;padding:0">
-        <div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-          <div style="background:#000;padding:18px 28px"><span style="color:#fff;font-weight:bold;letter-spacing:2px">${company.toUpperCase()}</span></div>
-          <div style="padding:28px;font-size:14px;line-height:1.6;white-space:pre-wrap">${body.replace(/</g, '&lt;')}</div>
-        </div></body></html>`
+      const html = messageEmailHtml({ body, company: settings?.company?.name, website: settings?.company?.website })
       await sendEmail({ to: lead.email, subject, html, settings, emailType: 'lead' })
       appendLeadActivity(lead.id, { type: 'email', text: `Email sent: ${subject}`, meta: { subject, body } })
       setSubject(''); setBody(''); setMsg('Sent ✓'); setTab('activity')
@@ -432,23 +427,23 @@ export default function LeadDetail({ lead, store, onClose }) {
 
 function commissionEmailHtml({ referrer, commission, settings }) {
   const company = settings?.company?.name ?? 'Hexa Space'
+  const website = settings?.company?.website || 'hexaspace.com.au'
   const amount = `$${Number(commission.amount).toLocaleString('en-AU')}`
   const deal = `$${Number(commission.dealValue).toLocaleString('en-AU')}`
-  return `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1a1a1a;background:#f5f5f5;margin:0;padding:0">
-    <div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-      <div style="background:#000;padding:18px 28px"><span style="color:#fff;font-weight:bold;letter-spacing:2px">${company.toUpperCase()}</span></div>
-      <div style="padding:28px;font-size:14px;line-height:1.6">
-        <p style="margin:0 0 14px">Hi ${referrer.name},</p>
-        <p style="margin:0 0 14px">Great news — a deal you referred to ${company} has closed.</p>
-        <table style="width:100%;border-collapse:collapse;margin:0 0 18px;font-size:14px">
-          <tr style="background:#f5f5f5"><td style="padding:9px 12px;font-weight:bold">Deal value</td><td style="padding:9px 12px">${deal} (${commission.dealType})</td></tr>
-          <tr><td style="padding:9px 12px;font-weight:bold">Your rate</td><td style="padding:9px 12px">${commission.rate}%</td></tr>
-          <tr style="background:#f5f5f5"><td style="padding:9px 12px;font-weight:bold">Your commission</td><td style="padding:9px 12px;font-size:18px;font-weight:bold">${amount} AUD</td></tr>
-        </table>
-        <p style="margin:0 0 14px;color:#555">We'll be in touch shortly to arrange payment. Thank you for the referral!</p>
-        <p style="margin:0;font-size:12px;color:#888">${company} &middot; hexaspace.com.au</p>
-      </div>
-    </div></body></html>`
+  const SANS = "'HexaGT','Helvetica Neue',Arial,sans-serif"
+  const cell = `padding:11px 15px;font-family:${SANS};font-size:14px`
+  const inner = `
+      <div style="font-family:'HexaRework','Helvetica Neue',Arial,sans-serif;font-size:11px;letter-spacing:.28em;color:#7F8B2F;text-transform:uppercase;margin:0 0 14px">Referral closed</div>
+      <h1 style="font-family:'HexaBig',Georgia,serif;font-weight:400;font-size:30px;line-height:1.12;margin:0 0 18px;color:#1a1a1a">A deal you referred just closed.</h1>
+      <p style="font-family:${SANS};font-size:15px;line-height:1.65;color:#3a3a3a;margin:0 0 16px">Hi ${referrer.name},</p>
+      <p style="font-family:${SANS};font-size:15px;line-height:1.65;color:#3a3a3a;margin:0 0 16px">Great news — a deal you referred to ${company} has closed.</p>
+      <table style="width:100%;border-collapse:collapse;margin:6px 0 18px">
+        <tr style="background:#EFEDF2"><td style="${cell};font-weight:600;color:#1a1a1a">Deal value</td><td style="${cell}">${deal} (${commission.dealType})</td></tr>
+        <tr><td style="${cell};font-weight:600;color:#1a1a1a">Your rate</td><td style="${cell}">${commission.rate}%</td></tr>
+        <tr style="background:#EFEDF2"><td style="${cell};font-weight:600;color:#1a1a1a">Your commission</td><td style="${cell};font-family:'HexaBig',Georgia,serif;font-size:22px;color:#7F8B2F">${amount} AUD</td></tr>
+      </table>
+      <p style="font-family:${SANS};font-size:13px;line-height:1.6;color:#6b6b6b;margin:0">We'll be in touch shortly to arrange payment. Thank you for the referral!</p>`
+  return brandShell(inner, { company, website })
 }
 
 const ACT = {
