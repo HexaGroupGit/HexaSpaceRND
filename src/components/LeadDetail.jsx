@@ -4,8 +4,8 @@ import {
   X, Mail, StickyNote, Activity as ActivityIcon, User, Phone, Building2, Tag, DollarSign,
   UserPlus, CheckCircle2, Send, Loader2, ArrowRight, Sparkles, Trash2, FileText, FileDown,
 } from 'lucide-react'
-import { jsPDF } from 'jspdf'
 import { sendEmail, renderProposalTemplate } from '../lib/sendEmail.js'
+import { buildProposalPdf } from '../lib/proposalPdf.js'
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: User },
@@ -85,6 +85,7 @@ export default function LeadDetail({ lead, store, onClose }) {
   const [proposalMsg, setProposalMsg] = useState('')
   const [validityDays, setValidityDays] = useState(14)
   const [sendingProposal, setSendingProposal] = useState(false)
+  const [downloadingProposal, setDownloadingProposal] = useState(false)
   const [proposalResult, setProposalResult] = useState('')
   const togglePick = (o) => setPicked((p) => ({
     ...p,
@@ -95,55 +96,18 @@ export default function LeadDetail({ lead, store, onClose }) {
   const setPick = (id, k, v) => setPicked((p) => ({ ...p, [id]: { ...p[id], [k]: v } }))
   const selectedList = () => officeOptions.filter((o) => picked[o.space.id]?.on).map((o) => ({ ...o, price: Number(picked[o.space.id]?.price || 0), note: picked[o.space.id]?.note || '' }))
 
-  function buildProposalPDF() {
-    const sel = selectedList()
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-    const W = doc.internal.pageSize.getWidth()
-    const ml = 16, mr = W - 16
-    let y = 20
-    const companyName = settings?.company?.name ?? 'Hexa Space'
-    doc.setFontSize(20); doc.setFont('helvetica', 'bold'); doc.setTextColor(0)
-    doc.text('PROPOSAL', ml, y)
-    doc.setFontSize(11); doc.text(companyName.toUpperCase(), mr, y, { align: 'right' }); y += 8
-    doc.setDrawColor(0); doc.setLineWidth(0.4); doc.line(ml, y, mr, y); y += 8
-    doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(80)
-    doc.text(`Prepared for: ${lead.name || lead.businessName || ''}`, ml, y)
-    doc.text(`Date: ${format(new Date(), 'dd/MM/yyyy')}`, mr, y, { align: 'right' }); y += 5
-    if (lead.businessName && lead.name) { doc.text(lead.businessName, ml, y); y += 5 }
-    doc.text(`Valid for ${validityDays} days`, ml, y); y += 8
-    if (proposalMsg.trim()) {
-      doc.setTextColor(40); doc.setFontSize(10)
-      doc.splitTextToSize(proposalMsg.trim(), mr - ml).forEach((ln) => { doc.text(ln, ml, y); y += 5 })
-      y += 3
-    }
-    doc.setFillColor(20, 20, 20); doc.rect(ml, y - 4, mr - ml, 7, 'F')
-    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(255)
-    doc.text('OFFICE', ml + 2, y); doc.text('LEVEL', ml + 45, y); doc.text('PAX', ml + 72, y); doc.text('NOTES', ml + 88, y); doc.text('MONTHLY', mr - 2, y, { align: 'right' })
-    doc.setTextColor(0); y += 6
-    let total = 0
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5)
-    sel.forEach((o, i) => {
-      if (i % 2 === 0) { doc.setFillColor(248, 248, 248); doc.rect(ml, y - 4, mr - ml, 7, 'F') }
-      doc.setTextColor(0)
-      doc.text(String(o.space.unitNumber ?? '—'), ml + 2, y)
-      doc.text(floorLabel[o.space.floor] || '—', ml + 45, y)
-      doc.text(String(o.space.pax ?? '—'), ml + 72, y)
-      const note = doc.splitTextToSize(o.note || '', 55)
-      doc.text(note[0] || '', ml + 88, y)
-      doc.setFont('helvetica', 'bold'); doc.text(`$${o.price.toLocaleString('en-AU')}`, mr - 2, y, { align: 'right' }); doc.setFont('helvetica', 'normal')
-      total += o.price; y += 7
-    })
-    doc.setDrawColor(0); doc.line(ml, y, mr, y); y += 6
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
-    doc.text('Total monthly (ex GST)', ml, y); doc.text(`$${total.toLocaleString('en-AU')} AUD`, mr, y, { align: 'right' }); y += 10
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(120)
-    doc.text('All amounts exclude GST. Pricing is indicative and subject to a signed licence agreement. Offices are offered subject to availability at the time of acceptance.', ml, y, { maxWidth: mr - ml })
-    return doc
-  }
+  // Map a picked office into the shape the branded PDF builder expects.
+  const toOffice = (o) => ({ unit: o.space.unitNumber, floor: o.space.floor, pax: o.space.pax, price: o.price, note: o.note })
+  const proposalArgs = (sel) => ({ offices: sel.map(toOffice), coverMsg: proposalMsg.trim(), validityDays, lead, settings, dateStr: format(new Date(), 'd MMMM yyyy') })
 
-  function downloadProposal() {
-    if (selectedList().length === 0) { setProposalResult('Tick at least one office first.'); return }
-    buildProposalPDF().save(`Proposal_${(lead.name || lead.businessName || 'lead').replace(/\s+/g, '_')}.pdf`)
+  async function downloadProposal() {
+    const sel = selectedList()
+    if (sel.length === 0) { setProposalResult('Tick at least one office first.'); return }
+    setDownloadingProposal(true); setProposalResult('')
+    try {
+      const doc = await buildProposalPdf(proposalArgs(sel))
+      doc.save(`Proposal_${(lead.name || lead.businessName || 'lead').replace(/\s+/g, '_')}.pdf`)
+    } catch (e) { setProposalResult(e.message) } finally { setDownloadingProposal(false) }
   }
 
   async function sendProposal() {
@@ -152,7 +116,8 @@ export default function LeadDetail({ lead, store, onClose }) {
     if (!lead.email) { setProposalResult('No email address on this lead.'); return }
     setSendingProposal(true); setProposalResult('')
     try {
-      const pdfBase64 = buildProposalPDF().output('base64')
+      const doc = await buildProposalPdf(proposalArgs(sel))
+      const pdfBase64 = doc.output('base64')
       const token = (crypto?.randomUUID?.() || `${lead.id}-${Date.now()}`)
       const acceptLink = `${window.location.origin}/proposal/${token}`
       const tpl = (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'proposal' && t.content)
@@ -327,7 +292,7 @@ export default function LeadDetail({ lead, store, onClose }) {
                 <label className="block"><span className="block text-xs text-muted-foreground mb-1">Cover message (optional — appears on the PDF)</span><textarea rows={3} value={proposalMsg} onChange={(e) => setProposalMsg(e.target.value)} className={`${input} resize-none`} /></label>
                 <label className="block w-32"><span className="block text-xs text-muted-foreground mb-1">Valid for (days)</span><input type="number" value={validityDays} onChange={(e) => setValidityDays(Number(e.target.value) || 14)} className={input} /></label>
                 <div className="flex items-center gap-3 pt-1">
-                  <button onClick={downloadProposal} className="flex items-center gap-1.5 border border-input text-foreground px-3 py-2 rounded-md text-sm hover:bg-muted/50"><FileDown size={14} /> Preview PDF</button>
+                  <button onClick={downloadProposal} disabled={downloadingProposal} className="flex items-center gap-1.5 border border-input text-foreground px-3 py-2 rounded-md text-sm hover:bg-muted/50 disabled:opacity-40">{downloadingProposal ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />} Preview PDF</button>
                   <button onClick={sendProposal} disabled={sendingProposal || !lead.email} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">{sendingProposal ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send proposal</button>
                   {proposalResult && <span className={`text-xs ${proposalResult.includes('✓') ? 'text-green-600' : 'text-red-600'}`}>{proposalResult}</span>}
                 </div>

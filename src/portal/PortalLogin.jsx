@@ -21,7 +21,7 @@ export default function PortalLogin() {
     e.preventDefault()
     setLoading(true); setError('')
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}${window.location.hostname.startsWith('members.') ? '' : '/portal'}`,
+      redirectTo: window.location.origin,
     })
     if (error) setError(error.message)
     else setResetSent(true)

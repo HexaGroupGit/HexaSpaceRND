@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import Login from './components/Login.jsx'
+import PortalLogin from './portal/PortalLogin.jsx'
 import SignPage from './components/SignPage.jsx'
 import EventBookingSignPage from './components/EventBookingSignPage.jsx'
 import FunctionSignPage from './components/FunctionSignPage.jsx'
@@ -57,7 +57,7 @@ function RootAuth() {
   }, [session])
 
   if (session === undefined) return <Splash />
-  if (!session) return <Login onSuccess={() => {}} />
+  if (!session) return <PortalLogin />
   if (role === null) return <Splash />
   if (role === 'admin') return <AdminApp onLogout={() => { setSession(null); setRole(null) }} />
   return <PortalApp />
