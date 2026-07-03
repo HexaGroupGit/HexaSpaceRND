@@ -1,7 +1,7 @@
 // Client-side helper — calls the /api/send-email serverless function.
 // Pass settings from useStore to provide from/replyTo/cc/bcc values.
-
-import { supabase } from './supabase.js'
+// NOTE: supabase is imported lazily (inside sendEmail) so this module stays
+// import-safe for Node scripts that reuse the branded email defaults below.
 
 export async function sendEmail({ to, subject, html, settings, attachments, tenantId, emailType }) {
   const emails = settings?.emails ?? {}
@@ -35,9 +35,10 @@ export async function sendEmail({ to, subject, html, settings, attachments, tena
 
   const result = await res.json()
 
-  // Log to Supabase (fire-and-forget — never block the email send)
+  // Log to Supabase (fire-and-forget — never block the email send). Lazy import
+  // keeps this module Node-importable for reuse of the branded defaults.
   const logId = `email_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-  supabase.from('email_log').insert({
+  import('./supabase.js').then(({ supabase }) => supabase.from('email_log').insert({
     id: logId,
     data: {
       id: logId,
@@ -48,7 +49,7 @@ export async function sendEmail({ to, subject, html, settings, attachments, tena
       sentAt: new Date().toISOString(),
       hasAttachment: !!(attachments?.length),
     },
-  }).then(() => {}).catch(() => {})
+  })).then(() => {}).catch(() => {})
 
   return result
 }
