@@ -325,6 +325,28 @@ export default function InvoiceDetail({
     }
   }
 
+  // Manual late fee (T&C clause 7(d): $80 after 5 working days overdue).
+  // Deliberately not automatic — the admin decides when to apply it.
+  const lateFeeAmount = Number(settings?.billingRules?.lateFee ?? 80)
+  const hasLateFee = (invoice.lineItems ?? []).some((l) => l.lateFee)
+  const isOverdueNow = !['paid', 'voided'].includes(invoice.status)
+    && invoice.dueDate && parseISO(invoice.dueDate) < new Date()
+
+  function handleAddLateFee() {
+    if (!window.confirm(`Add a $${lateFeeAmount} late payment fee to ${invoice.number}?`)) return
+    onUpdate(invoice.id, {
+      lineItems: [...(invoice.lineItems ?? []), {
+        id: `li${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        description: `Late payment fee — overdue since ${format(parseISO(invoice.dueDate), 'dd/MM/yyyy')}`,
+        revenueAccount: 'Late Fees',
+        unitPrice: lateFeeAmount,
+        qty: 1,
+        discountPct: 0,
+        lateFee: true,
+      }],
+    })
+  }
+
   function handleCreditNote() {
     if (!window.confirm(`Create a credit note for ${invoice.number}?`)) return
     const creditLines = (invoice.lineItems ?? []).map((l) => ({
@@ -538,6 +560,14 @@ export default function InvoiceDetail({
                     <span>Amount Due:</span>
                     <span>${totals.amountDue.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
                   </div>
+                  {isOverdueNow && !hasLateFee && (
+                    <button
+                      onClick={handleAddLateFee}
+                      className="mt-3 w-full text-xs border border-red-200 text-red-700 rounded px-3 py-1.5 hover:bg-red-50"
+                    >
+                      Add ${lateFeeAmount} late payment fee
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

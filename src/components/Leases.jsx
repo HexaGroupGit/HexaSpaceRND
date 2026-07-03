@@ -84,7 +84,7 @@ function ColHeader({ label, sortKey, currentSort, onSort, filterable = true }) {
 const ITEMS_PER_PAGE_OPTIONS = [5, 10, 25, 50]
 
 export default function Leases() {
-  const { leases, tenants, spaces, templates, invoices = [], addLease, updateLease, deleteLease, settings } = useOutletContext()
+  const { leases, tenants, spaces, templates, invoices = [], addLease, updateLease, deleteLease, addInvoice, settings } = useOutletContext()
   const navigate = useNavigate()
 
   const { state: navState } = useLocation()
@@ -543,7 +543,31 @@ export default function Leases() {
         <TerminateModal
           lease={terminateTarget}
           reasons={settings?.contracts?.terminationReasons ?? TERMINATION_REASONS}
+          exitFee={Number(settings?.billingRules?.exitFee ?? 350)}
           onConfirm={(data) => {
+            // Exit fee first (House Rules: fixed cleaning/restoration fee for
+            // Private Office members) — before the status flip so the invoice
+            // exists when offboarding runs.
+            if (data.chargeExitFee && addInvoice) {
+              const space = spaces.find((s) => s.id === terminateTarget.spaceId)
+              const dueDays = settings?.invoicing?.dueDateDays ?? 14
+              const due = new Date(); due.setDate(due.getDate() + dueDays)
+              addInvoice({
+                tenantId: terminateTarget.tenantId,
+                leaseId: terminateTarget.id,
+                status: 'pending', sentStatus: 'not_sent', source: 'offboarding',
+                invoiceType: 'exit_fee',
+                issueDate: format(new Date(), 'yyyy-MM-dd'),
+                dueDate: format(due, 'yyyy-MM-dd'),
+                periodStart: null, periodEnd: null, vatEnabled: true,
+                lineItems: [{
+                  id: `li${Date.now()}`,
+                  description: `Exit fee — cleaning & restoration · ${space?.unitNumber ?? terminateTarget.resource ?? ''}`.trim(),
+                  revenueAccount: 'Exit Fee',
+                  unitPrice: data.exitFeeAmount, qty: 1, discountPct: 0,
+                }],
+              })
+            }
             updateLease(terminateTarget.id, {
               status: 'expired',
               terminatedAt: data.date,
@@ -571,12 +595,16 @@ const TERMINATION_REASONS = [
   'Other',
 ]
 
-function TerminateModal({ lease, reasons, onConfirm, onClose }) {
+function TerminateModal({ lease, reasons, exitFee = 350, onConfirm, onClose }) {
   const allReasons = reasons?.length ? reasons : TERMINATION_REASONS
   const contractNum = lease.contractNumber ?? `CON-${lease.id?.slice(-3).toUpperCase()}`
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [reason, setReason] = useState(allReasons[0])
   const [comments, setComments] = useState('')
+  // House Rules: fixed exit fee for Private Office members, so default the
+  // checkbox ON for office contracts and OFF for everything else.
+  const isOffice = /office/i.test(lease.membershipType || '') || lease.documentType === 'License Agreement'
+  const [chargeExitFee, setChargeExitFee] = useState(isOffice && exitFee > 0)
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -628,6 +656,21 @@ function TerminateModal({ lease, reasons, onConfirm, onClose }) {
               className="w-full border border-input rounded px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-none"
             />
           </div>
+
+          {exitFee > 0 && (
+            <label className="flex items-start gap-2 text-sm text-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={chargeExitFee}
+                onChange={(e) => setChargeExitFee(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Charge the ${exitFee} + GST exit fee (cleaning &amp; restoration)
+                <span className="block text-xs text-muted-foreground">Raises a pending one-off invoice. Per the House Rules for Private Office members.</span>
+              </span>
+            </label>
+          )}
         </div>
 
         {/* Footer */}
@@ -639,7 +682,7 @@ function TerminateModal({ lease, reasons, onConfirm, onClose }) {
             Cancel
           </button>
           <button
-            onClick={() => onConfirm({ date, reason, comments })}
+            onClick={() => onConfirm({ date, reason, comments, chargeExitFee, exitFeeAmount: exitFee })}
             disabled={!date}
             className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded hover:bg-red-600 disabled:opacity-40"
           >

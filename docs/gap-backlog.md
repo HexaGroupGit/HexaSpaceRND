@@ -193,7 +193,7 @@ loop is done — say so and stop scheduling.
   (sets lead.proposal.status 'declined', moves lead to Lost, notifies admin).
   Lead Detail shows declined state. Acceptance: build + trace.
 
-- [ ] **12. Exit fee & late fee quick actions (manual, not automatic).**
+- [x] **12. Exit fee & late fee quick actions (manual, not automatic).** _Done: Terminate modal gains a "Charge $350 + GST exit fee" checkbox (settings.billingRules.exitFee, default ON for office contracts) raising a pending invoiceType 'exit_fee' one-off before the status flip; InvoiceDetail shows "Add $80 late payment fee" (settings.billingRules.lateFee) on overdue invoices, once per invoice via the lateFee line flag. No automatic accrual._
   (a) Offboarding: when a Private Office lease is offboarded, if
   settings.billingRules.exitFee (default 350) > 0, raise a pending one-off
   invoice "Exit fee — cleaning & restoration" (+GST) — behind a confirm in the
@@ -224,4 +224,5 @@ loop is done — say so and stop scheduling.
 - 2026-07-03 · Item 8 portal revocation on offboard · b9dcbb7
 - 2026-07-03 · Item 9 renewal auto e-sign · 3e78857
 - 2026-07-03 · Item 10 onboarding resilience · 88a22c3
-- 2026-07-03 · Item 11 proposal decline flow · (commit follows)
+- 2026-07-03 · Item 11 proposal decline flow · 20b6ded
+- 2026-07-03 · Item 12 exit/late fee quick actions · (commit follows)
