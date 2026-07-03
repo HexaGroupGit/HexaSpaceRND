@@ -95,7 +95,7 @@ export default function SignPage({ token }) {
 
       const companyName = settings?.company?.name ?? 'Hexa Space'
       const contractNum = lease.contractNumber ?? `CON-${lease.id?.slice(-3).toUpperCase()}`
-      const portalUrl = `https://app.hexaspace.com.au`
+      const portalUrl = settings?.portalUrl || `https://portal.hexaspace.com.au`
 
       // Notify admins to countersign (both eric@ and info@ + any configured address)
       const adminList = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]

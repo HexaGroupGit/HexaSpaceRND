@@ -920,7 +920,7 @@ function PortalAccessSection({ email }) {
       </div>
       <div className="px-5 py-4 flex items-center justify-between gap-4">
         <div>
-          <div className="text-xs text-muted-foreground mb-1.5">members.hexaspace.com.au</div>
+          <div className="text-xs text-muted-foreground mb-1.5">portal.hexaspace.com.au</div>
           {portalStatus === null
             ? <span className="text-xs text-muted-foreground">Checking…</span>
             : badge[portalStatus]}

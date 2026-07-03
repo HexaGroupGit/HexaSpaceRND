@@ -75,7 +75,7 @@ export default function Login({ onSuccess }) {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Hexa Space Pty Ltd · app.hexaspace.com.au
+          Hexa Space Pty Ltd · portal.hexaspace.com.au
         </p>
       </div>
     </div>

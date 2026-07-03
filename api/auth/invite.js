@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   const { email, redirectTo, subject, heading, intro, ctaLabel } = req.body ?? {}
   if (!email) return res.status(400).json({ error: 'Email is required.' })
 
-  const REDIRECT = redirectTo || 'https://members.hexaspace.com.au'
+  const REDIRECT = redirectTo || 'https://portal.hexaspace.com.au'
   const SUBJECT = subject || "You've been invited to the Hexa Space Member Portal"
   const HEADING = heading || "You've been invited"
   const INTRO = intro || "You've been given access to the Hexa Space Member Portal — your home for bookings, invoices, membership, events and messaging our team."

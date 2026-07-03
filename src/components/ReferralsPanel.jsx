@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, X, Copy, Check, Trash2, ChevronDown, ChevronRight, Users, Link2, Percent, DollarSign } from 'lucide-react'
 
 const SITE = 'https://www.hexaspace.com.au'
-const APP = 'https://app.hexaspace.com.au'
+const APP = 'https://portal.hexaspace.com.au'
 
 const EMPTY = { name: '', email: '', phone: '', commissionRate: 5 }
 const STAGE_TONE = { new: 'bg-gray-100 text-gray-600', engaged: 'bg-blue-50 text-blue-700', won: 'bg-green-50 text-green-700', lost: 'bg-red-50 text-red-600' }

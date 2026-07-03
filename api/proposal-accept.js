@@ -88,8 +88,8 @@ export default async function handler(req, res) {
     const items = offices.map((o, i) => ({ spaceId: o.spaceId, deposit: i === 0 ? deposit : 0, steps: [{ startDate, endDate, listPrice: Number(o.price || 0), qty: 1, discount: '' }] }))
     const leaseId = contractNumber
     const eToken = rid('sign')
-    const appHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || req.headers.host
-    const memberLink = `https://${appHost}/sign/${eToken}`
+    const portalBase = settings?.portalUrl || `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || req.headers.host}`
+    const memberLink = `${portalBase}/sign/${eToken}`
     const lease = {
       id: leaseId, contractNumber, tenantId, memberId, memberName: contactName, companyName: businessName,
       spaceId: offices[0].spaceId, resource: offices.map((o) => o.unit).filter(Boolean).join(', '),

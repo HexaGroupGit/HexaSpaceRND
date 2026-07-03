@@ -6,7 +6,7 @@
 // onboarding email, and the Salto access-provisioning calls so the store, the
 // contract flow and the portal all agree on one definition of "activated".
 
-const PORTAL_URL = 'https://members.hexaspace.com.au'
+const PORTAL_URL = 'https://portal.hexaspace.com.au'
 
 const SIGNED = ['e_signed', 'manually_signed']
 
@@ -220,7 +220,7 @@ export function onboardingEmailHtml({ lease, tenant, space, settings, saltoLink 
     : ''
 
   const inner = _k('Welcome') + _h(`Welcome to ${name}.`) + _p(`Hi ${greeting},`) + _p(intro) +
-    _box('Your client portal', `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">View invoices, manage your team, book meeting rooms and message our team. You'll receive a separate email to set your password.</p>${_btn('Open the portal', PORTAL_URL)}`) +
+    _box('Your client portal', `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">View invoices, manage your team, book meeting rooms and message our team. You'll receive a separate email to set your password.</p>${_btn('Open the portal', settings?.portalUrl || PORTAL_URL)}`) +
     saltoBlock + _startList + _small(`${name} · ${address || website}`)
   return oShell(inner, { company: name, website })
 }
@@ -252,8 +252,8 @@ export function saltoBlockHtml(unit, saltoLink) {
 // Fill an editable email template (subject + full-HTML body) with live values.
 export function renderOnboardingTemplate({ template, lease, tenant, space, settings, saltoLink }) {
   const vars = onboardingVars({ lease, tenant, space, settings })
-  vars.portalUrl = PORTAL_URL
-  vars.portalLink = PORTAL_URL
+  vars.portalUrl = settings?.portalUrl || PORTAL_URL
+  vars.portalLink = settings?.portalUrl || PORTAL_URL
   vars.website = settings?.company?.website || 'hexaspace.com.au'
   vars.address = space?.address ?? settings?.billing?.address ?? ''
   vars.saltoBlock = saltoBlockHtml(space?.unitNumber ?? 'your space', saltoLink)
