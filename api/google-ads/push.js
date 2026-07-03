@@ -1,5 +1,5 @@
-// POST /api/google-ads/push — pushes a saved HexaHub campaign into a Google Ads
-// account as a PAUSED Search campaign (budget → campaign → ad groups → keywords →
+// POST /api/google-ads/push â€” pushes a saved Hexa Space campaign into a Google Ads
+// account as a PAUSED Search campaign (budget â†’ campaign â†’ ad groups â†’ keywords â†’
 // responsive search ads). Nothing spends until the user enables it in Google Ads.
 //
 // Requires env: GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET,
@@ -60,7 +60,7 @@ function makeMutate(accessToken, customerId, loginCustomerId) {
   }
 }
 
-// Build one Responsive Search Ad from a group's ads (RSA needs ≥3 headlines, ≥2 descriptions).
+// Build one Responsive Search Ad from a group's ads (RSA needs â‰¥3 headlines, â‰¥2 descriptions).
 function buildRsa(group, finalUrl) {
   let headlines = uniq([
     ...group.ads.map((a) => a.headline),
@@ -74,8 +74,8 @@ function buildRsa(group, finalUrl) {
   // Pad to the minimums Google requires.
   const padH = [trunc(group.name, 30), 'Enquire today', 'Book a tour', 'Available now']
   while (headlines.length < 3) headlines.push(padH[headlines.length] || `Option ${headlines.length + 1}`)
-  const padD = [trunc(group.theme, 90), 'Flexible terms and 24/7 access. Enquire with HexaHub today.']
-  while (descriptions.length < 2) descriptions.push(padD[descriptions.length] || 'Enquire with HexaHub today.')
+  const padD = [trunc(group.theme, 90), 'Flexible terms and 24/7 access. Enquire with Hexa Space today.']
+  while (descriptions.length < 2) descriptions.push(padD[descriptions.length] || 'Enquire with Hexa Space today.')
 
   return {
     finalUrls: [finalUrl],
@@ -111,7 +111,7 @@ export default async function handler(req, res) {
     const accessToken = await getAccessToken(refreshToken)
     const mutate = makeMutate(accessToken, customerId, loginCustomerId)
 
-    const url = finalUrl || 'https://www.hexahub.com.au'
+    const url = finalUrl || 'https://www.hexaspace.com.au'
     const cpcMicros = micros(cpc || saved?.math?.inputs?.cpc || 2)
     const dailyBudget = plan.recommendedDailyBudget || (Number(saved?.monthlyBudget || 0) / 30) || 30
     const stamp = Date.now()

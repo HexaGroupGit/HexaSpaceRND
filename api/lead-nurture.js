@@ -1,4 +1,4 @@
-// Vercel cron — daily lead nurture. Advances website-enquiry leads through the
+// Vercel cron â€” daily lead nurture. Advances website-enquiry leads through the
 // follow-up sequence and moves cold ones to the Lost stage. Runs while a lead is
 // still in a "new" stage and hasn't booked a tour; stops the moment the team
 // moves it forward or the lead books/replies.
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     const lostStage = stages.find((s) => s.category === 'lost') || stages.find((s) => /lost/i.test(s.name || ''))
 
     const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
-    const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
+    const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'
     const replyTo = settings?.emails?.replyTo || settings?.emails?.notificationEmail
     const today = new Date().toISOString().split('T')[0]
 

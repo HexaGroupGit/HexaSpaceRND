@@ -106,22 +106,15 @@ export function computeQuote(input = {}) {
 }
 
 // Balance invoice due date = BALANCE_DUE_DAYS before the event (YYYY-MM-DD).
-// The deposit invoice is due this many days before the event (not immediately).
-export const DEPOSIT_DUE_DAYS = 7
-export function depositDueDate(eventDate, bookedOn) {
-  if (!eventDate) return null
-  const d = new Date(`${eventDate}T00:00:00`)
-  d.setDate(d.getDate() - DEPOSIT_DUE_DAYS)
-  const due = d.toISOString().split('T')[0]
-  const today = bookedOn || new Date().toISOString().split('T')[0]
-  return due < today ? today : due // never back-date it
-}
-
-export function balanceDueDate(eventDate) {
+// The balance (remaining 50%) is due 14 days before the event — but never in the
+// past: for a late booking (event within 14 days) it falls due immediately.
+export function balanceDueDate(eventDate, bookedOn) {
   if (!eventDate) return null
   const d = new Date(`${eventDate}T00:00:00`)
   d.setDate(d.getDate() - BALANCE_DUE_DAYS)
-  return d.toISOString().split('T')[0]
+  const due = d.toISOString().split('T')[0]
+  const today = bookedOn || new Date().toISOString().split('T')[0]
+  return due < today ? today : due // late booking → due now
 }
 
 // ── Terms & Conditions (from the Function Space Hire Form) ────────────────────

@@ -1,4 +1,4 @@
-// Vercel serverless — POST /api/book-tour
+// Vercel serverless â€” POST /api/book-tour
 // Public endpoint for the "Book a private tour" page. Creates (or updates an
 // existing) lead in the CRM with source 'book-tour', which also stops the
 // nurture sequence. Requires SUPABASE_SERVICE_ROLE_KEY; RESEND_API_KEY optional.
@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     const newStage = stages.find((s) => s.category === 'new')
     const now = new Date().toISOString()
     const today = now.split('T')[0]
-    const tourNote = `Tour requested${preferredDate ? ` for ${preferredDate}${preferredTime ? ` ${preferredTime}` : ''}` : ''}${message ? ` — ${message}` : ''}`
+    const tourNote = `Tour requested${preferredDate ? ` for ${preferredDate}${preferredTime ? ` ${preferredTime}` : ''}` : ''}${message ? ` â€” ${message}` : ''}`
 
     // Update an existing lead with the same email (so we don't duplicate and the
     // nurture flow stops), otherwise create a fresh one.
@@ -67,7 +67,7 @@ export default async function handler(req, res) {
         notes: tourNote, tenantId: null, type: 'enquiry', read: false,
         enquiryType: enquiryType ?? null, tourBookedAt: now, tourDate: preferredDate ?? '', tourTime: preferredTime ?? '',
         createdAt: today, stageEnteredAt: today,
-        nurture: { step: 99, done: true, lastAt: today }, // booked → no nurture
+        nurture: { step: 99, done: true, lastAt: today }, // booked â†’ no nurture
       }
     }
 
@@ -91,20 +91,20 @@ async function notifyAdmin(supabase, lead) {
   const to = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
   if (!to.length) return
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
-  const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
+  const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'
   const html = brandFrame(
-    bH2('New tour request 🗓️') +
+    bH2('New tour request ðŸ—“ï¸') +
     bTable([
-      ['Name', `${lead.name || '—'}${lead.businessName ? ` (${lead.businessName})` : ''}`],
-      ['Email', lead.email || '—'],
-      ['Phone', lead.phone || '—'],
-      ['Interested in', lead.enquiryType || '—'],
-      ['Preferred', `${lead.tourDate || '—'} ${lead.tourTime || ''}`],
+      ['Name', `${lead.name || 'â€”'}${lead.businessName ? ` (${lead.businessName})` : ''}`],
+      ['Email', lead.email || 'â€”'],
+      ['Phone', lead.phone || 'â€”'],
+      ['Interested in', lead.enquiryType || 'â€”'],
+      ['Preferred', `${lead.tourDate || 'â€”'} ${lead.tourTime || ''}`],
     ]) +
     bSmall('Added to your Leads pipeline. Confirm a time with them to lock in the inspection.'),
     { footerLabel: 'Book a Tour' }
   )
-  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `Tour request — ${lead.name || lead.email}`, html })
+  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `Tour request â€” ${lead.name || lead.email}`, html })
 }
 
 // Branded confirmation to the enquirer (editable "Tour confirmation" template).
@@ -120,7 +120,7 @@ async function sendTourConfirmation(supabase, lead) {
   const tpl = findEmailTemplate(templates, 'tour_confirmation')
   if (!tpl) return
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
-  const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
+  const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'
   const replyTo = settings?.emails?.replyTo || settings?.emails?.notificationEmail
   const tourWhen = lead.tourDate ? ` for ${lead.tourDate}${lead.tourTime ? ` at ${lead.tourTime}` : ''}` : ''
   const vars = {

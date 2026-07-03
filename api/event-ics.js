@@ -14,9 +14,9 @@ export default function handler(req, res) {
 
   const endIso = end || new Date(new Date(start).getTime() + 2 * 3600 * 1000).toISOString()
   const lines = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//HexaHub//Events//EN', 'CALSCALE:GREGORIAN',
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Hexa Space//Events//EN', 'CALSCALE:GREGORIAN',
     'BEGIN:VEVENT',
-    `UID:${icsDate(start)}-${Math.random().toString(36).slice(2, 8)}@hexahub.com.au`,
+    `UID:${icsDate(start)}-${Math.random().toString(36).slice(2, 8)}@hexaspace.com.au`,
     `DTSTAMP:${icsDate(new Date().toISOString())}`,
     `DTSTART:${icsDate(start)}`,
     `DTEND:${icsDate(endIso)}`,

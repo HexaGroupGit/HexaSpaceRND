@@ -1,4 +1,4 @@
-// Vercel serverless — POST /api/proposal-accept
+// Vercel serverless â€” POST /api/proposal-accept
 // Public: the enquirer accepts their proposal and fills in company details. We
 // then create the client (tenant + primary contact), create the contract from
 // the chosen offices + pricing, reserve those offices, raise an e-signature
@@ -51,7 +51,7 @@ export default async function handler(req, res) {
     const allOffices = lead.proposal?.offices || []
     const allParking = lead.proposal?.parking || []
     if (allOffices.length === 0) return res.status(400).json({ error: 'Proposal has no offices' })
-    // Offered offices are OPTIONS — the client picks which one(s) + optional parking.
+    // Offered offices are OPTIONS â€” the client picks which one(s) + optional parking.
     const offices = (Array.isArray(officeIds) && officeIds.length) ? allOffices.filter((o) => officeIds.includes(o.spaceId)) : allOffices
     const parking = (Array.isArray(parkingIds) && parkingIds.length) ? allParking.filter((o) => parkingIds.includes(o.spaceId)) : []
     if (offices.length === 0) return res.status(400).json({ error: 'Please choose at least one office' })
@@ -132,7 +132,7 @@ export default async function handler(req, res) {
     const resendKey = process.env.RESEND_API_KEY
     if (resendKey) {
       const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
-      const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
+      const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'
       const replyTo = settings?.emails?.replyTo || settings?.emails?.notificationEmail
       const website = settings?.company?.website || 'hexaspace.com.au'
       const esignTpl = findEmailTemplate(templates, 'esign')
@@ -140,7 +140,7 @@ export default async function handler(req, res) {
         company: settings?.company?.name || 'Hexa Space', tenantName: contactName, contract: contractNumber,
         signLink: memberLink, signerName: settings?.contracts?.eSignName || settings?.company?.name || 'Hexa Space', website,
       }
-      const subject = fillVars(esignTpl?.subject || 'Please sign: {{contract}} — {{company}}', vars)
+      const subject = fillVars(esignTpl?.subject || 'Please sign: {{contract}} â€” {{company}}', vars)
       const html = esignTpl?.content
         ? fillVars(esignTpl.content, vars)
         : `<div style="font-family:Arial,sans-serif;padding:32px;max-width:560px"><p>Hi ${contactName},</p><p>Thanks for accepting your proposal. Please review and sign your licence agreement ${contractNumber}:</p><p><a href="${memberLink}">Review &amp; sign document</a></p></div>`
@@ -148,8 +148,8 @@ export default async function handler(req, res) {
 
       const adminTo = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
       if (adminTo.length) {
-        const adminHtml = `<div style="font-family:Arial,sans-serif;padding:24px;max-width:560px"><h2 style="font-size:16px">Proposal accepted 🎉</h2><p><strong>${businessName}</strong> (${contactName}, ${email}) accepted their proposal.</p><p>Client created, contract <strong>${contractNumber}</strong> raised for ${offices.map((o) => o.unit).join(', ')} at $${monthlyRent.toLocaleString('en-AU')}/mo (${termMonths}-month term from ${startDate}${rentFreeMonths ? `, ${rentFreeMonths} month${rentFreeMonths > 1 ? 's' : ''} rent-free` : ''}) and sent for e-signature. Countersign it once they've signed.</p></div>`
-        await sendResend(resendKey, { fromName, fromEmail, to: adminTo, subject: `Proposal accepted — ${businessName} (${contractNumber})`, html: adminHtml, replyTo }).catch(() => {})
+        const adminHtml = `<div style="font-family:Arial,sans-serif;padding:24px;max-width:560px"><h2 style="font-size:16px">Proposal accepted ðŸŽ‰</h2><p><strong>${businessName}</strong> (${contactName}, ${email}) accepted their proposal.</p><p>Client created, contract <strong>${contractNumber}</strong> raised for ${offices.map((o) => o.unit).join(', ')} at $${monthlyRent.toLocaleString('en-AU')}/mo (${termMonths}-month term from ${startDate}${rentFreeMonths ? `, ${rentFreeMonths} month${rentFreeMonths > 1 ? 's' : ''} rent-free` : ''}) and sent for e-signature. Countersign it once they've signed.</p></div>`
+        await sendResend(resendKey, { fromName, fromEmail, to: adminTo, subject: `Proposal accepted â€” ${businessName} (${contractNumber})`, html: adminHtml, replyTo }).catch(() => {})
       }
     }
 

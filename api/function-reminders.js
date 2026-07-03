@@ -1,4 +1,4 @@
-// Vercel cron — GET/POST /api/function-reminders (daily).
+// Vercel cron â€” GET/POST /api/function-reminders (daily).
 // Emails confirmed function clients 1 week and 1 day before their event.
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
@@ -49,16 +49,16 @@ export default async function handler(req, res) {
 async function emailReminder(settings, b, when) {
   if (!b.email) return
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
-  const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
+  const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'
   const replyTo = settings?.emails?.replyTo || settings?.emails?.notificationEmail
   const inner =
     bKicker('Event reminder') +
     bH1(`Your function is ${when}, ${b.name || 'there'}!`) +
     bTable([
-      ['Event', b.eventName || '—'],
-      ['Date', `${b.eventDate} · ${b.startTime || ''}–${b.endTime || ''}`],
-      ['Guests', b.guests || '—'],
-      ['Layout', b.layout || '—'],
+      ['Event', b.eventName || 'â€”'],
+      ['Date', `${b.eventDate} Â· ${b.startTime || ''}â€“${b.endTime || ''}`],
+      ['Guests', b.guests || 'â€”'],
+      ['Layout', b.layout || 'â€”'],
     ]) +
     bP('You have 1 hour of complimentary bump-in and bump-out either side of your booking. If you have any final questions, just reply to this email.') +
     bP('See you soon!')

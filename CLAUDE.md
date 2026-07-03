@@ -1,8 +1,9 @@
-# HexaHub Management System
+# Hexa Space Management System
 
-## About HexaHub
-HexaHub is a business infrastructure platform at 402/830 Whitehorse Road, Box Hill VIC 3128, Melbourne, Australia.
-Website: hexahub.com.au
+## About Hexa Space
+Hexa Space (Hexa Space Pty Ltd) is a business infrastructure platform at 402/830 Whitehorse Road, Box Hill VIC 3128, Melbourne, Australia.
+Website: hexaspace.com.au · Admin + member portal: portal.hexaspace.com.au
+Brand is "Hexa Space" everywhere — never "HexaHub" (old name; members.hexaspace.com.au still points at OfficeRND until cutover, so don't link to it).
 Slogan: "build locally, scale sustainably"
 
 ## What We're Building

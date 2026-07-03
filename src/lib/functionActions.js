@@ -8,7 +8,7 @@
 // raised (awaiting_deposit) → deposit paid → confirmed (balance + calendar) →
 // completed → refunded.
 import { supabase } from './supabase.js'
-import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, depositDueDate, money } from './functionBooking.js'
+import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money } from './functionBooking.js'
 import { PORTAL_URL } from './sendEmail.js'
 
 const today = () => new Date().toISOString().split('T')[0]
@@ -120,7 +120,7 @@ export async function confirmDepositPaid({ store, booking, findFunctionSpace }) 
 
   // Safety net: raise the deposit (50% + $300 security) if it was never raised
   // (e.g. a manual hub booking that skipped the portal). One invoice, two lines.
-  if (!has('function_deposit')) store.addInvoice({ ...base, invoiceType: 'function_deposit', dueDate: depositDueDate(b.eventDate, today()) || today(), vatEnabled: true, lineItems: [
+  if (!has('function_deposit')) store.addInvoice({ ...base, invoiceType: 'function_deposit', dueDate: today(), vatEnabled: true, lineItems: [
     { description: `50% deposit — function booking · ${b.eventName || 'Function'} (${b.eventDate})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf, qty: 1, discountPct: 0 },
     { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit, qty: 1, discountPct: 0, vatExempt: true },
   ] })

@@ -2,7 +2,7 @@
 //
 // Called in two ways:
 //   1. From admin panel (adding a portal-only event): body = { event: { title, date, ... } }
-//   2. From Sanity webhook (publishing on hexahub.com.au): body = raw Sanity document
+//   2. From Sanity webhook (publishing on hexaspace.com.au): body = raw Sanity document
 //
 // Only sends on Sanity "create" operations (not edits/deletes).
 
@@ -21,7 +21,7 @@ function fmtDate(dateStr) {
 }
 
 function extractEvent(body, headers) {
-  // Sanity webhook — raw document in body
+  // Sanity webhook â€” raw document in body
   if (body?._type === 'event') {
     const doc = body
     return {
@@ -30,11 +30,11 @@ function extractEvent(body, headers) {
       time: doc.date
         ? new Date(doc.date).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true })
         : null,
-      location: [doc.location, doc.locationAddress].filter(Boolean).join(' — '),
+      location: [doc.location, doc.locationAddress].filter(Boolean).join(' â€” '),
       description: doc.summary ?? doc.tagline ?? '',
       link: doc.slug?.current
-        ? `https://www.hexahub.com.au/events/${doc.slug.current}`
-        : 'https://www.hexahub.com.au/events',
+        ? `https://www.hexaspace.com.au/events/${doc.slug.current}`
+        : 'https://www.hexaspace.com.au/events',
     }
   }
   // Admin panel call
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
   if (!recipients.length) return res.status(200).json({ sent: 0, reason: 'No active portal members.' })
 
   const eventRows = []
-  if (event.date) eventRows.push(['Date', `${fmtDate(event.date)}${event.time ? ` · ${event.time}` : ''}`, true])
+  if (event.date) eventRows.push(['Date', `${fmtDate(event.date)}${event.time ? ` Â· ${event.time}` : ''}`, true])
   if (event.location) eventRows.push(['Location', event.location])
 
   const html = brandFrame(
@@ -83,14 +83,14 @@ export default async function handler(req, res) {
     bH1(event.title) +
     (eventRows.length ? bTable(eventRows) : '') +
     (event.description ? bP(event.description) : '') +
-    bBtn('Find Out More', event.link || 'https://www.hexahub.com.au/events'),
+    bBtn('Find Out More', event.link || 'https://www.hexaspace.com.au/events'),
     { footerLabel: 'Member Portal' }
   )
 
   let sent = 0
   for (const tenant of recipients) {
     const ok = await sendResendEmail({
-      from: 'HexaHub <info@hexahub.com.au>',
+      from: 'Hexa Space <info@hexaspace.com.au>',
       to: [tenant.email],
       subject: `New Event: ${event.title}`,
       html,

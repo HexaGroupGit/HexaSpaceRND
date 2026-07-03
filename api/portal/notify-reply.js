@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   const { tenantEmail, tenantName, message } = req.body ?? {}
   if (!tenantEmail || !message) return res.status(400).json({ error: 'Missing fields.' })
 
-  const portalUrl = 'https://members.hexahub.com.au/messages'
+  const portalUrl = 'https://portal.hexaspace.com.au/messages'
 
   const html = brandFrame(
     bKicker('New reply from our team') +
@@ -24,9 +24,9 @@ export default async function handler(req, res) {
   )
 
   const r = await sendResendEmail({
-    from: 'HexaHub <info@hexahub.com.au>',
+    from: 'Hexa Space <info@hexaspace.com.au>',
     to: [tenantEmail],
-    subject: `New message from HexaHub`,
+    subject: `New message from Hexa Space`,
     html,
   })
 

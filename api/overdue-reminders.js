@@ -1,4 +1,4 @@
-// Vercel cron job — runs daily at 9am AEST (11pm UTC)
+// Vercel cron job â€” runs daily at 9am AEST (11pm UTC)
 // Marks overdue invoices and sends reminder emails
 // Schedule set in vercel.json
 
@@ -32,8 +32,8 @@ export default async function handler(req, res) {
     const tenants = (tenantRows ?? []).map((r) => ({ id: r.id, ...r.data }))
     const settings = settRows?.[0]?.data ?? {}
 
-    const fromName = settings?.emails?.fromName || settings?.company?.name || 'HexaHub'
-    const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
+    const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
+    const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'
 
     // 2. Find invoices that should be overdue
     const nowOverdue = invoices.filter(
@@ -72,7 +72,7 @@ export default async function handler(req, res) {
         }, 0)
         const gst = inv.vatEnabled !== false ? Math.round(sub * 0.1 * 100) / 100 : 0
         const total = sub + gst
-        return [inv.number, `Due ${inv.dueDate} · $${total.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD`, true]
+        return [inv.number, `Due ${inv.dueDate} Â· $${total.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD`, true]
       })
 
       const inner =
@@ -88,7 +88,7 @@ export default async function handler(req, res) {
       await sendResendEmail({
         from: `${fromName} <${fromEmail}>`,
         to: tenant.email,
-        subject: `Payment reminder — ${invs.length} overdue invoice${invs.length > 1 ? 's' : ''} from ${fromName}`,
+        subject: `Payment reminder â€” ${invs.length} overdue invoice${invs.length > 1 ? 's' : ''} from ${fromName}`,
         html,
       })
       reminded++

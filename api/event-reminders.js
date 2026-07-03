@@ -1,7 +1,7 @@
 // Event reminders.
-//   GET  (Vercel cron, daily) → email every registrant of an event happening
+//   GET  (Vercel cron, daily) â†’ email every registrant of an event happening
 //        TOMORROW (Melbourne time) who hasn't been reminded yet.
-//   POST {eventSlug?|eventName?, force?} → send reminders for one event now.
+//   POST {eventSlug?|eventName?, force?} â†’ send reminders for one event now.
 // Marks each registration with reminderSentAt so the app shows who got it.
 // Requires env: SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY.
 
@@ -39,7 +39,7 @@ function calendarLinks(ev, baseUrl) {
 }
 
 function reminderHtml(reg, ev, links, settings) {
-  const company = settings?.company?.name || 'HexaHub'
+  const company = settings?.company?.name || 'Hexa Space'
   const when = new Date(ev.date).toLocaleString('en-AU', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', hour12: true })
   const loc = [ev.location, ev.locationAddress].filter(Boolean).join('<br>')
   const cal = (label, url) => `<a href="${url}" style="color:${OLIVE};text-decoration:none;font-weight:600">${label}</a>`
@@ -47,11 +47,11 @@ function reminderHtml(reg, ev, links, settings) {
     bKicker('Event Reminder') +
     bH1(`Your event <span style="color:${OLIVE}">${ev.title}</span> is coming up soon!`) +
     bP(`${when}<br>Organised by ${company}`) +
-    bP(`<strong>Questions about this event?</strong><br><a href="mailto:${settings?.emails?.replyTo || 'info@hexahub.com.au'}" style="color:${OLIVE}">Contact the organiser</a>`) +
+    bP(`<strong>Questions about this event?</strong><br><a href="mailto:${settings?.emails?.replyTo || 'info@hexaspace.com.au'}" style="color:${OLIVE}">Contact the organiser</a>`) +
     bP('<strong>About this event</strong>') +
-    bP(`🗓 ${when}`) +
-    (loc ? bP(`📍 ${loc}`) : '') +
-    bP(`Add to my calendar:<br>${cal('Google', links.google)} &nbsp;·&nbsp; ${cal('Outlook', links.outlook)} &nbsp;·&nbsp; ${cal('iCal', links.ical)} &nbsp;·&nbsp; ${cal('Yahoo', links.yahoo)}`) +
+    bP(`ðŸ—“ ${when}`) +
+    (loc ? bP(`ðŸ“ ${loc}`) : '') +
+    bP(`Add to my calendar:<br>${cal('Google', links.google)} &nbsp;Â·&nbsp; ${cal('Outlook', links.outlook)} &nbsp;Â·&nbsp; ${cal('iCal', links.ical)} &nbsp;Â·&nbsp; ${cal('Yahoo', links.yahoo)}`) +
     bSmall(`See you there${reg.name ? `, ${reg.name}` : ''}.`),
     { footerLabel: 'Events' }
   )
@@ -72,7 +72,7 @@ export default async function handler(req, res) {
     ])
     const settings = settRows?.[0]?.data ?? {}
 
-    // ── Test / preview: email ONE sample reminder to a chosen address ──────────
+    // â”€â”€ Test / preview: email ONE sample reminder to a chosen address â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (req.method === 'POST' && req.body?.testEmail) {
       if (!resendKey) return res.status(500).json({ error: 'RESEND_API_KEY not configured' })
       let ev = eventsAll.find((e) => e.slug === req.body.eventSlug)
@@ -84,8 +84,8 @@ export default async function handler(req, res) {
       }
       if (!ev) ev = { title: 'Sample Event', date: new Date(Date.now() + 86400000).toISOString(), location: 'The Hub, Hexa Space', locationAddress: '18 Logistic Court, Box Hill VIC 3128', summary: 'Preview of the reminder email.' }
       const links = calendarLinks(ev, baseUrl)
-      const fromName = settings?.emails?.fromName || settings?.company?.name || 'HexaHub'
-      const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
+      const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
+      const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'
       const r = await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: req.body.testEmail, subject: `[TEST] Reminder: ${ev.title}`, html: reminderHtml({ name: 'there' }, ev, links, settings) })
       const out = r.data ?? {}
       if (!r.ok) return res.status(r.status || 500).json({ error: out?.message || 'Resend rejected the email', detail: out })
@@ -116,8 +116,8 @@ export default async function handler(req, res) {
         if (reg.reminderSentAt && !force) continue
         try {
           if (resendKey) {
-            const fromName = settings?.emails?.fromName || settings?.company?.name || 'HexaHub'
-            const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
+            const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
+            const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'
             await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: reg.email, subject: `Reminder: ${ev.title} is coming up`, html: reminderHtml(reg, ev, links, settings) })
           }
           await supabase.from('event_registrations').upsert({ id: reg.id, data: { ...reg, reminderSentAt: new Date().toISOString() }, updated_at: new Date().toISOString() })
