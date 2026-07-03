@@ -890,8 +890,234 @@ function EmailTemplatesSection({ settings, updateSettings }) {
 }
 
 // ── Xero Integration ──────────────────────────────────────────────────────────
+function XeroConnectionTab({ settings, updateSettings }) {
+  const xs = settings.xero ?? {}
+  const [st, setSt] = useState(null) // null = loading
+  const [banner, setBanner] = useState(null)
+  const [busy, setBusy] = useState(null) // 'dry' | 'push' | 'pull' | 'disconnect'
+  const [result, setResult] = useState(null)
+  const [err, setErr] = useState(null)
+  const [syncForm, setSyncForm] = useState({
+    syncEnabled: xs.syncEnabled === true,
+    syncFrom: xs.syncFrom ?? '2026-09-01',
+  })
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => { xeroStatus().then(setSt) }, [])
+
+  // Surface the OAuth redirect result (?xero=connected|error), then clean the URL.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const flag = q.get('xero')
+    if (flag) {
+      setBanner(flag === 'connected' ? 'ok' : 'error')
+      q.delete('xero'); q.delete('section')
+      window.history.replaceState({}, '', window.location.pathname + (q.toString() ? `?${q}` : ''))
+    }
+  }, [])
+
+  function saveSync() {
+    updateSettings({ xero: { ...(settings.xero ?? {}), ...syncForm } })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  async function run(kind) {
+    setBusy(kind); setErr(null); setResult(null)
+    try {
+      if (kind === 'disconnect') {
+        await disconnectXero()
+        setSt(await xeroStatus())
+      } else {
+        const r = await xeroSync(kind === 'pull' ? 'pull' : 'push', { dryRun: kind === 'dry' })
+        setResult(r)
+        if (kind !== 'dry') setSt(await xeroStatus())
+      }
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const syncOn = xs.syncEnabled === true
+  const fmtDT = (iso) => iso ? new Date(iso).toLocaleString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+
+  return (
+    <div>
+      {banner === 'ok' && (
+        <div className="mb-4 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-sm text-green-700">
+          Xero connected successfully.
+        </div>
+      )}
+      {banner === 'error' && (
+        <div className="mb-4 px-4 py-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
+          Xero connection failed — check the app credentials and try again.
+        </div>
+      )}
+
+      {/* Connection card */}
+      <div className="border border-border rounded-md p-5 mb-6">
+        {st === null ? (
+          <div className="text-sm text-muted-foreground">Checking connection…</div>
+        ) : !st.configured ? (
+          <div className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">Not configured.</span> Set{' '}
+            <code className="text-xs bg-muted px-1 py-0.5 rounded">XERO_CLIENT_ID</code> and{' '}
+            <code className="text-xs bg-muted px-1 py-0.5 rounded">XERO_CLIENT_SECRET</code> in Vercel,
+            with redirect URI <code className="text-xs bg-muted px-1 py-0.5 rounded">https://&lt;domain&gt;/api/xero/callback</code>{' '}
+            registered at developer.xero.com.
+          </div>
+        ) : st.connected ? (
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+                <span className="text-sm font-medium text-foreground">Connected to {st.tenantName ?? 'Xero'}</span>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1.5 space-y-0.5">
+                <div>Connected {fmtDT(st.connectedAt)}</div>
+                <div>Last push: {fmtDT(st.lastPush)} · Last payment pull: {fmtDT(st.lastPull)}</div>
+              </div>
+            </div>
+            <button
+              onClick={() => run('disconnect')}
+              disabled={!!busy}
+              className="px-3 py-1.5 text-sm border border-input rounded-md text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              {busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              <span className="inline-block w-2 h-2 rounded-full bg-gray-300 mr-2" />
+              Not connected
+            </div>
+            <button
+              onClick={connectXero}
+              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md font-medium hover:bg-blue-700"
+            >
+              Connect to Xero
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Sync gate */}
+      <FormRow
+        label="Enable Xero sync"
+        description={`Master switch. While OFF nothing is pushed or pulled — connect and dry-run safely. Planned go-live: 1 September 2026, after the migration and invoices are verified.`}
+      >
+        <div className="flex justify-end">
+          <Toggle checked={syncForm.syncEnabled} onChange={(v) => setSyncForm((p) => ({ ...p, syncEnabled: v }))} />
+        </div>
+      </FormRow>
+      <FormRow label="Sync from" description="Only invoices with a billing period starting on/after this date are ever pushed. Keeps migrated history out of Xero.">
+        <TextInput type="date" value={syncForm.syncFrom} onChange={(v) => setSyncForm((p) => ({ ...p, syncFrom: v }))} />
+      </FormRow>
+      <SaveButton onClick={saveSync} saved={saved} />
+
+      {/* Actions */}
+      {st?.connected && (
+        <div className="mt-8">
+          <h2 className="text-sm font-semibold text-foreground mb-3">Sync actions</h2>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => run('dry')}
+              disabled={!!busy}
+              className="px-4 py-2 border border-input text-sm rounded-md font-medium hover:bg-muted disabled:opacity-50"
+            >
+              {busy === 'dry' ? 'Previewing…' : 'Preview push (dry run)'}
+            </button>
+            <button
+              onClick={() => run('push')}
+              disabled={!!busy || !syncOn}
+              title={syncOn ? '' : 'Turn on "Enable Xero sync" and save first'}
+              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md font-medium hover:bg-blue-700 disabled:opacity-50"
+            >
+              {busy === 'push' ? 'Pushing…' : 'Push invoices to Xero'}
+            </button>
+            <button
+              onClick={() => run('pull')}
+              disabled={!!busy || !syncOn}
+              title={syncOn ? '' : 'Turn on "Enable Xero sync" and save first'}
+              className="px-4 py-2 border border-input text-sm rounded-md font-medium hover:bg-muted disabled:opacity-50"
+            >
+              {busy === 'pull' ? 'Pulling…' : 'Pull payments from Xero'}
+            </button>
+          </div>
+          {!syncOn && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Sync is off — live push/pull are locked. Dry run is always available.
+            </p>
+          )}
+
+          {err && (
+            <div className="mt-4 px-4 py-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">{err}</div>
+          )}
+
+          {result && (
+            <div className="mt-4 border border-border rounded-md p-4 text-sm">
+              {result.dryRun && result.wouldPush && (
+                <>
+                  <div className="font-medium text-foreground mb-2">
+                    Dry run — {result.wouldPush.length} invoice{result.wouldPush.length !== 1 ? 's' : ''} would be pushed (from {result.syncFrom})
+                  </div>
+                  {result.wouldPush.length > 0 && (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-muted-foreground border-b border-border">
+                          <th className="py-1.5 pr-3">Invoice</th><th className="py-1.5 pr-3">Tenant</th>
+                          <th className="py-1.5 pr-3 text-right">Total (ex GST)</th><th className="py-1.5">Accounts</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {result.wouldPush.map((w) => (
+                          <tr key={w.number} className="border-b border-border/50 last:border-0">
+                            <td className="py-1.5 pr-3 font-mono">{w.number}</td>
+                            <td className="py-1.5 pr-3">{w.tenant}</td>
+                            <td className="py-1.5 pr-3 text-right">${Number(w.total).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</td>
+                            <td className="py-1.5 font-mono">{(w.accounts ?? []).join(', ')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </>
+              )}
+              {!result.dryRun && result.pushed && (
+                <div className="font-medium text-foreground">
+                  Pushed {result.pushed.length} invoice{result.pushed.length !== 1 ? 's' : ''} to Xero.
+                </div>
+              )}
+              {result.paidMarked && (
+                <div className="font-medium text-foreground">
+                  Checked {result.checked} — marked {result.paidMarked.length} paid
+                  {result.partial?.length ? `, ${result.partial.length} partially paid (left pending)` : ''}
+                  {result.voidedInXero?.length ? `, ${result.voidedInXero.length} voided in Xero (review manually)` : ''}.
+                </div>
+              )}
+              {result.skipped?.length > 0 && (
+                <div className="text-xs text-muted-foreground mt-2">
+                  Skipped: {result.skipped.map((s) => `${s.number} (${s.reason})`).join(', ')}
+                </div>
+              )}
+              {result.errors?.length > 0 && (
+                <div className="mt-2 text-xs text-red-600">
+                  {result.errors.map((e, i) => <div key={i}>{e.number}: {e.error}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function XeroSection({ settings, updateSettings }) {
-  const [tab, setTab] = useState('revenue')
+  const [tab, setTab] = useState('connection')
   const [form, setForm] = useState(() => ({ ...DEFAULT_XERO_ACCOUNTS, ...(settings.xero?.revenueAccounts ?? {}) }))
   const [saved, setSaved] = useState(false)
 
@@ -915,13 +1141,15 @@ function XeroSection({ settings, updateSettings }) {
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Xero</h1>
-      <p className="text-sm text-muted-foreground mb-6">Map Hexa Space charges to your Xero revenue accounts. Level 2 bills to its own accounts, separate from Level 4 &amp; 5.</p>
+      <p className="text-sm text-muted-foreground mb-6">Connect your Xero organisation, map revenue accounts, and control when invoices start syncing.</p>
 
       <TabBar
-        tabs={[['revenue', 'Revenue Accounts'], ['payment', 'Payment Accounts'], ['tax', 'Tax Rates']]}
+        tabs={[['connection', 'Connection & Sync'], ['revenue', 'Revenue Accounts'], ['payment', 'Payment Accounts'], ['tax', 'Tax Rates']]}
         active={tab}
         onSelect={setTab}
       />
+
+      {tab === 'connection' && <XeroConnectionTab settings={settings} updateSettings={updateSettings} />}
 
       {tab === 'revenue' && (
         <>
@@ -940,7 +1168,7 @@ function XeroSection({ settings, updateSettings }) {
         </>
       )}
 
-      {tab !== 'revenue' && (
+      {(tab === 'payment' || tab === 'tax') && (
         <div className="py-12 text-center text-sm text-muted-foreground">
           {tab === 'payment' ? 'Payment account mapping' : 'Tax rate mapping'} — coming with the live Xero connection.
         </div>
@@ -952,7 +1180,11 @@ function XeroSection({ settings, updateSettings }) {
 // ── Main Settings ─────────────────────────────────────────────────────────────
 export default function Settings() {
   const { settings, updateSettings } = useOutletContext()
-  const [selectedKey, setSelectedKey] = useState('company-billing')
+  // ?section=xero deep-links here (used by the Xero OAuth callback redirect)
+  const [selectedKey, setSelectedKey] = useState(() => {
+    const section = new URLSearchParams(window.location.search).get('section')
+    return section && MENU.some((m) => m.items.some((i) => i.key === section)) ? section : 'company-billing'
+  })
 
   const SECTIONS = {
     'company-billing': <CompanyBillingSection settings={settings} updateSettings={updateSettings} />,

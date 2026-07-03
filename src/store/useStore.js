@@ -798,6 +798,23 @@ export function useStore() {
   useEffect(() => {
     async function load() {
       try {
+        // A plain select() is capped at 1000 rows by Supabase. Tables that grow
+        // past that (invoices, bookings, leads) MUST be paged, or rows silently
+        // vanish — which also breaks invoice auto-numbering (Math.max over a
+        // truncated set → duplicate numbers).
+        const fetchAll = async (table) => {
+          const size = 1000
+          let from = 0
+          const all = []
+          for (;;) {
+            const { data, error } = await supabase.from(table).select('data').order('id', { ascending: true }).range(from, from + size - 1)
+            if (error || !data?.length) break
+            all.push(...data)
+            if (data.length < size) break
+            from += size
+          }
+          return { data: all }
+        }
         const [
           { data: tData }, { data: sData }, { data: lData },
           { data: tmData }, { data: invData }, { data: discData },
@@ -810,12 +827,12 @@ export function useStore() {
           supabase.from('spaces').select('data'),
           supabase.from('leases').select('data'),
           supabase.from('templates').select('data'),
-          supabase.from('invoices').select('data'),
+          fetchAll('invoices'),
           supabase.from('discounts').select('data'),
           supabase.from('maintenance').select('data'),
           supabase.from('settings').select('data').eq('id', 'global'),
           supabase.from('meta').select('*'),
-          supabase.from('leads').select('data'),
+          fetchAll('leads'),
           supabase.from('lead_pipeline_stages').select('data'),
           supabase.from('event_registrations').select('data'),
           supabase.from('campaigns').select('data'),
@@ -823,7 +840,7 @@ export function useStore() {
           supabase.from('commissions').select('data'),
           supabase.from('members').select('data'),
           supabase.from('fees').select('data'),
-          supabase.from('bookings').select('data'),
+          fetchAll('bookings'),
         ])
 
         // 'seeded' flag — once set, we NEVER fall back to sample data again

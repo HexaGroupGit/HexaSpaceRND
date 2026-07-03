@@ -23,13 +23,25 @@ export default async function handler(req, res) {
 
   try {
     const now = new Date().toISOString()
-    const [{ data: fbRows }, { data: invRows }, { data: settRows }, { data: tenantRows }, { data: memberRows }] = await Promise.all([
+    const [{ data: fbRows }, { data: settRows }, { data: tenantRows }, { data: memberRows }] = await Promise.all([
       supabase.from('function_bookings').select('id, data').eq('id', id),
-      supabase.from('invoices').select('id, data'),
       supabase.from('settings').select('data').eq('id', 'global'),
       supabase.from('tenants').select('id, data'),
       supabase.from('members').select('id, data'),
     ])
+    // Invoice numbers must be computed over ALL invoices — a plain select caps at
+    // 1000 rows, which caused duplicate numbers. Page through just the number field.
+    const invRows = await (async () => {
+      const size = 1000; let from = 0; const all = []
+      for (;;) {
+        const { data, error } = await supabase.from('invoices').select('data').order('id', { ascending: true }).range(from, from + size - 1)
+        if (error || !data?.length) break
+        all.push(...data)
+        if (data.length < size) break
+        from += size
+      }
+      return all
+    })()
     const b = fbRows?.[0]?.data
     if (!b) return res.status(404).json({ error: 'Booking not found' })
     if (b.depositRaisedAt) return res.status(200).json({ success: true, already: true })
