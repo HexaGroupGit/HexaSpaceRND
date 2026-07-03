@@ -1389,7 +1389,10 @@ export function useStore() {
   const addInvoice = useCallback((invoice) => {
     setInvoices((prev) => {
       const invTemplate = settingsRef.current?.invoicing?.invoiceNumberTemplate ?? 'INV-{{number}}'
-      const nums = prev.map((i) => parseInt(i.number?.replace(/\D/g, '') || '0', 10)).filter((n) => !isNaN(n))
+      // Union of the updater's state and the ref: whichever is fresher wins,
+      // so back-to-back adds from different code paths can't reuse a number.
+      const nums = [...prev, ...invoicesRef.current]
+        .map((i) => parseInt(i.number?.replace(/\D/g, '') || '0', 10)).filter((n) => !isNaN(n))
       const nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 1
       const newInv = {
         ...invoice,

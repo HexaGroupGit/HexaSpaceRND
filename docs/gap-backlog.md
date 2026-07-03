@@ -74,7 +74,7 @@ loop is done — say so and stop scheduling.
   mid-month start (prorated), ended lease, rent-free month, already-billed
   dedup with a prorated periodStart (e.g. 2026-07-15 must dedup against July).
 
-- [ ] **3. Safer invoice numbering.**
+- [x] **3. Safer invoice numbering.** _Done: cron re-reads invoice numbers fresh before each insert (monotonic within run, retry-once on duplicate-id), store allocates over state ∪ invoicesRef; residual race + sequence/RPC fix documented in docs/build-notes.md § Invoice numbering._
   Both number allocators (useStore addInvoice ~line 1391, auto-billing.js
   ~line 97) pick `max+1` from their own snapshot — concurrent runs collide.
   Minimal fix: in `api/auto-billing.js`, re-read the invoices table's numbers
@@ -216,3 +216,4 @@ loop is done — say so and stop scheduling.
 (append one line per completed item: date, item, commit hash)
 - 2026-07-03 · Item 1 proposal-accept hardening · b00a3bf
 - 2026-07-03 · Item 2 shared billing engine · 6aec311 (commit also swept in a pre-existing uncommitted Stripe integration — see item 7 note)
+- 2026-07-03 · Item 3 safer invoice numbering · (commit follows)

@@ -28,3 +28,21 @@ Awaiting Approval. Columns: Name(+type) · Member · Date(+status) · Price.
 2. Bill run / invoicing → Fees & invoices feed member profile + overdue flags.
 3. Website booking → Bookings.
 4. Integrations: PaperCut (print fees), Salto (door access), Xero (invoice sync).
+
+## Invoice numbering (numberSeq)
+Invoice numbers live INSIDE the JSONB `data` of the `invoices` rows — there is
+no DB uniqueness constraint or sequence. Allocation everywhere is
+"max existing + 1":
+- client store `addInvoice` (src/store/useStore.js) — max over React state ∪
+  invoicesRef (freshest in-memory view),
+- auto-billing cron (api/auto-billing.js) — re-reads all invoice numbers from
+  Supabase immediately before EACH insert, monotonic within the run, and
+  retries once on a duplicate-id insert error.
+
+Residual race: two writers allocating in the same instant (in-app Bill Run
+clicked at the exact moment the monthly cron fires) can still mint the same
+number — the fresh re-read narrows the window to sub-second but cannot close
+it. Proper fix when it matters: a Postgres sequence exposed via RPC
+(`create sequence invoice_number_seq; create function next_invoice_number()
+returns bigint …`) and calling it from both writers, plus a backfill +
+unique index on `(data->>'number')`.

@@ -96,11 +96,19 @@ export default async function handler(req, res) {
   const taxRate      = settings.billingRules?.taxEnabled !== false ? (settings.billingRules?.taxRate ?? 10) / 100 : 0
   const numTemplate  = settings.invoicing?.invoiceNumberTemplate ?? 'INV-{{number}}'
 
-  // Find highest existing invoice number
-  let nextNum = invoices
-    .map(i => parseInt((i.number ?? '').replace(/\D/g, ''), 10))
-    .filter(n => !isNaN(n) && n > 0)
-    .reduce((max, n) => Math.max(max, n), 0) + 1
+  // Invoice numbers live inside the JSONB rows (no DB uniqueness constraint),
+  // so allocation is read-max-plus-one. To keep the race window with a
+  // concurrent in-app Bill Run as small as possible, re-read the numbers
+  // FRESH immediately before each insert instead of trusting the snapshot
+  // taken at run start. Residual race + proper fix: see docs/build-notes.md.
+  const highestNumber = async () => {
+    const { data } = await supabase.from('invoices').select('data->>number')
+    return (data ?? [])
+      .map(r => parseInt(String(r.number ?? '').replace(/\D/g, ''), 10))
+      .filter(n => !isNaN(n) && n > 0)
+      .reduce((max, n) => Math.max(max, n), 0)
+  }
+  let lastAllocated = 0
 
   const created = [], skipped = [], errors = []
 
@@ -118,7 +126,9 @@ export default async function handler(req, res) {
       continue
     }
 
-    const invoiceNum = numTemplate.replace('{{number}}', pad(nextNum++))
+    // Fresh number allocation, kept monotonic within this run.
+    lastAllocated = Math.max(await highestNumber(), lastAllocated) + 1
+    const invoiceNum = numTemplate.replace('{{number}}', pad(lastAllocated))
     const invoice = {
       ...built,
       id: `inv_auto_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -127,11 +137,18 @@ export default async function handler(req, res) {
       createdAt: issueDate,
     }
 
-    const { error: saveErr } = await supabase.from('invoices').insert({
+    let { error: saveErr } = await supabase.from('invoices').insert({
       id: invoice.id,
       data: invoice,
       updated_at: new Date().toISOString(),
     })
+    if (saveErr && saveErr.code === '23505') {
+      // id collision (same-ms Date.now) — regenerate and retry once
+      invoice.id = `inv_auto_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      ;({ error: saveErr } = await supabase.from('invoices').insert({
+        id: invoice.id, data: invoice, updated_at: new Date().toISOString(),
+      }))
+    }
     if (saveErr) { errors.push({ tenant: tenant.businessName, reason: saveErr.message }); continue }
 
     // Send invoice email
