@@ -511,6 +511,85 @@ export default function LeadDetail({ lead, store, onClose }) {
   )
 }
 
+function MembershipProposal({ type, m, setM, offer, proposalMsg, setProposalMsg, validityDays, setValidityDays, onSend, sending, result, hasEmail, input }) {
+  const isDesk = type === 'flexi' || type === 'dedicated'
+  const isVirtual = type === 'virtual'
+  const priceNum = Number(m.price) || 0
+  const OfferRow = ({ label, value, strong }) => (
+    <div className={`flex justify-between py-0.5 ${strong ? 'font-semibold text-foreground' : 'text-foreground'}`}><span className="text-muted-foreground">{label}</span><span>{value}</span></div>
+  )
+  return (
+    <div className="bg-card border border-border rounded-xl shadow-sm p-4 space-y-3">
+      <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide">{offer.typeLabel} proposal</h3>
+      <div className="grid grid-cols-2 gap-3">
+        <label><span className="block text-[11px] text-muted-foreground mb-0.5">Monthly price ($)</span><input type="number" value={m.price} onChange={(e) => setM({ ...m, price: e.target.value })} className={input} placeholder="e.g. 650" /></label>
+        {isDesk && (
+          <label><span className="block text-[11px] text-muted-foreground mb-0.5">Term</span>
+            <select value={m.term} onChange={(e) => setM({ ...m, term: e.target.value })} className={input}>
+              <option value="mtm">Month-to-month (1 month notice)</option>
+              <option value="6mo">6 months</option>
+            </select>
+          </label>
+        )}
+        {isVirtual && (
+          <div><span className="block text-[11px] text-muted-foreground mb-0.5">Term</span><div className="border border-input rounded px-3 py-2 text-sm text-muted-foreground bg-muted/40">12-month minimum</div></div>
+        )}
+      </div>
+      {(isDesk || type === 'office') && (
+        <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer select-none">
+          <input type="checkbox" checked={m.newClient} onChange={(e) => setM({ ...m, newClient: e.target.checked })} className="h-3.5 w-3.5 rounded border-gray-300" />
+          New member — eligible for the rent-free incentive
+        </label>
+      )}
+      <div className="bg-muted/40 border border-border rounded-md p-3 text-sm">
+        <OfferRow label="Membership" value={offer.typeLabel} />
+        <OfferRow label="Monthly" value={`$${priceNum.toLocaleString('en-AU')}`} />
+        <OfferRow label="Term" value={offer.termLabel} />
+        {offer.notice && <OfferRow label="Notice period" value={offer.notice} />}
+        {offer.freeMonths > 0 && <OfferRow label="New-member offer" value={`Final ${offer.freeMonths} month${offer.freeMonths > 1 ? 's' : ''} rent-free`} strong />}
+      </div>
+      <label className="block"><span className="block text-xs text-muted-foreground mb-1">Cover message (optional)</span><textarea rows={2} value={proposalMsg} onChange={(e) => setProposalMsg(e.target.value)} className={`${input} resize-none`} /></label>
+      <label className="block w-32"><span className="block text-xs text-muted-foreground mb-1">Valid for (days)</span><input type="number" value={validityDays} onChange={(e) => setValidityDays(Number(e.target.value) || 14)} className={input} /></label>
+      <div className="flex items-center gap-3 pt-1">
+        <button onClick={onSend} disabled={sending || !hasEmail} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">{sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send proposal</button>
+        {result && <span className={`text-xs ${result.includes('✓') ? 'text-green-600' : 'text-red-600'}`}>{result}</span>}
+      </div>
+      <p className="text-xs text-muted-foreground">The offer, term and any rent-free months are included in the emailed proposal. (PDF attachments are handled separately.)</p>
+    </div>
+  )
+}
+
+function buildMembershipProposalHtml({ lead, settings, offer, coverMsg, acceptLink, validityDays }) {
+  const company = settings?.company?.name || 'Hexa Space'
+  const website = settings?.company?.website || 'hexaspace.com.au'
+  const name = lead?.name || lead?.contactName || 'there'
+  const SANS = "'HexaGT','Helvetica Neue',Arial,sans-serif"
+  const cell = `padding:11px 15px;font-family:${SANS};font-size:14px`
+  const row = (l, v, alt, strong) => `<tr${alt ? ' style="background:#EFEDF2"' : ''}><td style="${cell};font-weight:600;color:#1a1a1a">${l}</td><td style="${cell}${strong ? ';color:#7F8B2F;font-weight:600' : ''}">${v}</td></tr>`
+  const rows = [
+    row('Membership', offer.typeLabel, true),
+    row('Monthly fee', `$${Number(offer.price).toLocaleString('en-AU')} / month`, false),
+    row('Term', offer.termLabel, true),
+    offer.notice ? row('Notice period', offer.notice, false) : '',
+    offer.freeMonths > 0 ? row('New-member offer', `Your final ${offer.freeMonths} month${offer.freeMonths > 1 ? 's' : ''} rent-free`, true, true) : '',
+  ].join('')
+  const freeLine = offer.freeMonths > 0
+    ? `<p style="font-family:${SANS};font-size:13px;line-height:1.6;color:#6b6b6b;margin:0 0 16px">The rent-free ${offer.freeMonths > 1 ? 'months are' : 'month is'} applied to the end of your term.</p>` : ''
+  const cover = coverMsg ? `<p style="font-family:${SANS};font-size:15px;line-height:1.65;color:#3a3a3a;margin:0 0 16px">${String(coverMsg).replace(/</g, '&lt;')}</p>` : ''
+  const inner = `
+      <div style="font-family:'HexaRework','Helvetica Neue',Arial,sans-serif;font-size:11px;letter-spacing:.28em;color:#7F8B2F;text-transform:uppercase;margin:0 0 14px">Your Proposal</div>
+      <h1 style="font-family:'HexaBig',Georgia,serif;font-weight:400;font-size:30px;line-height:1.12;margin:0 0 18px;color:#1a1a1a">Your ${offer.typeLabel} at ${company}.</h1>
+      <p style="font-family:${SANS};font-size:15px;line-height:1.65;color:#3a3a3a;margin:0 0 16px">Hi ${name},</p>
+      <p style="font-family:${SANS};font-size:15px;line-height:1.65;color:#3a3a3a;margin:0 0 16px">Thanks so much for your interest in ${company}. Here are the details of your membership:</p>
+      ${cover}
+      <table style="width:100%;border-collapse:collapse;margin:6px 0 14px">${rows}</table>
+      ${freeLine}
+      <p style="font-family:${SANS};font-size:15px;line-height:1.65;color:#3a3a3a;margin:0 0 16px">If you're happy to go ahead, review and accept online below — you'll then complete your details and choose your start date.</p>
+      <div style="text-align:center;margin:24px 0"><a href="${acceptLink}" style="display:inline-block;background:#7F8B2F;color:#fff;text-decoration:none;padding:13px 34px;font-family:'HexaRework','Helvetica Neue',Arial,sans-serif;font-size:12px;letter-spacing:.14em;text-transform:uppercase;border-radius:6px">Review &amp; accept proposal</a></div>
+      <p style="font-family:${SANS};font-size:13px;line-height:1.6;color:#6b6b6b;margin:0">This proposal is valid for ${validityDays || 14} days. Any questions at all, just reply to this email.</p>`
+  return brandShell(inner, { company, website })
+}
+
 function commissionEmailHtml({ referrer, commission, settings }) {
   const company = settings?.company?.name ?? 'Hexa Space'
   const website = settings?.company?.website || 'hexaspace.com.au'
