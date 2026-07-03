@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const b = req.body ?? {}
-  const { token, businessName, abn, address, city, state, zip, country, contactName, email, phone, startDate: reqStart } = b
+  const { token, businessName, abn, address, city, state, zip, country, contactName, email, phone, startDate: reqStart, officeIds, parkingIds } = b
   if (!token) return res.status(400).json({ error: 'Missing token' })
   if (!businessName || !contactName || !email) return res.status(400).json({ error: 'Company name, contact name and email are required' })
 
@@ -48,8 +48,14 @@ export default async function handler(req, res) {
     const settings = settRows?.[0]?.data ?? {}
     const templates = (tmplRows ?? []).map((r) => r.data)
     const stages = (stageRows ?? []).map((r) => r.data)
-    const offices = lead.proposal?.offices || []
-    if (offices.length === 0) return res.status(400).json({ error: 'Proposal has no offices' })
+    const allOffices = lead.proposal?.offices || []
+    const allParking = lead.proposal?.parking || []
+    if (allOffices.length === 0) return res.status(400).json({ error: 'Proposal has no offices' })
+    // Offered offices are OPTIONS — the client picks which one(s) + optional parking.
+    const offices = (Array.isArray(officeIds) && officeIds.length) ? allOffices.filter((o) => officeIds.includes(o.spaceId)) : allOffices
+    const parking = (Array.isArray(parkingIds) && parkingIds.length) ? allParking.filter((o) => parkingIds.includes(o.spaceId)) : []
+    if (offices.length === 0) return res.status(400).json({ error: 'Please choose at least one office' })
+    const contractItems = [...offices, ...parking]
 
     const now = new Date()
     const today = now.toISOString().split('T')[0]
@@ -83,16 +89,16 @@ export default async function handler(req, res) {
     // 3. Contract (lease) from the chosen offices + pricing
     const nums = (leaseRows ?? []).map((r) => parseInt(String(r.data?.contractNumber || '').replace(/\D/g, ''), 10)).filter((n) => !isNaN(n) && n < 100000)
     const contractNumber = `CON-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0')}`
-    const monthlyRent = offices.reduce((s, o) => s + Number(o.price || 0), 0)
+    const monthlyRent = contractItems.reduce((s, o) => s + Number(o.price || 0), 0)
     const deposit = monthlyRent // one month's rent as the security deposit
-    const items = offices.map((o, i) => ({ spaceId: o.spaceId, deposit: i === 0 ? deposit : 0, steps: [{ startDate, endDate, listPrice: Number(o.price || 0), qty: 1, discount: '' }] }))
+    const items = contractItems.map((o, i) => ({ spaceId: o.spaceId, deposit: i === 0 ? deposit : 0, steps: [{ startDate, endDate, listPrice: Number(o.price || 0), qty: 1, discount: '' }] }))
     const leaseId = contractNumber
     const eToken = rid('sign')
     const portalBase = settings?.portalUrl || `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || req.headers.host}`
     const memberLink = `${portalBase}/sign/${eToken}`
     const lease = {
       id: leaseId, contractNumber, tenantId, memberId, memberName: contactName, companyName: businessName,
-      spaceId: offices[0].spaceId, resource: offices.map((o) => o.unit).filter(Boolean).join(', '),
+      spaceId: contractItems[0].spaceId, resource: contractItems.map((o) => o.unit).filter(Boolean).join(', '),
       membershipType: 'Private Office', documentType: 'License Agreement', contractType: 'New',
       startDate, endDate, monthlyRent, bondAmount: deposit, discount: '',
       termMonths, rentFreeMonths,
@@ -108,8 +114,8 @@ export default async function handler(req, res) {
     await supabase.from('leases').upsert({ id: leaseId, data: lease, updated_at: now.toISOString() })
     await supabase.from('esign_requests').insert({ token: eToken, lease_id: leaseId, tenant_id: tenantId, status: 'pending' })
 
-    // Reserve the chosen offices for this client
-    const spaceUpdates = offices.map((o) => supabase.from('spaces').select('id, data').eq('id', o.spaceId).single().then(async ({ data }) => {
+    // Reserve the chosen offices + parking for this client
+    const spaceUpdates = contractItems.map((o) => supabase.from('spaces').select('id, data').eq('id', o.spaceId).single().then(async ({ data }) => {
       if (!data) return
       await supabase.from('spaces').upsert({ id: o.spaceId, data: { ...data.data, status: 'reserved', occupantTenantId: tenantId }, updated_at: now.toISOString() })
     }))

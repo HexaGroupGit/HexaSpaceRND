@@ -626,6 +626,173 @@ function deskClosingPage(ctx) {
   </div>`
 }
 
+// ── Virtual Office brochure (two tiers: Virtual Office / Virtual Office Plus) ──
+function voCoverPage(ctx) {
+  const who = ctx.client || ctx.business || ''
+  return `<div class="page" style="display:flex;">
+    <div style="position:relative;width:54%;height:100%;">${bgFill(PHOTO + 'lounge-main.jpg')}</div>
+    <div style="width:46%;height:100%;position:relative;padding:.8in;">
+      <div class="eyebrow" style="letter-spacing:.34em;">HEXA SPACE &nbsp;·&nbsp; 六合空间</div>
+      <div style="position:absolute;left:.8in;top:2.2in;right:.8in;">
+        <div class="eyebrow" style="margin-bottom:14px;">Virtual Office Solutions</div>
+        <div class="display" style="font-size:60px;letter-spacing:.02em;">Virtual<br>Office</div>
+        <div class="kicker" style="margin-top:18px;">A premium Box Hill address — without the office.</div>
+      </div>
+      <div style="position:absolute;left:.8in;right:.8in;bottom:.8in;">
+        <hr class="ruleThin" style="margin-bottom:16px;">
+        <div class="label" style="color:var(--olive);margin-bottom:6px;">Prepared for</div>
+        ${who ? `<div class="label" style="margin-bottom:10px;">${esc(who)}${ctx.dateStr ? ` &nbsp;·&nbsp; ${esc(ctx.dateStr)}` : ''}</div>` : ''}
+        <div class="body" style="font-size:11px;line-height:1.7;">${esc(ctx.addr)}<br>${esc(ctx.web)} &nbsp;·&nbsp; ${esc(ctx.email)} &nbsp;·&nbsp; ${esc(ctx.phone)}</div>
+      </div>
+    </div>
+  </div>`
+}
+
+function voStatementPage() {
+  return `<div class="page">
+    ${bgFill(PHOTO + 'lounge-2.jpg')}
+    <div style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(15,15,12,.64) 0%,rgba(15,15,12,.18) 55%,rgba(15,15,12,0) 100%);"></div>
+    <div style="position:absolute;left:.9in;bottom:1.1in;right:4.6in;">
+      <div class="eyebrow" style="color:#c9d08a;">Box Hill · Whitehorse Road</div>
+      <div class="display" style="color:#fff;font-size:48px;margin-top:16px;">Your business,<br>at a premium<br>address.</div>
+    </div>
+    <div class="foot" style="color:rgba(255,255,255,.6);"><span style="color:#cfd69a;">HEXA SPACE</span> &nbsp;|&nbsp; 六合空间</div>
+  </div>`
+}
+
+function voAddressPage() {
+  const stat = (n, l) => `<div style="flex:1;"><div class="display" style="font-size:30px;">${n}</div><div class="label" style="font-size:7.5px;color:var(--soft);margin-top:4px;">${l}</div></div>`
+  return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
+    <div style="width:47%;display:flex;flex-direction:column;">
+      <div class="eyebrow">Premium Business Address</div>
+      <div class="display" style="font-size:50px;margin-top:16px;">The second CBD<br>of Melbourne.</div>
+      <div class="kicker" style="margin-top:18px;">Level 4, 830 Whitehorse Road, Box Hill VIC 3128.</div>
+      <p class="body" style="margin-top:20px;max-width:4.3in;">Box Hill is Melbourne's thriving second CBD — a diverse, fast-growing hub of new businesses, minutes from the train, tram and Box Hill Central. Put your company at the centre of it: a genuine, prestigious address for your registration, website, cards and correspondence — backed by a real, staffed workspace whenever you need it.</p>
+      <div style="margin-top:auto;display:flex;gap:14px;padding-top:24px;">
+        ${stat('1,763', 'SQM Centre')}${stat('8', 'Meeting Rooms')}${stat('2', 'Media Studios')}${stat('3', 'Levels')}
+      </div>
+    </div>
+    <div style="width:53%;display:flex;flex-direction:column;gap:.28in;">
+      <div style="position:relative;height:3.5in;overflow:hidden;">${bgFill(PHOTO + 'reception.jpg')}</div>
+      <div style="position:relative;height:2in;overflow:hidden;">${bgFill(PHOTO + 'lounge.jpg')}</div>
+    </div>
+  </div>${FOOT}</div>`
+}
+
+function voPackagesPage(offer) {
+  const chosen = offer?.type === 'virtual' ? (offer.typeLabel || '') : ''
+  const isPlus = /plus/i.test(chosen)
+  const isBase = chosen && !isPlus
+  const baseTag = isBase ? `<span class="eyebrow">Your selection</span>` : `<span class="eyebrow" style="color:var(--soft);">12-month minimum</span>`
+  const bl = (t, light) => `<li${light ? ' style="color:#ecebe6;"' : ''}>${t}</li>`
+  return `<div class="page"><div class="pad" style="display:flex;flex-direction:column;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;">
+      <div><div class="eyebrow">Membership</div><div class="display" style="font-size:46px;margin-top:10px;">Choose your package.</div></div>
+      <p class="body" style="width:3.9in;font-size:11px;">Two ways to base your business at Hexa Space — start with the essentials, or add lounge access and daily meeting-room time.</p>
+    </div>
+    <div style="display:flex;gap:.4in;margin-top:.4in;flex:1;">
+      <div style="flex:1;background:var(--paper);border:1px solid ${isBase ? 'var(--olive)' : 'var(--line)'};padding:.42in .44in;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <div class="label" style="color:var(--olive);">Virtual Office</div>${baseTag}
+        </div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px;">
+          <div class="display" style="font-size:52px;">$75</div>
+          <div class="label" style="color:var(--soft);font-size:8.5px;">/ month +GST</div>
+        </div>
+        <div class="body" style="font-size:9.5px;color:var(--soft);margin-top:2px;">Minimum 12-month term</div>
+        <hr class="ruleThin" style="margin:16px 0;">
+        <ul class="bullets">
+          ${bl('Registered business address · Box Hill')}
+          ${bl('Business &amp; online directory listing')}
+          ${bl('Mail handling &amp; forwarding')}
+          ${bl('Reception service')}
+          ${bl('30% off meeting rooms, media &amp; events')}
+          ${bl('Exclusive community event invitations')}
+        </ul>
+        <div style="margin-top:auto;padding-top:18px;"><div class="body" style="font-size:10px;color:var(--soft);">Everything you need to establish and register your business at a premium address.</div></div>
+      </div>
+      <div style="flex:1;background:var(--ink);color:#fff;padding:.42in .44in;display:flex;flex-direction:column;position:relative;">
+        <div class="eyebrow" style="position:absolute;top:.42in;right:.44in;color:#cfd69a;">${isPlus ? 'Your selection' : 'Most popular'}</div>
+        <div class="label" style="color:#cfd69a;">Virtual Office Plus</div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px;">
+          <div class="display" style="font-size:52px;color:#fff;">$150</div>
+          <div class="label" style="color:#a9a7ac;font-size:8.5px;">/ month +GST</div>
+        </div>
+        <div class="body" style="font-size:9.5px;color:#a9a7ac;margin-top:2px;">Everything in Virtual Office, plus —</div>
+        <hr style="height:1px;background:#3a3a34;border:0;margin:16px 0;">
+        <ul class="bullets">
+          ${bl('9am–5pm lounge access', true)}
+          ${bl('Complimentary tea &amp; coffee', true)}
+          ${bl('2 hours free daily · 4-pax meeting room', true)}
+          ${bl('Priority room &amp; studio booking', true)}
+        </ul>
+        <div style="margin-top:auto;padding-top:18px;"><div class="body" style="font-size:10px;color:#bdbbc0;">A professional base with room to meet clients and work on-site, every day.</div></div>
+      </div>
+    </div>
+  </div><style>.hxbro .bullets li[style*="ecebe6"]::before{background:#cfd69a;}</style>${FOOT}</div>`
+}
+
+function voReceptionPage() {
+  return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
+    <div style="width:48%;display:flex;flex-direction:column;justify-content:center;">
+      <div class="eyebrow">Reception Service</div>
+      <div class="display" style="font-size:44px;margin-top:12px;">Mail handling &amp;<br>forwarding.</div>
+      <p class="body" style="margin-top:20px;max-width:4.4in;">Our reception team securely receives, holds and forwards your mail and packages to wherever you are. Never miss an important delivery — whether you're in the office or working remotely — and let clients and couriers be met by a warm, professional front desk at a real address.</p>
+      <div class="label" style="color:var(--olive);margin-top:24px;">Included with every plan</div>
+      <ul class="bullets" style="margin-top:8px;">
+        <li>Secure mail &amp; parcel receiving</li>
+        <li>Mail holding &amp; forwarding on request</li>
+        <li>Reception greeting for your visitors</li>
+        <li>Notifications when items arrive</li>
+      </ul>
+    </div>
+    <div style="width:52%;position:relative;overflow:hidden;">${bgFill(PHOTO + 'reception.jpg')}</div>
+  </div>${FOOT}</div>`
+}
+
+function voAmenitiesPage() {
+  return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
+    <div style="width:46%;display:flex;flex-direction:column;">
+      <div class="eyebrow">Amenities</div>
+      <div class="display" style="font-size:44px;margin-top:12px;">The whole centre,<br>on member rates.</div>
+      <p class="body" style="margin-top:18px;max-width:4.3in;">As a virtual office member you can book the full run of the centre — meeting rooms, event spaces and media studios — all at an exclusive member's discount, with priority for Plus members.</p>
+      <div style="margin-top:26px;display:flex;gap:16px;">
+        <div style="flex:1;border-top:1.5px solid var(--ink);padding-top:12px;"><div class="display" style="font-size:34px;color:var(--olive);">30%</div><div class="label" style="font-size:8px;color:var(--soft);margin-top:4px;">Off standard room rates</div></div>
+        <div style="flex:1;border-top:1.5px solid var(--ink);padding-top:12px;"><div class="display" style="font-size:34px;">2 hrs</div><div class="label" style="font-size:8px;color:var(--soft);margin-top:4px;">Free daily · Plus members</div></div>
+      </div>
+      <ul class="bullets" style="margin-top:26px;">
+        <li>Meeting rooms · 4 to 26 people</li>
+        <li>Media &amp; podcast studios</li>
+        <li>Event &amp; function spaces</li>
+        <li>Lounge access · Plus members</li>
+      </ul>
+    </div>
+    <div style="width:54%;display:flex;flex-direction:column;gap:.28in;">
+      <div style="position:relative;height:3.5in;overflow:hidden;">${bgFill(PHOTO + 'room-east.jpg')}</div>
+      <div style="display:flex;gap:.28in;height:2in;">
+        <div style="flex:1;position:relative;overflow:hidden;">${bgFill(PHOTO + 'media-1.jpg')}</div>
+        <div style="flex:1;position:relative;overflow:hidden;">${bgFill(PHOTO + 'event-space.jpg')}</div>
+      </div>
+    </div>
+  </div>${FOOT}</div>`
+}
+
+// Build the Virtual Office brochure PDF (both tiers; the offered tier is flagged).
+export async function buildVirtualBrochurePdf({ offer = {}, coverMsg = '', lead = {}, settings = {}, dateStr = '', compress = false }) {
+  const ctx = makeCtx(lead, settings, dateStr)
+  const pagesHtml = [
+    voCoverPage(ctx),
+    voStatementPage(),
+    voAddressPage(),
+    voPackagesPage(offer),
+    voReceptionPage(),
+    voAmenitiesPage(),
+    communityPage(),
+    deskClosingPage(ctx),
+  ]
+  return renderPagesToPdf(pagesHtml, { compress })
+}
+
 // Build a Dedicated/Flexible Desk brochure PDF. `type` ∈ {'dedicated','flexi'};
 // `offer` comes from the membership proposal (price, termLabel, freeMonths).
 export async function buildDeskBrochurePdf({ type = 'dedicated', offer = {}, coverMsg = '', lead = {}, settings = {}, dateStr = '', compress = false }) {

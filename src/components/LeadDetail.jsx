@@ -5,7 +5,7 @@ import {
   UserPlus, CheckCircle2, Send, Loader2, ArrowRight, Sparkles, Trash2, FileText, FileDown,
 } from 'lucide-react'
 import { sendEmail, renderProposalTemplate, messageEmailHtml, brandShell, PORTAL_URL } from '../lib/sendEmail.js'
-import { buildProposalPdf, buildDeskBrochurePdf } from '../lib/proposalPdf.js'
+import { buildProposalPdf, buildDeskBrochurePdf, buildVirtualBrochurePdf } from '../lib/proposalPdf.js'
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: User },
@@ -120,6 +120,12 @@ export default function LeadDetail({ lead, store, onClose }) {
     .filter((o) => !o.occupied || o.becoming)
     .sort((a, b) => (a.occupied === b.occupied ? 0 : a.occupied ? 1 : -1) || String(a.space.unitNumber).localeCompare(String(b.space.unitNumber), undefined, { numeric: true }))
 
+  // Unleased parking bays that can be offered as an optional add-on on the proposal.
+  const parkingOptions = spaces
+    .filter((s) => s.type === 'parking' && !officeHasOccupant(s) && s.status !== 'occupied')
+    .map((s) => ({ space: s }))
+    .sort((a, b) => String(a.space.unitNumber).localeCompare(String(b.space.unitNumber), undefined, { numeric: true }))
+
   const [picked, setPicked] = useState({}) // spaceId -> { on, price, note }
   const [proposalMsg, setProposalMsg] = useState('')
   const [validityDays, setValidityDays] = useState(14)
@@ -144,16 +150,21 @@ export default function LeadDetail({ lead, store, onClose }) {
   const [officeTerm, setOfficeTerm] = useState('12mo')
   const [officeNewClient, setOfficeNewClient] = useState(true)
 
-  // Dedicated / Flexible Desk memberships get the branded desk brochure attached.
+  // Desk (Dedicated/Flexible) and Virtual Office memberships get a branded
+  // brochure attached; Private Office uses the full suite proposal instead.
   const isDeskType = (t) => t === 'dedicated' || t === 'flexi'
-  const deskArgs = (offer) => ({ type: propType, offer, coverMsg: proposalMsg.trim(), lead, settings, dateStr: format(new Date(), 'd MMMM yyyy'), compress: compressPdf })
+  const hasBrochure = (t) => t === 'dedicated' || t === 'flexi' || t === 'virtual'
+  const brochureArgs = (offer) => ({ offer, coverMsg: proposalMsg.trim(), lead, settings, dateStr: format(new Date(), 'd MMMM yyyy'), compress: compressPdf })
+  const buildMembershipBrochure = (offer) => propType === 'virtual'
+    ? buildVirtualBrochurePdf(brochureArgs(offer))
+    : buildDeskBrochurePdf({ type: propType, ...brochureArgs(offer) })
 
   async function downloadMembershipBrochure() {
-    if (!isDeskType(propType)) { setProposalResult('A brochure is available for Desk memberships.'); return }
+    if (!hasBrochure(propType)) { setProposalResult('A brochure is available for Desk & Virtual Office memberships.'); return }
     if (!(Number(m.price) > 0)) { setProposalResult('Enter a monthly price.'); return }
     setDownloadingProposal(true); setProposalResult('')
     try {
-      const doc = await buildDeskBrochurePdf(deskArgs(mOffer()))
+      const doc = await buildMembershipBrochure(mOffer())
       doc.save(`${mOffer().typeLabel.replace(/\s+/g, '_')}_${(lead.name || lead.businessName || 'lead').replace(/\s+/g, '_')}.pdf`)
     } catch (e) { setProposalResult(e.message) } finally { setDownloadingProposal(false) }
   }
@@ -169,8 +180,8 @@ export default function LeadDetail({ lead, store, onClose }) {
       const html = buildMembershipProposalHtml({ lead, settings, offer, coverMsg: proposalMsg.trim(), acceptLink, validityDays })
       const subject = `Your ${offer.typeLabel} proposal — ${settings?.company?.name || 'Hexa Space'}`
       let attachments
-      if (isDeskType(propType)) {
-        const doc = await buildDeskBrochurePdf(deskArgs(offer))
+      if (hasBrochure(propType)) {
+        const doc = await buildMembershipBrochure(offer)
         attachments = [{ filename: `${offer.typeLabel.replace(/\s+/g, '_')}_${(lead.businessName || lead.name || 'lead').replace(/\s+/g, '_')}.pdf`, content: pdfToBase64(doc) }]
       }
       await sendEmail({ to: lead.email, subject, html, settings, emailType: 'proposal', attachments })
@@ -187,10 +198,11 @@ export default function LeadDetail({ lead, store, onClose }) {
     ...p,
     [o.space.id]: p[o.space.id]?.on
       ? { ...p[o.space.id], on: false }
-      : { on: true, price: p[o.space.id]?.price ?? (o.space.monthlyRate ?? ''), note: p[o.space.id]?.note ?? (o.availableFrom ? `Available from ${format(parseISO(o.availableFrom), 'd MMM yyyy')}` : '') },
+      : { on: true, price: p[o.space.id]?.price ?? (o.space.monthlyRate ?? o.space.rate ?? ''), note: p[o.space.id]?.note ?? (o.availableFrom ? `Available from ${format(parseISO(o.availableFrom), 'd MMM yyyy')}` : '') },
   }))
   const setPick = (id, k, v) => setPicked((p) => ({ ...p, [id]: { ...p[id], [k]: v } }))
   const selectedList = () => officeOptions.filter((o) => picked[o.space.id]?.on).map((o) => ({ ...o, price: Number(picked[o.space.id]?.price || 0), note: picked[o.space.id]?.note || '' }))
+  const selectedParking = () => parkingOptions.filter((o) => picked[o.space.id]?.on).map((o) => ({ space: o.space, price: Number(picked[o.space.id]?.price || 0) }))
 
   // Map a picked office into the shape the branded PDF builder expects.
   const toOffice = (o) => ({ unit: o.space.unitNumber, floor: o.space.floor, pax: o.space.pax, price: o.price, note: o.note })
@@ -218,13 +230,15 @@ export default function LeadDetail({ lead, store, onClose }) {
       const token = (crypto?.randomUUID?.() || `${lead.id}-${Date.now()}`)
       const acceptLink = `${PORTAL_URL}/proposal/${token}`
       const tpl = (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'proposal' && t.content)
-      const oOffer = computeMembershipOffer('office', sel.reduce((s, o) => s + o.price, 0), officeTerm, officeNewClient)
-      const { subject: subj, html } = renderProposalTemplate({ template: tpl, lead, settings, acceptLink, offer: buildOfficeOfferHtml(oOffer) })
+      const par = selectedParking()
+      const oOffer = computeMembershipOffer('office', 0, officeTerm, officeNewClient)
+      const offices = sel.map((o) => ({ spaceId: o.space.id, unit: o.space.unitNumber, price: o.price, note: o.note, floor: o.space.floor, pax: o.space.pax }))
+      const parking = par.map((o) => ({ spaceId: o.space.id, unit: o.space.unitNumber, price: o.price }))
+      const { subject: subj, html } = renderProposalTemplate({ template: tpl, lead, settings, acceptLink, offer: buildOfficeProposalBlock(offices, parking, oOffer) })
       await sendEmail({ to: lead.email, subject: subj, html, settings, emailType: 'proposal', attachments: [{ filename: `Proposal_${(lead.businessName || lead.name || 'lead').replace(/\s+/g, '_')}.pdf`, content: pdfBase64 }] })
       const quoted = pipelineStages.find((s) => /quote/i.test(s.name || '') || s.category === 'quoted')
-      const offices = sel.map((o) => ({ spaceId: o.space.id, unit: o.space.unitNumber, price: o.price, note: o.note }))
-      updateLead(lead.id, { proposal: { token, status: 'sent', sentAt: new Date().toISOString(), offices, term: officeTerm, freeMonths: oOffer.freeMonths, newClient: officeNewClient, validityDays, message: proposalMsg }, ...(quoted ? { stageId: quoted.id, stageEnteredAt: new Date().toISOString().split('T')[0] } : {}) })
-      appendLeadActivity(lead.id, { type: 'email', text: `Proposal sent — ${offices.length} office${offices.length !== 1 ? 's' : ''} ($${sel.reduce((s, o) => s + o.price, 0).toLocaleString('en-AU')}/mo)` })
+      updateLead(lead.id, { proposal: { token, status: 'sent', sentAt: new Date().toISOString(), offices, parking, term: officeTerm, freeMonths: oOffer.freeMonths, newClient: officeNewClient, validityDays, message: proposalMsg }, ...(quoted ? { stageId: quoted.id, stageEnteredAt: new Date().toISOString().split('T')[0] } : {}) })
+      appendLeadActivity(lead.id, { type: 'email', text: `Proposal sent — ${offices.length} office option${offices.length !== 1 ? 's' : ''}${parking.length ? ` + ${parking.length} parking` : ''}` })
       setProposalResult('Sent ✓'); setTab('activity')
     } catch (e) { setProposalResult(e.message) } finally { setSendingProposal(false) }
   }
@@ -362,8 +376,8 @@ export default function LeadDetail({ lead, store, onClose }) {
 
               {propType === 'office' && (<>
               <div className="bg-card border border-border rounded-xl shadow-sm p-4">
-                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-1">Offices to propose</h3>
-                <p className="text-xs text-muted-foreground mb-3">Tick the offices to include. Available now and those becoming available (lease ending within 90 days) are listed — edit the price for a negotiated rate.</p>
+                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-1">Offices to offer (options)</h3>
+                <p className="text-xs text-muted-foreground mb-3">Tick the offices to present as <strong>options</strong> — the client picks their preferred one when they accept (they can choose more than one). Available now + becoming available (≤90 days) are listed. Edit the price for a negotiated rate.</p>
                 {officeOptions.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No available or soon-to-be-available offices.</p>
                 ) : (
@@ -392,6 +406,29 @@ export default function LeadDetail({ lead, store, onClose }) {
                   </div>
                 )}
               </div>
+              {parkingOptions.length > 0 && (
+                <div className="bg-card border border-border rounded-xl shadow-sm p-4">
+                  <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-1">Optional parking</h3>
+                  <p className="text-xs text-muted-foreground mb-3">Offer available parking bays — the client can add one to their contract when they accept.</p>
+                  <div className="space-y-2">
+                    {parkingOptions.map((o) => {
+                      const p = picked[o.space.id] || {}
+                      return (
+                        <div key={o.space.id} className={`border rounded-lg p-3 ${p.on ? 'border-foreground bg-muted/40' : 'border-border'}`}>
+                          <div className="flex items-center gap-3">
+                            <input type="checkbox" checked={!!p.on} onChange={() => togglePick(o)} className="h-4 w-4 rounded border-gray-300" />
+                            <div className="flex-1 min-w-0"><div className="text-sm font-medium text-foreground">Car parking {o.space.unitNumber}</div></div>
+                            <div className="text-xs text-muted-foreground">list ${Number(o.space.rate ?? o.space.monthlyRate ?? 0).toLocaleString('en-AU')}</div>
+                          </div>
+                          {p.on && (
+                            <div className="mt-3 pl-7 w-40"><label><span className="block text-[11px] text-muted-foreground mb-0.5">Monthly price</span><input type="number" value={p.price ?? ''} onChange={(e) => setPick(o.space.id, 'price', e.target.value)} className={input} /></label></div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="bg-card border border-border rounded-xl shadow-sm p-4 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block"><span className="block text-xs text-muted-foreground mb-1">Term</span>
@@ -627,29 +664,37 @@ function MembershipProposal({ type, m, setM, offer, proposalMsg, setProposalMsg,
       <label className="block"><span className="block text-xs text-muted-foreground mb-1">Cover message (optional)</span><textarea rows={2} value={proposalMsg} onChange={(e) => setProposalMsg(e.target.value)} className={`${input} resize-none`} /></label>
       <label className="block w-32"><span className="block text-xs text-muted-foreground mb-1">Valid for (days)</span><input type="number" value={validityDays} onChange={(e) => setValidityDays(Number(e.target.value) || 14)} className={input} /></label>
       <div className="flex items-center gap-3 pt-1">
-        {isDesk && onPreview && (
+        {(isDesk || isVirtual) && onPreview && (
           <button onClick={onPreview} disabled={downloading} className="flex items-center gap-1.5 border border-input text-foreground px-3 py-2 rounded-md text-sm hover:bg-muted/50 disabled:opacity-40">{downloading ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />} Preview PDF</button>
         )}
         <button onClick={onSend} disabled={sending || !hasEmail} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">{sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send proposal</button>
         {result && <span className={`text-xs ${result.includes('✓') ? 'text-green-600' : 'text-red-600'}`}>{result}</span>}
       </div>
-      <p className="text-xs text-muted-foreground">{isDesk ? 'The branded desk brochure is attached to the emailed proposal automatically.' : 'The offer, term and any rent-free months are included in the emailed proposal.'}</p>
+      <p className="text-xs text-muted-foreground">{(isDesk || isVirtual) ? 'The branded brochure is attached to the emailed proposal automatically.' : 'The offer, term and any rent-free months are included in the emailed proposal.'}</p>
     </div>
   )
 }
 
-// Small term + rent-free block injected into the office proposal email ({{offer}}).
-function buildOfficeOfferHtml(offer) {
-  if (!offer) return ''
+// Office options + parking + term block injected into the office proposal email
+// ({{offer}}). Offices are OPTIONS — the client chooses on the accept page.
+function buildOfficeProposalBlock(offices = [], parking = [], offer) {
   const SANS = "'HexaGT','Helvetica Neue',Arial,sans-serif"
+  const CAPS = "'HexaRework','Helvetica Neue',Arial,sans-serif"
+  const money = (n) => `$${Number(n || 0).toLocaleString('en-AU')}`
+  const cap = (t) => `<div style="font-family:${CAPS};font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:#7F8B2F;margin:18px 0 8px">${t}</div>`
   const cell = `padding:10px 15px;font-family:${SANS};font-size:14px`
-  const r = (l, v, alt, strong) => `<tr${alt ? ' style="background:#EFEDF2"' : ''}><td style="${cell};font-weight:600;color:#1a1a1a">${l}</td><td style="${cell}${strong ? ';color:#7F8B2F;font-weight:600' : ''}">${v}</td></tr>`
-  const rows = [
-    r('Term', offer.termLabel, true),
-    offer.freeMonths > 0 ? r('New-member offer', `Your final ${offer.freeMonths} month${offer.freeMonths > 1 ? 's' : ''} rent-free`, false, true) : '',
-  ].join('')
-  const note = offer.freeMonths > 0 ? `<p style="font-family:${SANS};font-size:13px;color:#6b6b6b;margin:0 0 16px">The rent-free months are applied to the end of your term.</p>` : ''
-  return `<table style="width:100%;border-collapse:collapse;margin:4px 0 12px">${rows}</table>${note}`
+  const optRow = (o) => {
+    const meta = [o.floor === 'l2' ? 'Level 2' : o.floor === 'l4' ? 'Level 4' : o.floor === 'l5' ? 'Level 5' : '', o.pax ? `${o.pax} pax` : '', o.note].filter(Boolean).join(' · ')
+    return `<tr style="border-bottom:1px solid #e3e1e6"><td style="${cell};color:#1a1a1a;font-weight:600">${o.unit}${meta ? `<div style="font-weight:400;color:#6b6b6b;font-size:12px;margin-top:2px">${meta}</div>` : ''}</td><td style="${cell};text-align:right;color:#1a1a1a">${money(o.price)}<span style="color:#9a9aa0">/mo</span></td></tr>`
+  }
+  const officeTbl = offices.length
+    ? `${cap(offices.length > 1 ? 'Available offices — choose your preferred option' : 'Your office')}<table style="width:100%;border-collapse:collapse;border-top:1px solid #e3e1e6">${offices.map(optRow).join('')}</table>${offices.length > 1 ? `<p style="font-family:${SANS};font-size:12px;color:#6b6b6b;margin:8px 0 0">Pick the office that suits when you accept — you can select more than one if you'd like additional offices.</p>` : ''}`
+    : ''
+  const parkTbl = parking.length
+    ? `${cap('Optional parking')}<table style="width:100%;border-collapse:collapse;border-top:1px solid #e3e1e6">${parking.map((p) => `<tr style="border-bottom:1px solid #e3e1e6"><td style="${cell};color:#1a1a1a">Car parking ${p.unit}</td><td style="${cell};text-align:right;color:#1a1a1a">${money(p.price)}<span style="color:#9a9aa0">/mo</span></td></tr>`).join('')}</table><p style="font-family:${SANS};font-size:12px;color:#6b6b6b;margin:8px 0 0">Add a parking bay to your contract when you accept.</p>`
+    : ''
+  const termRow = offer ? `${cap('Term')}<table style="width:100%;border-collapse:collapse"><tr style="background:#EFEDF2"><td style="${cell};font-weight:600;color:#1a1a1a">Term</td><td style="${cell}">${offer.termLabel}</td></tr>${offer.freeMonths > 0 ? `<tr><td style="${cell};font-weight:600;color:#1a1a1a">New-member offer</td><td style="${cell};color:#7F8B2F;font-weight:600">Your final ${offer.freeMonths} month${offer.freeMonths > 1 ? 's' : ''} rent-free</td></tr>` : ''}</table>${offer.freeMonths > 0 ? `<p style="font-family:${SANS};font-size:12px;color:#6b6b6b;margin:8px 0 0">Rent-free months apply to the end of your term.</p>` : ''}` : ''
+  return `${officeTbl}${parkTbl}${termRow}`
 }
 
 function buildMembershipProposalHtml({ lead, settings, offer, coverMsg, acceptLink, validityDays }) {

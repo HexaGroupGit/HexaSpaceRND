@@ -12,7 +12,11 @@ export default function ProposalAccept({ token }) {
   const [err, setErr] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState(null)
+  const [selOffices, setSelOffices] = useState([])
+  const [selParking, setSelParking] = useState([])
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+  const toggleOff = (id) => setSelOffices((a) => a.includes(id) ? a.filter((x) => x !== id) : [...a, id])
+  const togglePark = (id) => setSelParking((a) => a.includes(id) ? a.filter((x) => x !== id) : [...a, id])
 
   useEffect(() => {
     fetch(`/api/proposal?token=${encodeURIComponent(token)}`)
@@ -21,6 +25,8 @@ export default function ProposalAccept({ token }) {
         if (!d.ok) { setState('invalid'); return }
         setData(d)
         setForm((f) => ({ ...f, businessName: d.businessName || '', contactName: d.leadName || '', email: d.email || '', startDate: d.today || '' }))
+        // Preselect the office if only one was offered (common case).
+        if ((d.offices || []).length === 1) setSelOffices([d.offices[0].spaceId])
         setState(d.status === 'accepted' ? 'done' : 'review')
         if (d.status === 'accepted') setResult({ alreadyAccepted: true })
       })
@@ -29,17 +35,20 @@ export default function ProposalAccept({ token }) {
 
   async function submit(e) {
     e.preventDefault()
+    if (selOffices.length === 0) { setErr('Please choose an office.'); return }
     if (!form.businessName.trim() || !form.contactName.trim() || !form.email.trim()) { setErr('Company name, your name and email are required.'); return }
     setSubmitting(true); setErr('')
     try {
-      const res = await fetch('/api/proposal-accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, ...form }) })
+      const res = await fetch('/api/proposal-accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, ...form, officeIds: selOffices, parkingIds: selParking }) })
       const d = await res.json()
       if (!res.ok) { setErr(d.error || 'Something went wrong. Please try again.'); setSubmitting(false); return }
       setResult(d); setState('done')
     } catch { setErr('Something went wrong. Please try again.'); setSubmitting(false) }
   }
 
-  const total = (data?.offices || []).reduce((s, o) => s + Number(o.price || 0), 0)
+  const offices = data?.offices || []
+  const parking = data?.parking || []
+  const total = [...offices.filter((o) => selOffices.includes(o.spaceId)), ...parking.filter((o) => selParking.includes(o.spaceId))].reduce((s, o) => s + Number(o.price || 0), 0)
   const TERM_LABEL = { mtm: 'Month-to-month', '6mo': '6-month term', '12mo': '12-month term' }
   const termMonths = data?.term === '6mo' ? 6 : 12
   const endFrom = (s) => { if (!s) return ''; const d = new Date(`${s}T00:00:00`); d.setMonth(d.getMonth() + termMonths); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0] }
@@ -62,23 +71,48 @@ export default function ProposalAccept({ token }) {
               <p className="hx-prose text-[15px]">Hi {data.leadName || 'there'}, here's the proposal we've put together for you.</p>
 
               <div>
-                <div className="hx-eyebrow mb-2">{data.typeLabel || 'Private Office'}</div>
-                <div className="border border-ink/10">
-                  {data.offices.map((o, i) => (
-                    <div key={i} className="flex items-baseline justify-between px-4 py-3 border-b border-ink/10 last:border-0">
-                      <div className="min-w-0">
-                        <div className="font-heading uppercase tracking-nav text-[12px] text-ink">{o.unit}</div>
-                        {[o.level, o.pax ? `${o.pax} pax` : '', o.note].filter(Boolean).length > 0 && (
-                          <div className="hx-prose text-[12px] text-portal-muted mt-0.5">{[o.level, o.pax ? `${o.pax} pax` : '', o.note].filter(Boolean).join(' · ')}</div>
-                        )}
-                      </div>
-                      <div className="font-body text-[15px] text-ink tabular-nums">{money(o.price)}</div>
+                <div className="hx-eyebrow mb-2">{offices.length > 1 ? 'Choose your office' : (data.typeLabel || 'Private Office')}</div>
+                <div className="space-y-2">
+                  {offices.map((o) => {
+                    const on = selOffices.includes(o.spaceId)
+                    const meta = [o.level, o.pax ? `${o.pax} pax` : '', o.note].filter(Boolean).join(' · ')
+                    return (
+                      <button type="button" key={o.spaceId} onClick={() => toggleOff(o.spaceId)}
+                        className={`w-full flex items-center gap-3 text-left border p-3 transition-colors ${on ? 'border-hexa-green bg-bone' : 'border-ink/15 bg-paper hover:border-ink/40'}`}>
+                        <span className={`h-4 w-4 shrink-0 border ${on ? 'bg-hexa-green border-hexa-green' : 'border-ink/30'}`} />
+                        <span className="flex-1 min-w-0">
+                          <span className="block font-heading uppercase tracking-nav text-[12px] text-ink">{o.unit}</span>
+                          {meta && <span className="block hx-prose text-[12px] text-portal-muted mt-0.5">{meta}</span>}
+                        </span>
+                        <span className="font-body text-[15px] text-ink tabular-nums">{money(o.price)}<span className="text-portal-muted">/mo</span></span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {offices.length > 1 && <p className="hx-prose text-[12px] text-portal-muted mt-2">Pick your preferred office — or select more than one for additional offices.</p>}
+
+                {parking.length > 0 && (
+                  <>
+                    <div className="hx-eyebrow mb-2 mt-5">Optional parking</div>
+                    <div className="space-y-2">
+                      {parking.map((o) => {
+                        const on = selParking.includes(o.spaceId)
+                        return (
+                          <button type="button" key={o.spaceId} onClick={() => togglePark(o.spaceId)}
+                            className={`w-full flex items-center gap-3 text-left border p-3 transition-colors ${on ? 'border-hexa-green bg-bone' : 'border-ink/15 bg-paper hover:border-ink/40'}`}>
+                            <span className={`h-4 w-4 shrink-0 border ${on ? 'bg-hexa-green border-hexa-green' : 'border-ink/30'}`} />
+                            <span className="flex-1 font-heading uppercase tracking-nav text-[12px] text-ink">Car parking {o.unit}</span>
+                            <span className="font-body text-[15px] text-ink tabular-nums">{money(o.price)}<span className="text-portal-muted">/mo</span></span>
+                          </button>
+                        )
+                      })}
                     </div>
-                  ))}
-                  <div className="flex items-baseline justify-between px-4 py-3 bg-bone">
-                    <span className="font-heading uppercase tracking-nav text-[11px] text-ink">Total / month (ex GST)</span>
-                    <span className="font-display text-2xl">{money(total)}</span>
-                  </div>
+                  </>
+                )}
+
+                <div className="flex items-baseline justify-between border-t border-ink/10 mt-4 pt-4">
+                  <span className="font-heading uppercase tracking-nav text-[11px] text-ink">Total / month (ex GST)</span>
+                  <span className="font-display text-2xl">{total ? money(total) : '—'}</span>
                 </div>
               </div>
 

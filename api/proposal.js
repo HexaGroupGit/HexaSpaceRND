@@ -33,7 +33,11 @@ export default async function handler(req, res) {
     const floorLabel = { l2: 'Level 2', l4: 'Level 4', l5: 'Level 5' }
     const offices = (p.offices || []).map((o) => {
       const s = spaces[o.spaceId] || {}
-      return { unit: o.unit || s.unitNumber, price: o.price, note: o.note || '', level: floorLabel[s.floor] || '', pax: s.pax ?? null }
+      return { spaceId: o.spaceId, unit: o.unit || s.unitNumber, price: o.price, note: o.note || '', level: floorLabel[s.floor] || '', pax: o.pax ?? s.pax ?? null }
+    })
+    const parking = (p.parking || []).map((o) => {
+      const s = spaces[o.spaceId] || {}
+      return { spaceId: o.spaceId, unit: o.unit || s.unitNumber, price: o.price }
     })
     return res.status(200).json({
       ok: true,
@@ -43,6 +47,7 @@ export default async function handler(req, res) {
       businessName: row.data.businessName || '',
       email: row.data.email || '',
       offices,
+      parking,
       validityDays: p.validityDays ?? 14,
       term: p.term || '12mo',
       freeMonths: Number(p.freeMonths || 0),
