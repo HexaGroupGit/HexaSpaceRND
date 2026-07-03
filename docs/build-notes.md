@@ -46,3 +46,23 @@ it. Proper fix when it matters: a Postgres sequence exposed via RPC
 (`create sequence invoice_number_seq; create function next_invoice_number()
 returns bigint …`) and calling it from both writers, plus a backfill +
 unique index on `(data->>'number')`.
+
+## Stripe online payments (member portal)
+Flow: portal invoice "Pay" button → POST /api/stripe/checkout (403 unless
+Settings → Integrations → Stripe → "Enable online payments" is ON) → hosted
+Stripe Checkout (amount inc. GST) → redirect back to /billing?paid=<number>
+(green confirmation banner) → Stripe calls POST /api/stripe/webhook
+(signature-verified) → invoice marked paid in Supabase → the daily reconcile
+cron picks up the paid gate (space flip + onboarding) even if no admin opens
+the app.
+
+One-time setup:
+1. Vercel env vars: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET (and optionally
+   VITE_STRIPE_PUBLISHABLE_KEY — reserved, not used by hosted Checkout).
+2. Stripe dashboard → Developers → Webhooks → Add endpoint:
+   https://portal.hexaspace.com.au/api/stripe/webhook
+   with event `checkout.session.completed`; copy the signing secret into
+   STRIPE_WEBHOOK_SECRET.
+3. Settings → Integrations → Stripe → toggle "Enable online payments"
+   (persisted as settings.stripe.paymentsEnabled; /api/stripe/status shows
+   which env keys the deployment can see).

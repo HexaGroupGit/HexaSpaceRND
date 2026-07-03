@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { jsPDF } from 'jspdf'
 import { Download, CreditCard, Plus } from 'lucide-react'
 import { Page, PageHeader, Card, SubTabs, Segmented, StatusBadge, Empty, Eyebrow, Field, fmt, money } from './ui.jsx'
@@ -72,6 +72,13 @@ const FILTERS = ['all', 'pending', 'paid', 'overdue']
 function InvoicesTab({ invoices, company }) {
   const [filter, setFilter] = useState('all')
   const [payingId, setPayingId] = useState(null)
+  // Stripe Checkout redirects back with ?paid=<invoice number>. The webhook
+  // marks the invoice paid server-side, so the list may lag a few seconds —
+  // show a confirmation instead of a stale "pending" with no explanation.
+  const [justPaid] = useState(() => new URLSearchParams(window.location.search).get('paid'))
+  useEffect(() => {
+    if (justPaid) window.history.replaceState({}, '', window.location.pathname)
+  }, [justPaid])
   const filtered = [...invoices]
     .filter(i => filter === 'all' || i.status === filter)
     .sort((a, b) => new Date(b.issueDate) - new Date(a.issueDate))
@@ -94,6 +101,14 @@ function InvoicesTab({ invoices, company }) {
   }
   return (
     <>
+      {justPaid && (
+        <div className="mb-6 border border-hexa-green/40 bg-hexa-green/10 rounded px-4 py-3">
+          <p className="hx-prose text-[13px] text-ink">
+            ✓ Payment received for invoice <span className="font-heading uppercase tracking-nav text-[11px]">{justPaid}</span> — thank you.
+            Your invoice will show as paid within a few minutes.
+          </p>
+        </div>
+      )}
       <div className="mb-6"><Segmented options={FILTERS} active={filter} onChange={setFilter} /></div>
       {filtered.length === 0 ? <Empty label="No invoices to show." /> : (
         <Card className="overflow-hidden">

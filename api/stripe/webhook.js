@@ -20,7 +20,8 @@ function readRawBody(req) {
 }
 
 // Stripe-Signature: t=<ts>,v1=<hmac>[,v1=…] — HMAC-SHA256 of `${t}.${payload}`.
-function verifySignature(payload, header, secret, toleranceSec = 300) {
+// Exported for tests.
+export function verifySignature(payload, header, secret, toleranceSec = 300) {
   const parts = Object.fromEntries(
     String(header ?? '').split(',').map((kv) => kv.split('=').map((s) => s.trim())).filter((p) => p.length === 2)
   )

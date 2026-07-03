@@ -129,7 +129,7 @@ loop is done — say so and stop scheduling.
   `paid`). Overdue SLA badge: approved > 45 days with no refundedAt shows a red
   "refund overdue" chip in the pending list. Acceptance: build + visual trace.
 
-- [ ] **7. Stripe payments in the member portal.**
+- [x] **7. Stripe payments in the member portal.** _Done: reviewed the pre-existing integration (checkout gate, signed webhook, Settings toggle, portal Pay button — all solid); added ?paid= success banner + URL cleanup in PortalBilling, Stripe keys to .env.example, webhook one-time setup guide in build-notes.md, exported + tested verifySignature (6 cases incl. stale timestamp, tampered payload, multi-v1). Live key detected locally → no live API call made._
   NOTE (2026-07-03): a substantially complete implementation already exists in
   the tree (committed in 6aec311): api/stripe/checkout.js (settings-gated,
   inc-GST totals), api/stripe/webhook.js (signature-verified, idempotent),
@@ -219,4 +219,5 @@ loop is done — say so and stop scheduling.
 - 2026-07-03 · Item 3 safer invoice numbering · c2e8396
 - 2026-07-03 · Item 4 GST off deposits · b1026b6
 - 2026-07-03 · Item 5 daily reconcile cron · 2aeda55
-- 2026-07-03 · Item 6 bond payout tracking · (commit follows)
+- 2026-07-03 · Item 6 bond payout tracking · 9fc3516
+- 2026-07-03 · Item 7 Stripe portal payments · (commit follows)
