@@ -8,7 +8,7 @@ const money = (n) => `$${Number(n || 0).toLocaleString('en-AU')}`
 export default function ProposalAccept({ token }) {
   const [state, setState] = useState('loading') // loading | review | form | done | invalid
   const [data, setData] = useState(null)
-  const [form, setForm] = useState({ businessName: '', abn: '', contactName: '', email: '', phone: '', address: '', city: '', state: '', zip: '', country: 'Australia' })
+  const [form, setForm] = useState({ businessName: '', abn: '', contactName: '', email: '', phone: '', address: '', city: '', state: '', zip: '', country: 'Australia', startDate: '' })
   const [err, setErr] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState(null)
@@ -20,7 +20,7 @@ export default function ProposalAccept({ token }) {
       .then((d) => {
         if (!d.ok) { setState('invalid'); return }
         setData(d)
-        setForm((f) => ({ ...f, businessName: d.businessName || '', contactName: d.leadName || '', email: d.email || '' }))
+        setForm((f) => ({ ...f, businessName: d.businessName || '', contactName: d.leadName || '', email: d.email || '', startDate: d.today || '' }))
         setState(d.status === 'accepted' ? 'done' : 'review')
         if (d.status === 'accepted') setResult({ alreadyAccepted: true })
       })
@@ -40,6 +40,10 @@ export default function ProposalAccept({ token }) {
   }
 
   const total = (data?.offices || []).reduce((s, o) => s + Number(o.price || 0), 0)
+  const TERM_LABEL = { mtm: 'Month-to-month', '6mo': '6-month term', '12mo': '12-month term' }
+  const termMonths = data?.term === '6mo' ? 6 : 12
+  const endFrom = (startStr) => { if (!startStr) return ''; const d = new Date(`${startStr}T00:00:00`); d.setMonth(d.getMonth() + termMonths); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0] }
+  const fmtD = (s) => { try { return new Date(`${s}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) } catch { return s } }
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] py-10 px-4">
@@ -74,13 +78,22 @@ export default function ProposalAccept({ token }) {
                 </tbody>
               </table>
             </div>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Term</span><span className="font-medium text-gray-900">{TERM_LABEL[data.term] || '12-month term'}</span></div>
+              {data.freeMonths > 0 && <div className="flex justify-between mt-1"><span className="text-gray-500">New-member offer</span><span className="font-medium text-gray-900">Final {data.freeMonths} month{data.freeMonths > 1 ? 's' : ''} rent-free</span></div>}
+            </div>
             <p className="text-xs text-gray-400">Valid for {data.validityDays} days. Pricing excludes GST and is subject to a signed licence agreement.</p>
 
             {state === 'review' ? (
               <button onClick={() => setState('form')} className="w-full bg-black text-white rounded-md py-3 text-sm font-semibold hover:bg-gray-800">Accept & continue →</button>
             ) : (
               <form onSubmit={submit} className="space-y-4 border-t border-gray-100 pt-5">
-                <h3 className="text-sm font-semibold text-gray-900">Your company details</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Start date</h3>
+                <div>
+                  <label className="block"><span className="block text-xs text-gray-500 mb-1">Preferred commencement date *</span><input type="date" value={form.startDate} min={data.today} onChange={set('startDate')} className={ic} /></label>
+                  {form.startDate && <p className="text-xs text-gray-500 mt-1.5">{TERM_LABEL[data.term] || '12-month term'} · {fmtD(form.startDate)} → {fmtD(endFrom(form.startDate))}{data.freeMonths > 0 ? ` · final ${data.freeMonths} month${data.freeMonths > 1 ? 's' : ''} rent-free` : ''}</p>}
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900 pt-1">Your company details</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <label className="block col-span-2"><span className="block text-xs text-gray-500 mb-1">Company name *</span><input value={form.businessName} onChange={set('businessName')} className={ic} /></label>
                   <label className="block"><span className="block text-xs text-gray-500 mb-1">ABN</span><input value={form.abn} onChange={set('abn')} className={ic} /></label>

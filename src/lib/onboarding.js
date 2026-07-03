@@ -238,6 +238,9 @@ export const DEFAULT_ONBOARDING_EMAIL_HTML = oShell(
   _p("Your agreement for {{unit}} is signed and settled — welcome aboard. Here's everything you need to get started from {{startDate}}.") +
   _box('Your member portal', `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">Log in to view invoices, manage your team, book meeting rooms and message our team. You'll receive a separate email to set your password.</p>${_btn('Log in to the portal', '{{portalUrl}}')}`) +
   '{{saltoBlock}}' +
+  _box('Getting connected', `<ul style="margin:0;padding-left:18px;font-family:${_SANS};color:#3a3a3a;font-size:13px;line-height:1.9"><li><strong>Wi-Fi</strong> — network “Hexa Space”; password available at reception or in the portal</li><li><strong>Printing</strong> — reception will set up your print account ($30/mo · $0.30 B&amp;W · $0.60 colour)</li><li><strong>Business address &amp; mail</strong> — your registered address is active; collect mail from reception</li></ul>`) +
+  _box('Your space &amp; amenities', `<ul style="margin:0;padding-left:18px;font-family:${_SANS};color:#3a3a3a;font-size:13px;line-height:1.9"><li>Book meeting &amp; consulting rooms from the portal — your plan includes monthly credits</li><li>Barista coffee, tea &amp; filtered water in the lounge</li><li>End-of-trip facilities (showers, bike storage) · onsite &amp; Box Hill Central parking</li><li>24/7 secure access from your commencement date</li></ul>`) +
+  _box('Who to contact', `<ul style="margin:0;padding-left:18px;font-family:${_SANS};color:#3a3a3a;font-size:13px;line-height:1.9"><li>Community &amp; support — info@hexaspace.com.au</li><li>Billing &amp; accounts — info@hexaspace.com.au</li><li>Keep an eye out for community event invitations</li></ul>`) +
   _startList +
   _small('{{address}}'))
 

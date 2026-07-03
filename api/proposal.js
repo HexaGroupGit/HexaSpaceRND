@@ -44,6 +44,11 @@ export default async function handler(req, res) {
       email: row.data.email || '',
       offices,
       validityDays: p.validityDays ?? 14,
+      term: p.term || '12mo',
+      freeMonths: Number(p.freeMonths || 0),
+      membershipType: p.membershipType || 'office',
+      typeLabel: p.typeLabel || 'Private Office',
+      today: new Date().toISOString().split('T')[0],
     })
   } catch (err) {
     console.error('proposal GET error:', err)

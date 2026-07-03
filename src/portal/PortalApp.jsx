@@ -204,7 +204,7 @@ export default function PortalApp() {
       <PortalLayout company={company} member={data.member} onSignOut={signOut}>
         <Routes>
           <Route path="/"              element={<PortalDashboard data={data} />} />
-          <Route path="/members"       element={<PortalMembers members={data.members} companies={data.companies} />} />
+          <Route path="/members"       element={<PortalMembers members={data.members} companies={data.companies} company={data.company} />} />
           <Route path="/meeting-rooms" element={<PortalRooms spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} />} />
           <Route path="/studios"       element={<PortalStudios spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} />} />
           <Route path="/function-space" element={<PortalFunction spaces={data.spaces} member={data.member} company={data.company} />} />

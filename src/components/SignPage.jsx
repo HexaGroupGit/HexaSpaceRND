@@ -97,11 +97,11 @@ export default function SignPage({ token }) {
       const contractNum = lease.contractNumber ?? `CON-${lease.id?.slice(-3).toUpperCase()}`
       const portalUrl = `https://app.hexaspace.com.au`
 
-      // Notify admin to countersign
-      const adminEmail = settings?.emails?.notificationEmail
-      if (adminEmail) {
+      // Notify admins to countersign (both eric@ and info@ + any configured address)
+      const adminList = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
+      if (adminList.length) {
         await sendEmail({
-          to: adminEmail,
+          to: adminList,
           subject: `Action required: ${tenant?.businessName ?? 'Tenant'} has signed ${contractNum}`,
           html: adminCountersignHtml({ tenant, settings, signerName, contractNum, now, portalUrl }),
           settings,

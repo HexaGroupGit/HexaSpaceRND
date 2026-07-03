@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const b = req.body ?? {}
-  const { token, businessName, abn, address, city, state, zip, country, contactName, email, phone } = b
+  const { token, businessName, abn, address, city, state, zip, country, contactName, email, phone, startDate: reqStart } = b
   if (!token) return res.status(400).json({ error: 'Missing token' })
   if (!businessName || !contactName || !email) return res.status(400).json({ error: 'Company name, contact name and email are required' })
 
@@ -53,8 +53,15 @@ export default async function handler(req, res) {
 
     const now = new Date()
     const today = now.toISOString().split('T')[0]
-    const end = new Date(now); end.setFullYear(end.getFullYear() + 1); end.setDate(end.getDate() - 1)
-    const endDate = end.toISOString().split('T')[0]
+    // Term + start/end come from the proposal (6/12-month; month-to-month = 12-mo
+    // nominal) and the start date the client chose on the accept page.
+    const term = lead.proposal?.term || '12mo'
+    const termMonths = term === '6mo' ? 6 : 12
+    const rentFreeMonths = Number(lead.proposal?.freeMonths || 0)
+    const startDate = (reqStart && /^\d{4}-\d{2}-\d{2}$/.test(reqStart)) ? reqStart : today
+    const st = new Date(`${startDate}T00:00:00`)
+    const endD = new Date(st); endD.setMonth(endD.getMonth() + termMonths); endD.setDate(endD.getDate() - 1)
+    const endDate = endD.toISOString().split('T')[0]
 
     // 1. Tenant (company)
     const tenantId = rid('t')
@@ -77,7 +84,8 @@ export default async function handler(req, res) {
     const nums = (leaseRows ?? []).map((r) => parseInt(String(r.data?.contractNumber || '').replace(/\D/g, ''), 10)).filter((n) => !isNaN(n) && n < 100000)
     const contractNumber = `CON-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0')}`
     const monthlyRent = offices.reduce((s, o) => s + Number(o.price || 0), 0)
-    const items = offices.map((o) => ({ spaceId: o.spaceId, deposit: 0, steps: [{ startDate: today, endDate, listPrice: Number(o.price || 0), qty: 1, discount: '' }] }))
+    const deposit = monthlyRent // one month's rent as the security deposit
+    const items = offices.map((o, i) => ({ spaceId: o.spaceId, deposit: i === 0 ? deposit : 0, steps: [{ startDate, endDate, listPrice: Number(o.price || 0), qty: 1, discount: '' }] }))
     const leaseId = contractNumber
     const eToken = rid('sign')
     const appHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || req.headers.host
@@ -86,7 +94,8 @@ export default async function handler(req, res) {
       id: leaseId, contractNumber, tenantId, memberId, memberName: contactName, companyName: businessName,
       spaceId: offices[0].spaceId, resource: offices.map((o) => o.unit).filter(Boolean).join(', '),
       membershipType: 'Private Office', documentType: 'License Agreement', contractType: 'New',
-      startDate: today, endDate, monthlyRent, bondAmount: 0, discount: '',
+      startDate, endDate, monthlyRent, bondAmount: deposit, discount: '',
+      termMonths, rentFreeMonths,
       status: 'pending', signatureStatus: 'out_for_signature',
       items, noticePeriodMonths: 1, source: 'proposal',
       eSignMemberLink: memberLink, eSignAdminLink: `${memberLink}?admin=1`, eSignSentAt: now.toISOString(),
@@ -131,9 +140,9 @@ export default async function handler(req, res) {
         : `<div style="font-family:Arial,sans-serif;padding:32px;max-width:560px"><p>Hi ${contactName},</p><p>Thanks for accepting your proposal. Please review and sign your licence agreement ${contractNumber}:</p><p><a href="${memberLink}">Review &amp; sign document</a></p></div>`
       await sendResend(resendKey, { fromName, fromEmail, to: email, subject, html, replyTo }).catch(() => {})
 
-      const adminTo = settings?.emails?.notificationEmail
-      if (adminTo) {
-        const adminHtml = `<div style="font-family:Arial,sans-serif;padding:24px;max-width:560px"><h2 style="font-size:16px">Proposal accepted 🎉</h2><p><strong>${businessName}</strong> (${contactName}, ${email}) accepted their proposal.</p><p>Client created, contract <strong>${contractNumber}</strong> raised for ${offices.map((o) => o.unit).join(', ')} at $${monthlyRent.toLocaleString('en-AU')}/mo and sent for e-signature. Countersign it in HexaHub once they've signed.</p></div>`
+      const adminTo = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
+      if (adminTo.length) {
+        const adminHtml = `<div style="font-family:Arial,sans-serif;padding:24px;max-width:560px"><h2 style="font-size:16px">Proposal accepted 🎉</h2><p><strong>${businessName}</strong> (${contactName}, ${email}) accepted their proposal.</p><p>Client created, contract <strong>${contractNumber}</strong> raised for ${offices.map((o) => o.unit).join(', ')} at $${monthlyRent.toLocaleString('en-AU')}/mo (${termMonths}-month term from ${startDate}${rentFreeMonths ? `, ${rentFreeMonths} month${rentFreeMonths > 1 ? 's' : ''} rent-free` : ''}) and sent for e-signature. Countersign it once they've signed.</p></div>`
         await sendResend(resendKey, { fromName, fromEmail, to: adminTo, subject: `Proposal accepted — ${businessName} (${contractNumber})`, html: adminHtml, replyTo }).catch(() => {})
       }
     }
