@@ -167,6 +167,25 @@ export function dateClashes(rows, eventDate, exceptId) {
     b.id !== exceptId && b.eventDate === eventDate && ['awaiting_deposit', 'confirmed'].includes(b.stage))
 }
 
+// Do two [start,end) minute windows overlap?
+export function timeOverlaps(aStart, aEnd, bStart, bEnd) {
+  return toMin(aStart) < toMin(bEnd) && toMin(bStart) < toMin(aEnd)
+}
+
+// Real calendar bookings that overlap this event's time window (incl. the 30-min
+// buffer each side) on the function space resource — catches ANY hold on the
+// venue that day (meeting/studio/function), not just other function requests.
+export function calendarClashes(bookings, resourceId, eventDate, startTime, endTime, exceptFunctionRef) {
+  if (!resourceId || !eventDate || !startTime || !endTime) return []
+  const { blockStart, blockEnd } = bufferedWindow(startTime, endTime)
+  return (bookings || []).filter((bk) =>
+    bk.resourceId === resourceId &&
+    bk.date === eventDate &&
+    bk.status !== 'Cancelled' &&
+    !(exceptFunctionRef && bk.functionRef === exceptFunctionRef) &&
+    timeOverlaps(blockStart, blockEnd, bk.startTime || '00:00', bk.endTime || '23:59'))
+}
+
 export function money(v) {
   const n = Number(v) || 0
   return `$${n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

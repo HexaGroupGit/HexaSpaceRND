@@ -122,9 +122,9 @@ export default function PortalApp() {
     loadedFor.current = email
     setLoading(true)
     try {
-      const tables = ['tenants', 'members', 'leases', 'invoices', 'spaces', 'bookings', 'fees', 'templates']
+      const tables = ['tenants', 'members', 'leases', 'invoices', 'spaces', 'bookings', 'fees', 'templates', 'function_bookings']
       const results = await Promise.all(tables.map((t) => supabase.from(t).select('data')))
-      const [companies, members, leases, invoices, spaces, bookings, fees, templates] =
+      const [companies, members, leases, invoices, spaces, bookings, fees, templates, functionBookings] =
         results.map((r) => (r.data ?? []).map((row) => row.data))
 
       const lc = email?.toLowerCase()
@@ -138,6 +138,7 @@ export default function PortalApp() {
       const cid = company?.id
       const mine = (rows) => rows.filter((r) =>
         r.tenantId === cid || r.companyId === cid || (member && r.memberId === member.id))
+      const myEmail = (company?.email || member?.email || '').toLowerCase()
 
       setData({
         company, member, members, companies, spaces, templates,
@@ -145,6 +146,10 @@ export default function PortalApp() {
         invoices: cid ? invoices.filter((i) => i.tenantId === cid) : [],
         bookings: cid ? mine(bookings) : (member ? bookings.filter((b) => b.memberId === member.id) : []),
         allBookings: bookings, // every booking — used by the calendar for availability
+        functionBookings: functionBookings.filter((fb) =>
+          (cid && (fb.companyId === cid || fb.tenantId === cid)) ||
+          (member && fb.memberId === member.id) ||
+          (myEmail && (fb.email || '').toLowerCase() === myEmail)),
         fees,
       })
     } catch (err) {

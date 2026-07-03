@@ -8,7 +8,7 @@
 // raised (awaiting_deposit) → deposit paid → confirmed (balance + calendar) →
 // completed → refunded.
 import { supabase } from './supabase.js'
-import { ADDONS, computeQuote, bufferedWindow, balanceDueDate } from './functionBooking.js'
+import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money } from './functionBooking.js'
 import { PORTAL_URL } from './sendEmail.js'
 
 const today = () => new Date().toISOString().split('T')[0]
@@ -59,10 +59,10 @@ export async function sendBookingInvite({ store, booking, settings }) {
   await fetch('/api/auth/invite', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      email: booking.email, redirectTo: portalBaseUrl(settings),
+      email: booking.email, redirectTo: `${portalBaseUrl(settings)}/function-space`,
       subject: 'Complete your Hexa Space function booking',
       heading: 'Your function booking is approved',
-      intro: 'Great news — your date is available! Set up your portal access to enter your company details, confirm your date and time, see your total, and pay your deposit to secure the venue.',
+      intro: `Great news — your date is available! Set up your portal access to review your booking, sign, and pay your deposit to secure the venue. Your deposit invoice${booking.quote ? ` (${money(booking.quote.dueNow)} due now)` : ''} is ready in Billing. Already have a password? Just log in at ${portalBaseUrl(settings)}.`,
       ctaLabel: 'Set up access & continue',
     }),
   }).catch(() => {})
@@ -70,17 +70,26 @@ export async function sendBookingInvite({ store, booking, settings }) {
 }
 
 // ── 3. Approve a requested booking ───────────────────────────────────────────
-// Website request (no details yet) → send portal invite. Member request (details
-// already captured) → raise the deposit straight away via the submit endpoint.
+// On approve we ALWAYS: lock in the quote, raise the deposit invoice (so it shows
+// in their portal Billing straight away) and — for website requests — create their
+// tenant + send the portal invite so they can log in, review, sign and pay.
+// Member requests (already in the portal, details captured) skip the invite.
 export async function approveFunctionBooking({ store, booking, settings }) {
-  if (hasDetails(booking)) {
-    await fetch('/api/function-bookings/submit', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: booking.id }),
-    }).catch(() => {})
-    return persistFn({ ...booking, stage: 'awaiting_deposit', approvedAt: nowIso() })
-  }
-  return sendBookingInvite({ store, booking, settings })
+  const q = computeQuote({ ...booking, bookedOn: today() })
+  let cur = await persistFn({ ...booking, quote: q, approvedAt: nowIso() })
+
+  // Website request → create account + email the "set up access & continue" link.
+  if (!hasDetails(cur)) cur = await sendBookingInvite({ store, booking: cur, settings })
+
+  // Raise the deposit (50% + $300 security), create tenant/member, email deposit.
+  await fetch('/api/function-bookings/submit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: cur.id }),
+  }).catch(() => {})
+
+  // submit.js wrote the definitive record (awaiting_deposit + invoice ids) — re-read it.
+  const { data } = await supabase.from('function_bookings').select('data').eq('id', cur.id)
+  return data?.[0]?.data || { ...cur, stage: 'awaiting_deposit' }
 }
 
 // ── 4. Ask the client to pick a different date (clash) ───────────────────────

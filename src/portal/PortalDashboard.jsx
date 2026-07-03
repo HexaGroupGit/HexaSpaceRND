@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, CalendarCheck, PartyPopper } from 'lucide-react'
 import { Page, Card, Eyebrow, StatusBadge, fmt, money, to12, bookingName } from './ui.jsx'
 
 function calcTotal(invoice) {
@@ -14,7 +14,11 @@ function calcTotal(invoice) {
 }
 
 export default function PortalDashboard({ data }) {
-  const { company, member, leases, invoices, bookings, spaces } = data
+  const { company, member, leases, invoices, bookings, spaces, functionBookings = [] } = data
+  // Function bookings that need the member to act (approved → review, sign & pay).
+  const fnAction = functionBookings.find((b) => ['invited', 'awaiting_deposit'].includes(b.stage))
+  const fnConfirmed = functionBookings.find((b) => b.stage === 'confirmed' && b.eventDate && b.eventDate >= new Date().toISOString().split('T')[0])
+  const fnDueNow = fnAction?.quote?.dueNow
   const activeLeases = leases.filter(l => l.status === 'active')
   const sorted = [...invoices].sort((a, b) => new Date(b.issueDate) - new Date(a.issueDate))
   const recent = sorted.slice(0, 4)
@@ -39,6 +43,32 @@ export default function PortalDashboard({ data }) {
         <h1 className="hx-display text-paper mt-4">{company?.businessName}</h1>
         <p className="font-display font-extralight text-xl text-paper/70 mt-4">Your space, beautifully serviced.</p>
       </div>
+
+      {/* Function booking — needs action */}
+      {fnAction && (
+        <div className="bg-hexa-green/10 border-y border-hexa-green/30 px-8 md:px-12 py-6">
+          <div className="flex flex-col md:flex-row md:items-center gap-4 md:justify-between">
+            <div className="flex items-start gap-3">
+              <CalendarCheck size={22} className="text-hexa-green shrink-0 mt-0.5" />
+              <div>
+                <div className="font-heading uppercase tracking-nav text-[11px] text-hexa-green">Function booking approved</div>
+                <p className="hx-prose text-ink mt-1">
+                  Your date{fnAction.eventDate ? ` (${fmt(fnAction.eventDate)})` : ''} is available. Review your details, sign, and pay your deposit{fnDueNow ? ` (${money(fnDueNow)} due now)` : ''} to secure the venue.
+                </p>
+              </div>
+            </div>
+            <Link to="/function-space" className="hx-btn shrink-0 whitespace-nowrap">Review &amp; secure <ArrowRight size={13} /></Link>
+          </div>
+        </div>
+      )}
+      {!fnAction && fnConfirmed && (
+        <div className="bg-bone border-y border-ink/10 px-8 md:px-12 py-5">
+          <div className="flex items-center gap-3">
+            <PartyPopper size={20} className="text-hexa-green shrink-0" />
+            <p className="hx-prose text-ink">Your function on <strong>{fmt(fnConfirmed.eventDate)}</strong> is confirmed. See the details under <Link to="/function-space" className="underline">Function Space</Link>.</p>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid sm:grid-cols-3 gap-px bg-ink/10 mt-px">

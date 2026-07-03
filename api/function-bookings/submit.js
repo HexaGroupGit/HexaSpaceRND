@@ -41,13 +41,17 @@ export default async function handler(req, res) {
     const mi = b.memberInfo || {}
     let tenantId = b.companyId
     const tenants = (tenantRows ?? []).map((r) => r.data)
-    if (tenantId && tenants.some((t) => t.id === tenantId)) {
-      const t = tenants.find((x) => x.id === tenantId)
-      const patch = { ...t, clientType: 'function' }
-      if (ci.businessName) patch.businessName = ci.businessName
+    const existingTenant = tenantId ? tenants.find((t) => t.id === tenantId) : null
+    if (tenantId) {
+      // Trust the companyId set at approve time even if the tenant row hasn't
+      // replicated yet (avoids minting a second tenant → broken billing link).
+      const patch = { ...(existingTenant || { id: tenantId, status: 'client', industry: 'Function client', createdAt: now.split('T')[0] }), clientType: 'function' }
+      patch.businessName = ci.businessName || existingTenant?.businessName || b.organisation || b.name || 'Function client'
+      patch.contactName = ci.contactName || existingTenant?.contactName || b.name || ''
+      patch.email = existingTenant?.email || b.email || ''
       if (ci.abn) patch.abn = ci.abn
       if (ci.phone) patch.phone = ci.phone
-      if (ci.contactName) patch.contactName = ci.contactName
+      else if (!existingTenant?.phone && b.phone) patch.phone = b.phone
       await supabase.from('tenants').upsert({ id: tenantId, data: patch, updated_at: now })
     } else {
       tenantId = `t${Date.now()}`

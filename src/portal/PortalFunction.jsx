@@ -41,7 +41,7 @@ export default function PortalFunction({ spaces, member, company }) {
       const email = (company?.email || member?.email || '').toLowerCase()
       const mine = (data ?? []).map((r) => r.data).filter((x) =>
         (x.companyId && x.companyId === company?.id) || (email && (x.email || '').toLowerCase() === email))
-      const active = mine.find((x) => ['invited', 'requested', 'quoted', 'enquiry'].includes(x.stage))
+      const active = mine.find((x) => ['invited', 'awaiting_deposit', 'requested', 'quoted', 'enquiry'].includes(x.stage))
       if (active) {
         setExisting(active)
         setF((p) => ({
@@ -71,12 +71,12 @@ export default function PortalFunction({ spaces, member, company }) {
     const now = new Date().toISOString()
     const id = existing?.id || `fn${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     const ref = existing?.ref || `FN-${Math.floor(100000 + Math.random() * 900000)}`
-    // Website-approved records arrive as 'invited' → raise deposit immediately.
-    // Member self-serve (no invite) → 'requested' for admin review first.
-    const viaInvite = existing?.stage === 'invited'
+    // Website-approved records arrive as 'invited'/'awaiting_deposit' → the deposit
+    // is (or will be) raised. Member self-serve (no invite) → 'requested' for admin review first.
+    const viaInvite = ['invited', 'awaiting_deposit'].includes(existing?.stage)
     const record = {
       ...(existing || {}), id, ref, source: existing?.source || 'member',
-      stage: viaInvite ? 'invited' : 'requested',
+      stage: viaInvite ? (existing?.stage === 'awaiting_deposit' ? 'awaiting_deposit' : 'invited') : 'requested',
       name: f.signerName, organisation: f.businessName, email: company?.email || member?.email || '',
       phone: f.memberPhone || company?.phone || '', memberId: member?.id || existing?.memberId || '', companyId: company?.id || existing?.companyId || '',
       eventName: f.eventName || `${f.eventType} function`, eventType: f.eventType,
@@ -127,7 +127,7 @@ export default function PortalFunction({ spaces, member, company }) {
     )
   }
 
-  const depositScreen = existing?.stage === 'invited'
+  const depositScreen = ['invited', 'awaiting_deposit'].includes(existing?.stage)
 
   return (
     <Page>

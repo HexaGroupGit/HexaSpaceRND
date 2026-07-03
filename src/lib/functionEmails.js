@@ -75,6 +75,7 @@ ${row('Cleaning fee', '$200 + GST')}
 ${row('Refundable security deposit', '$300')}
 ${row('Capacity', '20–100 guests')}
   </table>
+  ${p("<strong>We've attached our full function brochure</strong> — take a look through the space, layouts, what's included and pricing.")}
   ${p("Ready to lock it in? Choose your preferred date and layout — we'll review availability and get your booking underway.")}
   ${btn('Book a time', '{{bookLink}}')}
   ${small("Questions? Reply any time — we'd love to host you.")}`)

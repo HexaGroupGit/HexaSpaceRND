@@ -7,7 +7,7 @@ import {
   CalendarDays, Users, ChevronRight, RefreshCw, DollarSign, UserPlus,
 } from 'lucide-react'
 import {
-  ADDONS, STAGES, money, computeQuote, bufferedWindow, dateClashes,
+  ADDONS, STAGES, money, computeQuote, bufferedWindow, dateClashes, calendarClashes,
 } from '../lib/functionBooking.js'
 import { findFunctionSpace } from '../portal/functionSpace.js'
 import { approveFunctionBooking, confirmDepositPaid, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite } from '../lib/functionActions.js'
@@ -158,9 +158,10 @@ function RefundBox({ booking, onResolve }) {
 }
 
 // ── Detail panel ─────────────────────────────────────────────────────────────
-function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash }) {
+function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calClash }) {
   const b = booking
   const passed = b.eventDate && b.eventDate < today()
+  const anyClash = (clash?.length || 0) + (calClash?.length || 0)
   return (
     <div className="w-full md:w-[420px] border-l border-border bg-card flex flex-col h-full shrink-0">
       <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0">
@@ -212,6 +213,20 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash }) {
           </div>
         )}
 
+        {/* Calendar / booking clash warning — shown while the date isn't locked in yet */}
+        {anyClash > 0 && !['confirmed', 'completed', 'refunded', 'cancelled', 'declined'].includes(b.stage) && (
+          <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2.5 text-xs text-red-700 space-y-1">
+            <div className="font-semibold">⚠ Possible clash on {fmtDate(b.eventDate)}</div>
+            {calClash?.map((c, i) => (
+              <div key={i}>Calendar: {c.title || c.type || 'Booking'} {c.startTime}–{c.endTime}{c.functionRef ? ` (${c.functionRef})` : ''}</div>
+            ))}
+            {clash?.map((c) => (
+              <div key={c.id}>Function: {c.eventName || c.ref} {c.startTime}–{c.endTime} · {STAGES[c.stage]?.label || c.stage}</div>
+            ))}
+            <div className="text-red-600/80">Their window incl. buffer: {bufferedWindow(b.startTime, b.endTime).blockStart}–{bufferedWindow(b.startTime, b.endTime).blockEnd}. Ask them to amend, or approve if it's fine.</div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="space-y-2 pt-1">
           {['enquiry', 'quoted'].includes(b.stage) && (
@@ -226,11 +241,6 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash }) {
           )}
           {b.stage === 'requested' && (
             <>
-              {clash?.length > 0 && (
-                <div className="bg-red-50 border border-red-100 rounded-md px-3 py-2 text-xs text-red-700">
-                  ⚠ {clash.length} other booking{clash.length > 1 ? 's' : ''} already hold {b.eventDate}. Ask them to pick another date, or approve if it's fine.
-                </div>
-              )}
               <button onClick={() => actions.approve(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
                 <CheckCircle2 size={14} /> {busy ? 'Working…' : 'Approve'}
               </button>
@@ -286,7 +296,7 @@ const FILTERS = [
 
 export default function FunctionBookings() {
   const store = useOutletContext()
-  const { deleteBooking, settings } = store
+  const { deleteBooking, settings, bookings: calendarBookings, spaces } = store
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
@@ -406,7 +416,9 @@ export default function FunctionBookings() {
       </div>
 
       {selected && (
-        <Detail booking={selected} onClose={() => setSelected(null)} onEdit={() => { setEditData(selected); setShowForm(true) }} onDelete={() => handleDelete(selected)} actions={actions} busy={busy} clash={dateClashes(rows, selected.eventDate, selected.id)} />
+        <Detail booking={selected} onClose={() => setSelected(null)} onEdit={() => { setEditData(selected); setShowForm(true) }} onDelete={() => handleDelete(selected)} actions={actions} busy={busy}
+          clash={dateClashes(rows, selected.eventDate, selected.id)}
+          calClash={calendarClashes(calendarBookings, findFunctionSpace(spaces)?.id, selected.eventDate, selected.startTime, selected.endTime, selected.ref)} />
       )}
       {showForm && <BookingForm booking={editData} onSave={handleFormSave} onClose={() => { setShowForm(false); setEditData(null) }} />}
     </div>

@@ -44,16 +44,30 @@ export function renderLead(template, { lead, membershipType, settings, tourLink,
 // Routes through the central safe-mode guard. `resendKey` is kept for signature
 // compatibility but the guard reads RESEND_API_KEY itself. Returns a fetch-like
 // object exposing `.ok`.
-export async function sendResend(resendKey, { fromName, fromEmail, to, subject, html, replyTo }) {
+export async function sendResend(resendKey, { fromName, fromEmail, to, subject, html, replyTo, attachments }) {
   const { sendResendEmail } = await import('./_email.js')
-  const r = await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject, html, replyTo })
+  const r = await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject, html, replyTo, attachments })
   return { ok: r.ok, status: r.status ?? (r.ok ? 200 : 500) }
 }
 
-// The "Book a time" page URL for the function funnel (settings override + ref token).
+// The portal base (single sign-in domain). Everything — members, admin,
+// onboarding and the function "Book a time" page — lives here.
+export function portalBase(settings) {
+  return (settings?.portalUrl || 'https://portal.hexaspace.com.au').replace(/\/+$/, '')
+}
+
+// The "Book a time" page URL for the function funnel. Lives on the portal domain
+// (single sign-in). `settings.functionBookingUrl` can override; else portal base.
 export function functionBookLink(settings, requestToken) {
-  const base = settings?.functionBookingUrl || 'https://www.hexaspace.com.au/book-function'
+  const base = settings?.functionBookingUrl || `${portalBase(settings)}/book-function`
   return `${base}${requestToken ? `?ref=${requestToken}` : ''}`
+}
+
+// The hosted function brochure PDF (in /public). Attached to brochure emails so
+// the client can review the space, inclusions and pricing offline.
+export function functionBrochureAttachment(settings) {
+  const path = `${portalBase(settings)}/hexa-space-function-brochure.pdf`
+  return [{ filename: 'Hexa Space — Function Space Brochure.pdf', path }]
 }
 
 // Vars for the function nurture/brochure emails.
@@ -84,7 +98,7 @@ export async function sendFunctionBrochure(supabase, booking) {
   const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
   const replyTo = settings?.emails?.replyTo || settings?.emails?.notificationEmail
   const vars = functionEmailVars(booking, settings)
-  await sendResend(process.env.RESEND_API_KEY, { fromName, fromEmail, to: booking.email, subject: fillVars(tpl.subject, vars), html: fillVars(tpl.content, vars), replyTo })
+  await sendResend(process.env.RESEND_API_KEY, { fromName, fromEmail, to: booking.email, subject: fillVars(tpl.subject, vars), html: fillVars(tpl.content, vars), replyTo, attachments: functionBrochureAttachment(settings) })
 }
 
 // Days between two yyyy-mm-dd (or ISO) dates.

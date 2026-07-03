@@ -12,7 +12,7 @@
 // social footer). Kept self-contained — no imports from src.
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from '../_email.js'
-import { fillVars, findEmailTemplate } from '../_leads.js'
+import { fillVars, findEmailTemplate, functionBookLink, functionBrochureAttachment } from '../_leads.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -85,8 +85,8 @@ function summaryRows(b) {
   </table>`
 }
 
-async function sendMail(resendKey, { from, to, subject, html, replyTo }) {
-  const r = await sendResendEmail({ from, to: Array.isArray(to) ? to : [to], subject, html, replyTo })
+async function sendMail(resendKey, { from, to, subject, html, replyTo, attachments }) {
+  const r = await sendResendEmail({ from, to: Array.isArray(to) ? to : [to], subject, html, replyTo, attachments })
   return r.ok
 }
 
@@ -122,7 +122,7 @@ export default async function handler(req, res) {
       eventDate: b.eventDate || '', startTime: b.startTime || '', endTime: b.endTime || '',
       guests: b.guests || '', total: money(q.total), dueNow: money(q.dueNow), balanceDue: money(q.balanceDue),
       signLink: signUrl || '', website: settings?.company?.website || 'hexaspace.com.au',
-      bookLink: `${settings?.functionBookingUrl || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/book-function` : 'https://www.hexaspace.com.au/book-function')}${b.requestToken ? `?ref=${b.requestToken}` : ''}`,
+      bookLink: functionBookLink(settings, b.requestToken),
     }
     const pick = (type, fallbackSubject, fallbackHtml) => {
       const tpl = findEmailTemplate(templates, type)
@@ -195,11 +195,12 @@ export default async function handler(req, res) {
         bH1(`Hi ${b.name || 'there'} — thanks for your interest in our function space`) +
         bP(`Our light-filled venue suits launches, dinners, conferences and celebrations. Here's a quick overview${hasQuote ? ' and an indicative quote for your dates' : ''}:`) +
         (hasQuote ? summaryRows(b) : rateCard) +
+        bP("<strong>We've attached our full function brochure</strong> — take a look through the space, layouts, what's included and pricing.") +
         bP("Ready to lock it in? Choose your preferred date and layout — we'll review availability and get your booking underway.") +
         bBtn('Book a time', vars.bookLink) +
         bSmall("Questions? Reply any time — we'd love to host you.")
       const { subject, html } = pick('function_brochure', `Hexa Space function space — ${b.eventName || 'your enquiry'}`, frame(fromName, inner))
-      const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject, html })
+      const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject, html, attachments: functionBrochureAttachment(settings) })
       return res.status(ok ? 200 : 500).json({ sent: ok })
     }
 

@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { LAYOUTS, ADDONS, TERMS, TERMS_INTRO } from '../lib/functionBooking.js'
+import { LAYOUTS, ADDONS, TERMS, TERMS_INTRO, computeQuote, money } from '../lib/functionBooking.js'
+
+const today = () => new Date().toISOString().split('T')[0]
 
 // Public, on-brand "Book a time" page for the function space. Lives at
 // /book-function; the brochure "Book a time" button links here with ?ref=<token>.
@@ -19,6 +21,8 @@ export default function FunctionBookPage() {
   const [err, setErr] = useState('')
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const setAddon = (k, v) => setF((p) => ({ ...p, addons: { ...p.addons, [k]: v } }))
+  const quote = computeQuote({ eventDate: f.eventDate, startTime: f.startTime, endTime: f.endTime, guests: f.guests, addons: f.addons, bookedOn: today() })
+  const hasEstimate = f.eventDate && f.startTime && f.endTime && quote.hours > 0
 
   async function submit(e) {
     e.preventDefault()
@@ -112,6 +116,32 @@ export default function FunctionBookPage() {
               <p className="hx-prose text-[12px] text-portal-muted">F&B &amp; AV staff ($40/hr) are added automatically for events over 80 guests.</p>
             </div>
             <div className="mt-5"><label className="hx-eyebrow block mb-1.5">Anything else we should know?</label><textarea rows={3} className="hx-input" value={f.message} onChange={up('message')} placeholder="Run sheet, AV, accessibility, special requests…" /></div>
+          </section>
+
+          {/* Estimated quote */}
+          <section>
+            <div className="hx-eyebrow mb-4">Your estimate</div>
+            <div className="hx-card p-6">
+              {hasEstimate ? (
+                <>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between hx-prose text-[14px]"><span>Venue hire — {quote.hours} hrs @ {money(quote.rate)}/hr {quote.isWeekend ? '(weekend)' : '(weekday)'}</span><span className="tabular-nums">{money(quote.rental)}</span></div>
+                    <div className="flex justify-between hx-prose text-[14px]"><span>Cleaning fee</span><span className="tabular-nums">{money(quote.cleaning)}</span></div>
+                    {quote.staffApplies ? <div className="flex justify-between hx-prose text-[14px]"><span>F&B &amp; AV staff (80+ guests)</span><span className="tabular-nums">{money(quote.staff)}</span></div> : null}
+                    {quote.lateFee ? <div className="flex justify-between hx-prose text-[14px]"><span>Late booking surcharge</span><span className="tabular-nums">{money(quote.lateFee)}</span></div> : null}
+                    <div className="flex justify-between hx-prose text-[13px] text-portal-muted pt-1"><span>GST (10%)</span><span className="tabular-nums">{money(quote.gst)}</span></div>
+                    <div className="flex justify-between text-ink font-medium border-t border-ink/10 mt-1 pt-2"><span className="hx-prose text-[15px]">Estimated total (inc GST)</span><span className="hx-prose text-[15px] tabular-nums">{money(quote.total)}</span></div>
+                  </div>
+                  <div className="mt-4 bg-bone border border-ink/10 rounded-md p-4 space-y-1">
+                    <div className="flex justify-between text-ink font-medium"><span className="hx-prose text-[14px]">Due now to secure — 50% + $300 security</span><span className="hx-prose text-[14px] tabular-nums">{money(quote.dueNow)}</span></div>
+                    <div className="flex justify-between hx-prose text-[13px] text-portal-muted"><span>Balance (14 days before event)</span><span className="tabular-nums">{money(quote.balanceDue)}</span></div>
+                  </div>
+                  <p className="hx-prose text-[12px] text-portal-muted mt-4">This is an estimate based on your date and times. We’ll confirm the final quote and your deposit once we’ve reviewed availability. Catering is quoted separately. The $300 security deposit is refundable after your event.</p>
+                </>
+              ) : (
+                <p className="hx-prose text-[13px] text-portal-muted">Pick your date and times above and we’ll show an instant estimate — venue hire, GST and the deposit due to secure your date.</p>
+              )}
+            </div>
           </section>
 
           {/* T&Cs */}
