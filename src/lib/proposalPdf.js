@@ -297,9 +297,9 @@ function communityPage() {
       <p class="body" style="width:4.2in;font-size:11px;">Dedicated community managers curate events, networking and support programs — surrounding you with forward-thinking businesses eager to grow alongside you.</p>
     </div>
     <div style="display:flex;gap:14px;margin-top:.42in;height:4.05in;">
-      <div style="flex:2;position:relative;overflow:hidden;">${bgFill(PHOTO + 'event-space.jpg')}</div>
-      <div style="flex:1;display:flex;flex-direction:column;gap:14px;">${cell('function-2.jpg')}${cell('lounge-2.jpg')}</div>
-      <div style="flex:1;display:flex;flex-direction:column;gap:14px;">${cell('gallery-1.jpg')}${cell('gallery-2.jpg')}</div>
+      <div style="flex:2;position:relative;overflow:hidden;">${bgFill(PHOTO + 'comm-hero.jpg')}</div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:14px;">${cell('comm-1.jpg')}${cell('comm-2.jpg')}</div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:14px;">${cell('comm-3.jpg')}${cell('comm-4.jpg')}</div>
     </div>
   </div>${FOOT}</div>`
 }
