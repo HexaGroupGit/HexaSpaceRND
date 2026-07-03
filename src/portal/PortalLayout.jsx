@@ -18,16 +18,22 @@ const nav = [
   { to: '/guides',        label: 'Guides',         icon: BookOpen },
 ]
 
-export default function PortalLayout({ company, member, onSignOut, children }) {
+// Non-members (function-only clients, no membership agreement) get a cut-down
+// portal — they can book/track functions, see their invoices, their account and
+// message us, but NOT the member facilities, directory, discounts or perks.
+const FUNCTION_ONLY_PATHS = new Set(['/function-space', '/billing', '/account', '/messages'])
+
+export default function PortalLayout({ company, member, onSignOut, children, restricted = false }) {
   const [open, setOpen] = useState(false)
   const who = member?.name || company?.contactName || company?.businessName
+  const items = restricted ? nav.filter((n) => FUNCTION_ONLY_PATHS.has(n.to)) : nav
 
   const sidebar = (
     <aside className="w-60 bg-charcoal text-paper flex flex-col h-full">
       <div className="px-6 py-7 border-b border-paper/10 flex items-center justify-between">
         <div>
           <div className="font-heading uppercase text-base tracking-[0.22em] leading-none">Hexa&nbsp;Space</div>
-          <p className="font-heading uppercase tracking-label text-[9px] text-paper/40 mt-2">Member Portal</p>
+          <p className="font-heading uppercase tracking-label text-[9px] text-paper/40 mt-2">{restricted ? 'Function Booking' : 'Member Portal'}</p>
         </div>
         <button onClick={() => setOpen(false)} className="md:hidden text-paper/50 hover:text-paper p-1">
           <X size={18} />
@@ -35,7 +41,7 @@ export default function PortalLayout({ company, member, onSignOut, children }) {
       </div>
 
       <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
-        {nav.map(({ to, label, icon: Icon, end }) => (
+        {items.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}

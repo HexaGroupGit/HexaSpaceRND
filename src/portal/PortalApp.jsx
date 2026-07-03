@@ -218,21 +218,39 @@ export default function PortalApp() {
   // Portal now lives at the domain root (routing is by login, not by /portal path).
   const basename = '/'
 
+  // A "member" holds a membership agreement (private office / virtual office /
+  // desk) — i.e. any real lease. Function-only clients have none: they get a
+  // restricted portal (book/track functions + their invoices/account) and can't
+  // reach member facilities, the directory, discounts or perks.
+  const restricted = !(data.leases || []).some((l) => !['voided', 'declined', 'cancelled'].includes(l.status))
+
   return (
     <BrowserRouter basename={basename}>
-      <PortalLayout company={company} member={data.member} onSignOut={signOut}>
+      <PortalLayout company={company} member={data.member} onSignOut={signOut} restricted={restricted}>
         <Routes>
-          <Route path="/"              element={<PortalDashboard data={data} />} />
-          <Route path="/members"       element={<PortalMembers members={data.members} companies={data.companies} company={data.company} />} />
-          <Route path="/meeting-rooms" element={<PortalRooms spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} />} />
-          <Route path="/studios"       element={<PortalStudios spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} />} />
-          <Route path="/function-space" element={<PortalFunction spaces={data.spaces} member={data.member} company={data.company} />} />
-          <Route path="/billing"       element={<PortalBilling data={data} />} />
-          <Route path="/account"       element={<PortalAccount data={data} />} />
-          <Route path="/messages"      element={<PortalMessages tenant={company} />} />
-          <Route path="/events"        element={<PortalEvents />} />
-          <Route path="/guides"        element={<PortalGuides />} />
-          <Route path="*"              element={<Navigate to="/" replace />} />
+          {restricted ? (
+            <>
+              <Route path="/function-space" element={<PortalFunction spaces={data.spaces} member={data.member} company={data.company} />} />
+              <Route path="/billing"       element={<PortalBilling data={data} />} />
+              <Route path="/account"       element={<PortalAccount data={data} />} />
+              <Route path="/messages"      element={<PortalMessages tenant={company} />} />
+              <Route path="*"              element={<Navigate to="/function-space" replace />} />
+            </>
+          ) : (
+            <>
+              <Route path="/"              element={<PortalDashboard data={data} />} />
+              <Route path="/members"       element={<PortalMembers members={data.members} companies={data.companies} company={data.company} />} />
+              <Route path="/meeting-rooms" element={<PortalRooms spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} />} />
+              <Route path="/studios"       element={<PortalStudios spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} />} />
+              <Route path="/function-space" element={<PortalFunction spaces={data.spaces} member={data.member} company={data.company} />} />
+              <Route path="/billing"       element={<PortalBilling data={data} />} />
+              <Route path="/account"       element={<PortalAccount data={data} />} />
+              <Route path="/messages"      element={<PortalMessages tenant={company} />} />
+              <Route path="/events"        element={<PortalEvents />} />
+              <Route path="/guides"        element={<PortalGuides />} />
+              <Route path="*"              element={<Navigate to="/" replace />} />
+            </>
+          )}
         </Routes>
       </PortalLayout>
     </BrowserRouter>
