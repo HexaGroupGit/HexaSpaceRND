@@ -14,6 +14,8 @@ import {
   DEFAULT_FUNCTION_BROCHURE_SUBJECT, DEFAULT_FUNCTION_BROCHURE_HTML,
   DEFAULT_FUNCTION_AGREEMENT_SUBJECT, DEFAULT_FUNCTION_AGREEMENT_HTML,
   DEFAULT_FUNCTION_CONFIRMED_SUBJECT, DEFAULT_FUNCTION_CONFIRMED_HTML,
+  DEFAULT_FUNCTION_FOLLOWUP_SUBJECT, DEFAULT_FUNCTION_FOLLOWUP_HTML,
+  DEFAULT_FUNCTION_FINAL_SUBJECT, DEFAULT_FUNCTION_FINAL_HTML,
 } from '../lib/functionEmails.js'
 import {
   accessGateMet, desiredSpaceStatus, shouldOnboard, requiresAccessGate, depositAmount,
@@ -400,6 +402,8 @@ const SAMPLE_TEMPLATES = [
   { id: 'tmpl_email_function_brochure', category: 'email', emailType: 'function_brochure', name: 'Function — Brochure / info', version: 'v1.0', subject: DEFAULT_FUNCTION_BROCHURE_SUBJECT, content: DEFAULT_FUNCTION_BROCHURE_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
   { id: 'tmpl_email_function_agreement', category: 'email', emailType: 'function_agreement', name: 'Function — Agreement (review & sign)', version: 'v1.0', subject: DEFAULT_FUNCTION_AGREEMENT_SUBJECT, content: DEFAULT_FUNCTION_AGREEMENT_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
   { id: 'tmpl_email_function_confirmed', category: 'email', emailType: 'function_confirmed', name: 'Function — Booking confirmed', version: 'v1.0', subject: DEFAULT_FUNCTION_CONFIRMED_SUBJECT, content: DEFAULT_FUNCTION_CONFIRMED_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
+  { id: 'tmpl_email_function_followup', category: 'email', emailType: 'function_followup', name: 'Function — Nurture follow-up', version: 'v1.0', subject: DEFAULT_FUNCTION_FOLLOWUP_SUBJECT, content: DEFAULT_FUNCTION_FOLLOWUP_HTML, updatedAt: '2026-07-03', createdAt: '2026-07-03' },
+  { id: 'tmpl_email_function_final', category: 'email', emailType: 'function_final', name: 'Function — Nurture final', version: 'v1.0', subject: DEFAULT_FUNCTION_FINAL_SUBJECT, content: DEFAULT_FUNCTION_FINAL_HTML, updatedAt: '2026-07-03', createdAt: '2026-07-03' },
 ]
 
 // ── Real Hexa Space data (PDF: 17 April 2026) ──────────────────────────

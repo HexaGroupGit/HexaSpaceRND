@@ -5,6 +5,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
 import { brandFrame, bH2, bTable, bSmall } from './_brand.js'
+import { sendFunctionBrochure } from './_leads.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -33,6 +34,7 @@ export default async function handler(req, res) {
     const ref = `FN-${Math.floor(100000 + Math.random() * 900000)}`
     const record = {
       id, ref, source: 'website', stage: 'enquiry', read: false,
+      requestToken: `${Date.now()}${Math.random().toString(36).slice(2, 8)}`,
       name: b.name ?? '', organisation: b.organisation ?? '', email: b.email ?? '', phone: b.phone ?? '',
       eventName: b.eventName ?? '', eventType: b.eventType ?? '',
       eventDate: b.eventDate ?? '', startTime: b.startTime ?? '', endTime: b.endTime ?? '',
@@ -41,12 +43,14 @@ export default async function handler(req, res) {
         parking: !!(b.addons?.parking), nameTags: !!(b.addons?.nameTags), photographer: !!(b.addons?.photographer),
       },
       additionalRequirements: b.additionalRequirements ?? b.message ?? '',
+      nurture: { step: 0, lastAt: now.split('T')[0] }, brochureSentAt: now,
       createdAt: now.split('T')[0], updatedAt: now,
     }
     const { error } = await supabase.from('function_bookings').upsert({ id, data: record, updated_at: now })
     if (error) { console.error('function-enquiry insert error:', error); return res.status(500).json({ error: 'Could not save enquiry' }) }
 
     notifyAdmin(supabase, record).catch(() => {})
+    sendFunctionBrochure(supabase, record).catch(() => {}) // auto-brochure + book-a-time link
     return res.status(200).json({ success: true, ref })
   } catch (err) {
     console.error('function-enquiry error:', err)

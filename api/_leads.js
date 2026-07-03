@@ -50,6 +50,43 @@ export async function sendResend(resendKey, { fromName, fromEmail, to, subject, 
   return { ok: r.ok, status: r.status ?? (r.ok ? 200 : 500) }
 }
 
+// The "Book a time" page URL for the function funnel (settings override + ref token).
+export function functionBookLink(settings, requestToken) {
+  const base = settings?.functionBookingUrl || 'https://www.hexaspace.com.au/book-function'
+  return `${base}${requestToken ? `?ref=${requestToken}` : ''}`
+}
+
+// Vars for the function nurture/brochure emails.
+export function functionEmailVars(booking, settings) {
+  return {
+    company: settings?.company?.name || 'Hexa Space',
+    name: booking.name || 'there',
+    organisation: booking.organisation || '',
+    eventName: booking.eventName || 'your event',
+    eventDate: booking.eventDate || '', startTime: booking.startTime || '', endTime: booking.endTime || '', guests: booking.guests || '',
+    total: '', dueNow: '', balanceDue: '',
+    bookLink: functionBookLink(settings, booking.requestToken),
+    website: settings?.company?.website || 'hexaspace.com.au',
+  }
+}
+
+// Auto-send the function brochure (with the Book-a-time link) on enquiry.
+export async function sendFunctionBrochure(supabase, booking) {
+  if (!booking?.email) return
+  const [{ data: settRows }, { data: tmplRows }] = await Promise.all([
+    supabase.from('settings').select('data').eq('id', 'global'),
+    supabase.from('templates').select('data'),
+  ])
+  const settings = settRows?.[0]?.data ?? {}
+  const tpl = findEmailTemplate((tmplRows ?? []).map((r) => r.data), 'function_brochure')
+  if (!tpl) return
+  const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
+  const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
+  const replyTo = settings?.emails?.replyTo || settings?.emails?.notificationEmail
+  const vars = functionEmailVars(booking, settings)
+  await sendResend(process.env.RESEND_API_KEY, { fromName, fromEmail, to: booking.email, subject: fillVars(tpl.subject, vars), html: fillVars(tpl.content, vars), replyTo })
+}
+
 // Days between two yyyy-mm-dd (or ISO) dates.
 export function daysBetween(fromDate, toDate = new Date()) {
   const a = new Date(fromDate); const b = new Date(toDate)

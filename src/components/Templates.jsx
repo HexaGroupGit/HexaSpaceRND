@@ -35,6 +35,8 @@ const EMAIL_TYPES = [
   { value: 'function_brochure', label: 'Function — Brochure / info' },
   { value: 'function_agreement', label: 'Function — Agreement (review & sign)' },
   { value: 'function_confirmed', label: 'Function — Booking confirmed' },
+  { value: 'function_followup', label: 'Function — Nurture follow-up' },
+  { value: 'function_final', label: 'Function — Nurture final' },
   { value: 'custom', label: 'Custom' },
 ]
 const EMAIL_TYPE_BADGE = {
@@ -50,6 +52,8 @@ const EMAIL_TYPE_BADGE = {
   function_brochure: 'bg-purple-50 text-purple-700 border-purple-200',
   function_agreement: 'bg-purple-50 text-purple-700 border-purple-200',
   function_confirmed: 'bg-purple-50 text-purple-700 border-purple-200',
+  function_followup: 'bg-purple-50 text-purple-700 border-purple-200',
+  function_final: 'bg-purple-50 text-purple-700 border-purple-200',
   custom: 'bg-gray-100 text-gray-600 border-gray-200',
 }
 // Placeholders available per email type (filled at send time).
@@ -67,6 +71,8 @@ const VARS_BY_TYPE = {
   function_brochure: ['{{company}}', '{{name}}', '{{organisation}}', '{{eventName}}', '{{eventDate}}', '{{startTime}}', '{{endTime}}', '{{guests}}', '{{total}}', '{{dueNow}}', '{{bookLink}}', '{{website}}'],
   function_agreement: ['{{company}}', '{{name}}', '{{eventName}}', '{{eventType}}', '{{eventDate}}', '{{startTime}}', '{{endTime}}', '{{guests}}', '{{total}}', '{{dueNow}}', '{{balanceDue}}', '{{signLink}}', '{{website}}'],
   function_confirmed: ['{{company}}', '{{name}}', '{{eventName}}', '{{eventDate}}', '{{startTime}}', '{{endTime}}', '{{guests}}', '{{total}}', '{{dueNow}}', '{{balanceDue}}', '{{website}}'],
+  function_followup: ['{{company}}', '{{name}}', '{{eventName}}', '{{bookLink}}', '{{website}}'],
+  function_final: ['{{company}}', '{{name}}', '{{eventName}}', '{{bookLink}}', '{{website}}'],
 }
 const varsFor = (emailType) => VARS_BY_TYPE[emailType] || ['{{company}}', '{{tenantName}}', '{{website}}']
 const PREVIEW_VARS = {

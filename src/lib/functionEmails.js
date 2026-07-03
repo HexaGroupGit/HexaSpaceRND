@@ -95,3 +95,20 @@ export const DEFAULT_FUNCTION_CONFIRMED_HTML = frame(`
   ${p("Your function at Hexa Space is confirmed. We've reserved your time (plus a 30-minute setup buffer each side). Your deposit and security invoices are on their way; the balance is due 14 days before your event.")}
   ${SUMMARY}
   ${small("Questions? Just reply to this email — we can't wait to host you.")}`)
+
+// ── Nurture follow-ups (function enquiries that haven't requested a time) ──────
+export const DEFAULT_FUNCTION_FOLLOWUP_SUBJECT = 'Still planning {{eventName}}? Book your Hexa Space time'
+export const DEFAULT_FUNCTION_FOLLOWUP_HTML = frame(`
+  ${kicker('Function Space Hire')}
+  ${h1('Still thinking about your event, {{name}}?')}
+  ${p("Just following up on your function space enquiry. Whenever you're ready, pick a preferred date and layout and we'll check availability and get your booking underway.")}
+  ${btn('Book a time', '{{bookLink}}')}
+  ${small('Prefer to chat first? Just reply to this email — happy to help with dates, catering or a walkthrough.')}`)
+
+export const DEFAULT_FUNCTION_FINAL_SUBJECT = 'One last note about your Hexa Space function'
+export const DEFAULT_FUNCTION_FINAL_HTML = frame(`
+  ${kicker('Function Space Hire')}
+  ${h1('Here whenever you need us, {{name}}.')}
+  ${p("We haven't heard back, so we'll leave things here for now. If your event is still on the horizon, our function space is ready when you are — just pick a time and we'll take care of the rest.")}
+  ${btn('Book a time', '{{bookLink}}')}
+  ${small('Reach out any time — reply to this email and a real person will get back to you.')}`)

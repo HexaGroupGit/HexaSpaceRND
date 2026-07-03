@@ -9,7 +9,7 @@
 //   `website` is a honeypot — if filled, we treat it as a bot and no-op.
 
 import { createClient } from '@supabase/supabase-js'
-import { leadTypeFor, findEmailTemplate, renderLead, sendResend } from './_leads.js'
+import { leadTypeFor, findEmailTemplate, renderLead, sendResend, sendFunctionBrochure } from './_leads.js'
 import { sendResendEmail } from './_email.js'
 import { brandFrame, bH2, bP, bTable, bSmall } from './_brand.js'
 
@@ -132,17 +132,20 @@ async function handleFunctionEnquiry(req, res, supabase) {
     const ref = `FN-${Math.floor(100000 + Math.random() * 900000)}`
     const record = {
       id, ref, source: b.source || 'website', stage: 'enquiry', read: false,
+      requestToken: `${Date.now()}${Math.random().toString(36).slice(2, 8)}`,
       name: b.name ?? '', organisation: b.businessName ?? b.organisation ?? '', email: b.email ?? '', phone: b.phone ?? '',
       eventName: b.eventName ?? '', eventType: b.eventType ?? '',
       eventDate: b.eventDate ?? '', startTime: b.startTime ?? '', endTime: b.endTime ?? '',
       guests: b.guests ?? '', catering: !!b.catering,
       addons: { parking: !!(b.addons?.parking), nameTags: !!(b.addons?.nameTags), photographer: !!(b.addons?.photographer) },
       additionalRequirements: b.additionalRequirements ?? b.message ?? '',
+      nurture: { step: 0, lastAt: now.split('T')[0] }, brochureSentAt: now,
       createdAt: now.split('T')[0], updatedAt: now,
     }
     const { error } = await supabase.from('function_bookings').upsert({ id, data: record, updated_at: now })
     if (error) { console.error('form-submit function insert error:', error); return res.status(500).json({ error: 'Could not save enquiry' }) }
     notifyFunctionAdmin(supabase, record).catch(() => {})
+    sendFunctionBrochure(supabase, record).catch(() => {}) // auto-brochure + book-a-time link
     return res.status(200).json({ success: true, ref })
   } catch (err) {
     console.error('handleFunctionEnquiry error:', err)
