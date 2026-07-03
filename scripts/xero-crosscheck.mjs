@@ -37,6 +37,22 @@ async function sbGet(path) {
   return r.json()
 }
 
+// PostgREST caps unpaginated responses at 1000 rows — ALWAYS page through.
+// (This bit us on 3 Jul: 1815 invoices, silent truncation, phantom "gaps".)
+async function sbGetAll(table) {
+  const out = []
+  for (let from = 0; ; from += 1000) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=data&order=id.asc`, {
+      headers: { ...sbHeaders, Range: `${from}-${from + 999}` },
+    })
+    if (!r.ok) throw new Error(`Supabase ${table}: ${r.status} ${await r.text()}`)
+    const batch = await r.json()
+    out.push(...batch.map((x) => x.data))
+    if (batch.length < 1000) break
+  }
+  return out
+}
+
 // ── Xero auth (shared connection with the platform, incl. refresh rotation) ─
 async function xeroToken() {
   const rows = await sbGet('integrations?id=eq.xero&select=data')
@@ -85,15 +101,15 @@ async function fetchXeroInvoices() {
 }
 
 // ── Comparison ───────────────────────────────────────────────────────────────
-const norm = (s) => String(s ?? '').toLowerCase().replace(/\b(pty|ltd|pty\.|ltd\.|limited)\b/g, '').replace(/[^a-z0-9]/g, '')
+const norm = (s) => String(s ?? '').toLowerCase().replace(/p\/l/g, '').replace(/\b(pty|ltd|pty\.|ltd\.|limited)\b/g, '').replace(/[^a-z0-9]/g, '')
 const aud = (n) => '$' + Number(n ?? 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })
 const invoiceExGst = (inv) => (inv.lineItems ?? []).reduce(
   (s, li) => s + Number(li.unitPrice ?? 0) * Number(li.qty ?? 1) * (1 - Number(li.discountPct ?? 0) / 100), 0)
 
 const [tenants, leases, invoices, xeroInvs] = await Promise.all([
-  sbGet('tenants?select=data').then((r) => r.map((x) => x.data)),
-  sbGet('leases?select=data').then((r) => r.map((x) => x.data)),
-  sbGet('invoices?select=data').then((r) => r.map((x) => x.data)),
+  sbGetAll('tenants'),
+  sbGetAll('leases'),
+  sbGetAll('invoices'),
   fetchXeroInvoices(),
 ])
 

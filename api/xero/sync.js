@@ -8,6 +8,7 @@
 // WOULD be pushed without writing anything to Xero or the platform.
 
 import { getSupabase, loadConnection, saveConnection, xeroFetch, parseXeroDate } from './_client.js'
+import { selectAllRows } from '../_db.js'
 
 // ── account mapping (mirrors src/components/spaces/shared.jsx) ──────────────
 const DEFAULT_XERO_ACCOUNTS = {
@@ -54,9 +55,8 @@ function chunk(arr, size) {
 }
 
 async function loadTable(supabase, table) {
-  const { data, error } = await supabase.from(table).select('data')
-  if (error) throw new Error(`${table}: ${error.message}`)
-  return (data ?? []).map((r) => r.data)
+  const rows = await selectAllRows(supabase, table)
+  return rows.map((r) => r.data)
 }
 
 async function saveRow(supabase, table, id, data) {

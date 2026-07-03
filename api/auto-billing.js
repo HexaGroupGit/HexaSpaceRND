@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
 import { brandFrame, bKicker, bH1, bH2, bSmall, bBtn, bPanel, bTable, SANS, INK, MUTE } from './_brand.js'
 import { buildMonthlyInvoiceForLease, lineItemsSubtotal } from '../src/lib/billingEngine.js'
+import { selectAllRows } from './_db.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -73,20 +74,20 @@ export default async function handler(req, res) {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  // Load everything in parallel
-  const [lRes, tRes, iRes, sRes, spRes] = await Promise.all([
-    supabase.from('leases').select('data'),
-    supabase.from('tenants').select('data'),
-    supabase.from('invoices').select('data'),
+  // Load everything in parallel (paginated — see api/_db.js; never bare selects)
+  const [lRows, tRows, iRows, sRes, spRows] = await Promise.all([
+    selectAllRows(supabase, 'leases'),
+    selectAllRows(supabase, 'tenants'),
+    selectAllRows(supabase, 'invoices'),
     supabase.from('settings').select('data').eq('id', 'global').single(),
-    supabase.from('spaces').select('data'),
+    selectAllRows(supabase, 'spaces'),
   ])
 
-  const leases   = (lRes.data ?? []).map(r => r.data).filter(l => l.status === 'active')
-  const tenants  = (tRes.data ?? []).map(r => r.data)
-  const invoices = (iRes.data ?? []).map(r => r.data)
+  const leases   = lRows.map(r => r.data).filter(l => l.status === 'active')
+  const tenants  = tRows.map(r => r.data)
+  const invoices = iRows.map(r => r.data)
   const settings = sRes.data?.data ?? {}
-  const spaces   = (spRes.data ?? []).map(r => r.data)
+  const spaces   = spRows.map(r => r.data)
 
   const now = new Date()
   const { periodStart, periodEnd } = monthBounds(now)
@@ -102,8 +103,8 @@ export default async function handler(req, res) {
   // FRESH immediately before each insert instead of trusting the snapshot
   // taken at run start. Residual race + proper fix: see docs/build-notes.md.
   const highestNumber = async () => {
-    const { data } = await supabase.from('invoices').select('data->>number')
-    return (data ?? [])
+    const rows = await selectAllRows(supabase, 'invoices', 'data->>number')
+    return rows
       .map(r => parseInt(String(r.number ?? '').replace(/\D/g, ''), 10))
       .filter(n => !isNaN(n) && n > 0)
       .reduce((max, n) => Math.max(max, n), 0)

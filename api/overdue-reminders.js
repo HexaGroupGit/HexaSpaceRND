@@ -5,6 +5,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
 import { brandFrame, bKicker, bH1, bP, bSmall, bTable } from './_brand.js'
+import { selectAllRows } from './_db.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -21,10 +22,10 @@ export default async function handler(req, res) {
   const todayStr = new Date().toISOString().split('T')[0]
 
   try {
-    // 1. Load all pending/overdue invoices and tenants
-    const [{ data: invRows }, { data: tenantRows }, { data: settRows }] = await Promise.all([
-      supabase.from('invoices').select('id, data'),
-      supabase.from('tenants').select('id, data'),
+    // 1. Load all pending/overdue invoices and tenants (paginated — 1000-row cap)
+    const [invRows, tenantRows, { data: settRows }] = await Promise.all([
+      selectAllRows(supabase, 'invoices', 'id, data'),
+      selectAllRows(supabase, 'tenants', 'id, data'),
       supabase.from('settings').select('data').eq('id', 'global'),
     ])
 
