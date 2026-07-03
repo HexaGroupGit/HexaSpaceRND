@@ -158,6 +158,18 @@ export default function ContractDetail({
     .filter(Boolean)
     .filter((t) => (t.category || 'document') !== 'email')
 
+  // The documents shown in the preview AND the generated PDF: the licence
+  // agreement is followed by Terms & Conditions then House Rules. Prefer the
+  // versions attached to this contract; fall back to the global documents so they
+  // always appear (matches the signing flow). Any other attached docs follow.
+  const isDocTmpl = (t) => (t.category || 'document') !== 'email'
+  const pickDoc = (re) => attachedTemplates.find((t) => re.test(t.name || '')) || templates.find((t) => isDocTmpl(t) && re.test(t.name || ''))
+  const contractDocs = (() => {
+    const primary = [pickDoc(/terms/i), pickDoc(/house\s*rules|house/i)].filter(Boolean)
+    const others = attachedTemplates.filter((t) => !primary.some((p) => p.id === t.id))
+    return [...primary, ...others]
+  })()
+
   async function handleCountersign() {
     if (!licensorName.trim()) { alert('Please enter the licensor name.'); return }
     if (licensorSigRef.current?.isEmpty()) { alert('Please draw the licensor signature.'); return }
@@ -412,7 +424,7 @@ export default function ContractDetail({
       y += 72
 
       // ── Attached Templates (T&C, House Rules, etc.) ───────────────────
-      if (attachedTemplates.length > 0) {
+      if (contractDocs.length > 0) {
         function renderHtml(html) {
           const container = document.createElement('div')
           container.innerHTML = html ?? ''
@@ -449,7 +461,7 @@ export default function ContractDetail({
           doc.setTextColor(0)
         }
 
-        for (const tmpl of attachedTemplates) {
+        for (const tmpl of contractDocs) {
           doc.addPage(); y = 20
           doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(0)
           doc.text(tmpl.name.toUpperCase(), ml, y); y += 7
@@ -928,7 +940,7 @@ export default function ContractDetail({
           {view === 'template' && (
             <div className="overflow-auto bg-muted flex-1">
               <ContractTemplate lease={lease} tenant={tenant} space={space} templates={templates} settings={settings} />
-              {attachedTemplates.map((tmpl) => (
+              {contractDocs.map((tmpl) => (
                 <div key={tmpl.id} className="bg-card max-w-4xl mx-auto mb-6 px-12 py-10 text-sm text-foreground font-sans shadow-sm">
                   <h2 className="text-base font-bold uppercase tracking-widest text-foreground mb-3">{tmpl.name}</h2>
                   <hr className="border-border mb-6" />
