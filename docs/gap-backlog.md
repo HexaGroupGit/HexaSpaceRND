@@ -169,7 +169,7 @@ loop is done — say so and stop scheduling.
   membership has ended" for members with portalAccess false. Acceptance:
   build + trace; do NOT revoke anyone in production data.
 
-- [ ] **9. Renewal auto e-sign.**
+- [x] **9. Renewal auto e-sign.** _Done: send-for-signing extracted to src/lib/esign.js (esign_requests insert now error-checked); ContractDetail uses it; both renewal save paths (Renewals modal + Leases gear→renew→create) auto-send freshly created Renewal contracts for e-signature via shouldAutoSendForSigning guard._
   When a renewal contract is created from Renewals.jsx / ContractForm with
   contractType 'Renewal', automatically create the esign_requests row +
   eSignMemberLink and send the esign email (same as ContractDetail's
@@ -221,4 +221,5 @@ loop is done — say so and stop scheduling.
 - 2026-07-03 · Item 5 daily reconcile cron · 2aeda55
 - 2026-07-03 · Item 6 bond payout tracking · 9fc3516
 - 2026-07-03 · Item 7 Stripe portal payments · 68c36ae
-- 2026-07-03 · Item 8 portal revocation on offboard · (commit follows)
+- 2026-07-03 · Item 8 portal revocation on offboard · b9dcbb7
+- 2026-07-03 · Item 9 renewal auto e-sign · (commit follows)

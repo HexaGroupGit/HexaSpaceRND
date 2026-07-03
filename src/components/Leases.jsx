@@ -4,6 +4,7 @@ import { Settings, ChevronDown, Trash2, FileText, ChevronUp, Filter, Settings2 }
 import { format, parseISO, differenceInDays, addMonths, startOfMonth } from 'date-fns'
 import ContractForm from './ContractForm.jsx'
 import ContractDetail from './ContractDetail.jsx'
+import { sendLeaseForSigning, shouldAutoSendForSigning } from '../lib/esign.js'
 
 const DOC_TYPES = [
   'License Agreement',
@@ -107,7 +108,16 @@ export default function Leases() {
 
   function handleSave(data) {
     if (mode === 'edit' && editingLease) updateLease(editingLease.id, data)
-    else addLease(data)
+    else {
+      const created = addLease(data)
+      // A freshly created renewal goes straight out for e-signature so it
+      // can't sit unsigned by mistake.
+      if (created && shouldAutoSendForSigning(created)) {
+        const tenant = tenants.find((t) => t.id === created.tenantId)
+        sendLeaseForSigning({ lease: created, tenant, settings, templates: templates ?? [], updateLease })
+          .catch((err) => console.error('Renewal e-sign send failed:', err))
+      }
+    }
     setMode('list')
     setEditingLease(null)
     setSelectedLease(null)

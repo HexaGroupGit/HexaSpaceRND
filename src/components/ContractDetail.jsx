@@ -10,6 +10,7 @@ import { jsPDF } from 'jspdf'
 import DocumentsPanel from './DocumentsPanel.jsx'
 import { logAudit } from '../lib/audit.js'
 import { buildPaymentSchedule, scheduleAmount } from '../lib/paymentSchedule.js'
+import { sendLeaseForSigning } from '../lib/esign.js'
 
 const SIG_STATUS = {
   manually_signed: { label: 'Manually Signed', cls: 'bg-green-500 text-white' },
@@ -81,45 +82,10 @@ export default function ContractDetail({
 
   async function handleSendForESign() {
     setShowSignMenu(false)
-
-    // Generate unique signing token
-    const token = crypto.randomUUID()
-    const memberLink = `${PORTAL_URL}/sign/${token}`          // client-facing signing page
-    const adminLink = `${window.location.origin}/sign/${token}?admin=1` // internal admin view
-
-    // Save token to Supabase esign_requests table
-    await supabase.from('esign_requests').insert({
-      token,
-      lease_id: lease.id,
-      tenant_id: lease.tenantId,
-      status: 'pending',
-    })
-
-    const updatedLease = {
-      signatureStatus: 'out_for_signature',
-      eSignAdminLink: adminLink,
-      eSignMemberLink: memberLink,
-      eSignSentAt: new Date().toISOString(),
-    }
-    if (onUpdateLease) onUpdateLease(lease.id, updatedLease)
-
-    // Send eSign email to tenant
-    if (tenant?.email) {
-      try {
-        const mergedLease = { ...lease, ...updatedLease }
-        // Prefer the editable Templates → Emails → E-signature request template.
-        const esignTpl = (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'esign' && t.content)
-        let subject, html
-        if (esignTpl) {
-          ({ subject, html } = renderEsignTemplate({ template: esignTpl, lease: mergedLease, tenant, settings, signLink: memberLink }))
-        } else {
-          subject = `Please sign: ${lease.contractNumber ?? 'Licence Agreement'} — ${settings?.contracts?.eSignName ?? settings?.company?.name ?? 'Hexa Space'}`
-          html = eSignEmailHtml({ lease: mergedLease, tenant, settings })
-        }
-        await sendEmail({ to: tenant.email, subject, html, settings, tenantId: tenant?.id, emailType: 'esign' })
-      } catch {
-        // silently fail — lease status already updated
-      }
+    try {
+      await sendLeaseForSigning({ lease, tenant, settings, templates, updateLease: onUpdateLease })
+    } catch (e) {
+      alert(`Could not send for signing: ${e.message}`)
     }
   }
 

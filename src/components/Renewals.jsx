@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { differenceInDays, parseISO, format, addYears, addMonths, isValid } from 'date-fns'
 import { FileText, RefreshCw, Mail, X } from 'lucide-react'
 import { sendEmail, brandShell, bKicker, bH1, bP, bSmall } from '../lib/sendEmail.js'
+import { sendLeaseForSigning, shouldAutoSendForSigning } from '../lib/esign.js'
 import ContractForm from './ContractForm.jsx'
 
 export default function Renewals() {
@@ -289,10 +290,17 @@ export default function Renewals() {
                 discounts={discounts ?? []}
                 settings={settings}
                 onSave={(data) => {
-                  addLease(data)
+                  const created = addLease(data)
                   // Auto-expire the original lease
                   if (renewLease.previousContractId) {
                     updateLease(renewLease.previousContractId, { status: 'expired' })
+                  }
+                  // Send the renewal straight out for e-signature so it can't
+                  // sit unsigned by mistake.
+                  if (created && shouldAutoSendForSigning(created)) {
+                    const tenant = tenants.find((t) => t.id === created.tenantId)
+                    sendLeaseForSigning({ lease: created, tenant, settings, templates: templates ?? [], updateLease })
+                      .catch((e) => console.error('Renewal e-sign send failed:', e))
                   }
                   setRenewLease(null)
                 }}
