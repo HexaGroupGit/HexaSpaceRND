@@ -27,7 +27,12 @@ export default async function handler(req, res) {
       supabase.from('spaces').select('id, data'),
     ])
     const row = (leadRows ?? []).find((r) => r.data?.proposal?.token === token)
-    if (!row) return res.status(404).json({ error: 'Proposal not found' })
+    if (!row) {
+      // An old link from a resent proposal answers "superseded", not 404.
+      const superseded = (leadRows ?? []).some((r) => (r.data?.proposal?.previousTokens ?? []).includes(token))
+      if (superseded) return res.status(200).json({ ok: true, status: 'superseded' })
+      return res.status(404).json({ error: 'Proposal not found' })
+    }
     const settings = settRows?.[0]?.data ?? {}
     const spaces = Object.fromEntries((spaceRows ?? []).map((r) => [r.id, r.data]))
     const p = row.data.proposal

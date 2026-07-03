@@ -5,6 +5,7 @@ import {
   UserPlus, CheckCircle2, Send, Loader2, ArrowRight, Sparkles, Trash2, FileText, FileDown,
 } from 'lucide-react'
 import { sendEmail, renderProposalTemplate, messageEmailHtml, brandShell, PORTAL_URL } from '../lib/sendEmail.js'
+import { randomToken } from '../lib/token.js'
 import { buildProposalPdf, buildDeskBrochurePdf, buildVirtualBrochurePdf } from '../lib/proposalPdf.js'
 
 const TABS = [
@@ -175,7 +176,7 @@ export default function LeadDetail({ lead, store, onClose }) {
     setSendingProposal(true); setProposalResult('')
     try {
       const offer = mOffer()
-      const token = (crypto?.randomUUID?.() || `${lead.id}-${Date.now()}`)
+      const token = randomToken()
       const acceptLink = `${PORTAL_URL}/proposal/${token}`
       const html = buildMembershipProposalHtml({ lead, settings, offer, coverMsg: proposalMsg.trim(), acceptLink, validityDays })
       const subject = `Your ${offer.typeLabel} proposal — ${settings?.company?.name || 'Hexa Space'}`
@@ -187,7 +188,8 @@ export default function LeadDetail({ lead, store, onClose }) {
       await sendEmail({ to: lead.email, subject, html, settings, emailType: 'proposal', attachments })
       const quoted = pipelineStages.find((s) => /quote/i.test(s.name || '') || s.category === 'quoted')
       updateLead(lead.id, {
-        proposal: { token, status: 'sent', sentAt: new Date().toISOString(), membershipType: propType, typeLabel: offer.typeLabel, price: Number(m.price), term: m.term, vpkg: m.pkg, freeMonths: offer.freeMonths, newClient: m.newClient, validityDays, message: proposalMsg },
+        // previousTokens keeps old emailed links answering "superseded" instead of 404.
+        proposal: { token, previousTokens: [...(lead.proposal?.previousTokens ?? []), lead.proposal?.token].filter(Boolean).slice(-10), status: 'sent', sentAt: new Date().toISOString(), membershipType: propType, typeLabel: offer.typeLabel, price: Number(m.price), term: m.term, vpkg: m.pkg, freeMonths: offer.freeMonths, newClient: m.newClient, validityDays, message: proposalMsg },
         ...(quoted ? { stageId: quoted.id, stageEnteredAt: new Date().toISOString().split('T')[0] } : {}),
       })
       appendLeadActivity(lead.id, { type: 'email', text: `Proposal sent — ${offer.typeLabel}, ${offer.termLabel} ($${Number(m.price).toLocaleString('en-AU')}/mo${offer.freeMonths ? `, ${offer.freeMonths} mo free` : ''})` })
@@ -227,7 +229,7 @@ export default function LeadDetail({ lead, store, onClose }) {
       const doc = await buildProposalPdf(proposalArgs(sel))
       const pdfBase64 = pdfToBase64(doc)
       if (!pdfBase64) { setProposalResult('Could not generate the PDF — try again.'); setSendingProposal(false); return }
-      const token = (crypto?.randomUUID?.() || `${lead.id}-${Date.now()}`)
+      const token = randomToken()
       const acceptLink = `${PORTAL_URL}/proposal/${token}`
       const tpl = (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'proposal' && t.content)
       const par = selectedParking()
@@ -237,7 +239,8 @@ export default function LeadDetail({ lead, store, onClose }) {
       const { subject: subj, html } = renderProposalTemplate({ template: tpl, lead, settings, acceptLink, offer: buildOfficeProposalBlock(offices, parking, oOffer) })
       await sendEmail({ to: lead.email, subject: subj, html, settings, emailType: 'proposal', attachments: [{ filename: `Proposal_${(lead.businessName || lead.name || 'lead').replace(/\s+/g, '_')}.pdf`, content: pdfBase64 }] })
       const quoted = pipelineStages.find((s) => /quote/i.test(s.name || '') || s.category === 'quoted')
-      updateLead(lead.id, { proposal: { token, status: 'sent', sentAt: new Date().toISOString(), offices, parking, term: officeTerm, freeMonths: oOffer.freeMonths, newClient: officeNewClient, validityDays, message: proposalMsg }, ...(quoted ? { stageId: quoted.id, stageEnteredAt: new Date().toISOString().split('T')[0] } : {}) })
+      // previousTokens keeps old emailed links answering "superseded" instead of 404.
+      updateLead(lead.id, { proposal: { token, previousTokens: [...(lead.proposal?.previousTokens ?? []), lead.proposal?.token].filter(Boolean).slice(-10), status: 'sent', sentAt: new Date().toISOString(), offices, parking, term: officeTerm, freeMonths: oOffer.freeMonths, newClient: officeNewClient, validityDays, message: proposalMsg }, ...(quoted ? { stageId: quoted.id, stageEnteredAt: new Date().toISOString().split('T')[0] } : {}) })
       appendLeadActivity(lead.id, { type: 'email', text: `Proposal sent — ${offices.length} office option${offices.length !== 1 ? 's' : ''}${parking.length ? ` + ${parking.length} parking` : ''}` })
       setProposalResult('Sent ✓'); setTab('activity')
     } catch (e) { setProposalResult(e.message) } finally { setSendingProposal(false) }

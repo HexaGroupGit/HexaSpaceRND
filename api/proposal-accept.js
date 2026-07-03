@@ -40,7 +40,11 @@ export default async function handler(req, res) {
       supabase.from('settings').select('data').eq('id', 'global'),
     ])
     const leadRow = (leadRows ?? []).find((r) => r.data?.proposal?.token === token)
-    if (!leadRow) return res.status(404).json({ error: 'Proposal not found' })
+    if (!leadRow) {
+      const superseded = (leadRows ?? []).some((r) => (r.data?.proposal?.previousTokens ?? []).includes(token))
+      if (superseded) return res.status(410).json({ error: 'This proposal has been updated — please use the link in our most recent email.', superseded: true })
+      return res.status(404).json({ error: 'Proposal not found' })
+    }
     const lead = leadRow.data
     // Either signal alone means this proposal already produced a client —
     // requiring both would let a half-recorded accept run twice.
@@ -119,9 +123,15 @@ export default async function handler(req, res) {
       startDate: today, createdAt: today,
     }
 
-    // 3. Contract (lease) from the chosen offices + pricing
-    const nums = (leaseRows ?? []).map((r) => parseInt(String(r.data?.contractNumber || '').replace(/\D/g, ''), 10)).filter((n) => !isNaN(n) && n < 100000)
-    const contractNumber = `CON-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0')}`
+    // 3. Contract (lease) from the chosen offices + pricing.
+    // Allocate the number against a FRESH read (the request-start snapshot can
+    // be seconds old under concurrent accepts), padded to the widest existing
+    // number so sorting stays sane.
+    const { data: freshLeaseRows } = await supabase.from('leases').select('data->>contractNumber')
+    const numStrs = (freshLeaseRows ?? leaseRows ?? []).map((r) => String(r.contractNumber ?? r.data?.contractNumber ?? '').replace(/\D/g, '')).filter(Boolean)
+    const nums = numStrs.map((s) => parseInt(s, 10)).filter((n) => !isNaN(n) && n < 100000)
+    const pad = Math.max(3, ...numStrs.filter((s) => parseInt(s, 10) < 100000).map((s) => s.length))
+    const contractNumber = `CON-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(pad, '0')}`
     const monthlyRent = contractItems.reduce((s, o) => s + Number(o.price || 0), 0)
     const deposit = monthlyRent // one month's rent as the security deposit
     const items = contractItems.map((o, i) => ({ spaceId: o.spaceId, deposit: i === 0 ? deposit : 0, steps: [{ startDate, endDate, listPrice: Number(o.price || 0), qty: 1, discount: '' }] }))

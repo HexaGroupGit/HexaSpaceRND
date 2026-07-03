@@ -202,7 +202,7 @@ loop is done — say so and stop scheduling.
   $80 late-fee line item (amount from settings.billingRules.lateFee ?? 80).
   No automatic accrual. Acceptance: build + totals check.
 
-- [ ] **13. Contract number & token hygiene.**
+- [x] **13. Contract number & token hygiene.** _Done: proposal-accept allocates the contract number from a fresh read padded to the widest existing number; proposal tokens use src/lib/token.js randomToken (crypto only, no id+timestamp fallback); resends stash the old token in proposal.previousTokens (last 10) and both proposal endpoints answer old links with a "superseded — use the latest email" state instead of 404._
   proposal-accept contract numbering: pad to the same width as existing data
   and re-read before insert (mirror item 3's approach). LeadDetail proposal
   token: drop the weak `${lead.id}-${Date.now()}` fallback — if
@@ -225,4 +225,5 @@ loop is done — say so and stop scheduling.
 - 2026-07-03 · Item 9 renewal auto e-sign · 3e78857
 - 2026-07-03 · Item 10 onboarding resilience · 88a22c3
 - 2026-07-03 · Item 11 proposal decline flow · 20b6ded
-- 2026-07-03 · Item 12 exit/late fee quick actions · (commit follows)
+- 2026-07-03 · Item 12 exit/late fee quick actions · 6f7c7ee
+- 2026-07-03 · Item 13 number/token hygiene · (commit follows) — ALL ITEMS COMPLETE
