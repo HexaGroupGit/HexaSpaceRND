@@ -1,6 +1,6 @@
-import { useOutletContext } from 'react-router-dom'
+import { useOutletContext, useNavigate } from 'react-router-dom'
 import { differenceInDays, parseISO, format, startOfMonth, endOfMonth } from 'date-fns'
-import { Building2, Users, TrendingUp, AlertTriangle, DollarSign, Clock, CheckCircle } from 'lucide-react'
+import { Building2, Users, TrendingUp, AlertTriangle, DollarSign, Clock, CheckCircle, PenLine } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card.jsx'
 
 function KPICard({ icon: Icon, label, value, sub, color = 'gray' }) {
@@ -38,6 +38,13 @@ function fmtAud(n) {
 
 export default function Dashboard() {
   const { spaces, leases, tenants, invoices = [] } = useOutletContext()
+  const navigate = useNavigate()
+
+  // Contracts the client has signed that are waiting for the admin to countersign
+  // (which activates the contract + membership).
+  const awaitingCountersign = leases
+    .filter((l) => l.signatureStatus === 'out_for_signature' && l.tenantSignedAt)
+    .sort((a, b) => new Date(b.tenantSignedAt) - new Date(a.tenantSignedAt))
 
   const today = new Date()
   const monthStart = startOfMonth(today)
@@ -103,6 +110,40 @@ export default function Dashboard() {
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">{format(today, 'EEEE, d MMMM yyyy')} · Hexa Space · Box Hill</p>
       </div>
+
+      {/* Awaiting your countersignature — client has signed, activate to finalise */}
+      {awaitingCountersign.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <PenLine size={16} className="text-amber-600" />
+            <h2 className="text-sm font-semibold text-amber-800">
+              {awaitingCountersign.length} contract{awaitingCountersign.length !== 1 ? 's' : ''} awaiting your countersignature
+            </h2>
+          </div>
+          <div className="space-y-2">
+            {awaitingCountersign.map((lease) => {
+              const tenant = tenants.find((t) => t.id === lease.tenantId)
+              const contractNum = lease.contractNumber ?? `CON-${lease.id?.slice(-3).toUpperCase()}`
+              return (
+                <div key={lease.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-card border border-amber-200 rounded-md px-4 py-2.5">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">{tenant?.businessName ?? '—'} · {contractNum}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Signed by {lease.tenantSignerName ?? 'the client'}{lease.tenantSignedAt ? ` on ${format(parseISO(lease.tenantSignedAt), 'dd/MM/yyyy')}` : ''} — countersign to activate the contract &amp; membership.
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate('/leases', { state: { openLeaseId: lease.id } })}
+                    className="shrink-0 bg-primary text-primary-foreground text-xs font-semibold px-3 py-1.5 rounded hover:bg-primary/90"
+                  >
+                    Review &amp; countersign →
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* KPI row 1 */}
       <div className="grid grid-cols-2 gap-4 mb-4 lg:grid-cols-4">
