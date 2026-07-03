@@ -8,7 +8,7 @@
 // raised (awaiting_deposit) → deposit paid → confirmed (balance + calendar) →
 // completed → refunded.
 import { supabase } from './supabase.js'
-import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money } from './functionBooking.js'
+import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money, bookingSessions, sessionsLabel } from './functionBooking.js'
 import { PORTAL_URL } from './sendEmail.js'
 
 const today = () => new Date().toISOString().split('T')[0]
@@ -121,38 +121,44 @@ export async function confirmDepositPaid({ store, booking, findFunctionSpace }) 
   // Safety net: raise the deposit (50% + $300 security) if it was never raised
   // (e.g. a manual hub booking that skipped the portal). One invoice, two lines.
   if (!has('function_deposit')) store.addInvoice({ ...base, invoiceType: 'function_deposit', dueDate: today(), vatEnabled: true, lineItems: [
-    { description: `50% deposit — function booking · ${b.eventName || 'Function'} (${b.eventDate})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf, qty: 1, discountPct: 0 },
+    { description: `50% deposit — function booking · ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf, qty: 1, discountPct: 0 },
     { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit, qty: 1, discountPct: 0, vatExempt: true },
   ] })
 
-  // Balance = the remaining 50% of the booking cost (GST), due 14 days before.
+  // Balance = the remaining 50% of the booking cost (GST), due 14 days before
+  // the FIRST session (b.eventDate always mirrors the first session).
   if (!has('function_balance')) {
     store.addInvoice({ ...base, invoiceType: 'function_balance', dueDate: balanceDueDate(b.eventDate) || today(), vatEnabled: true, lineItems: [
-      { description: `50% balance — function booking · ${b.eventName || 'Function'} (${b.eventDate})`, revenueAccount: 'Function Space Hire', unitPrice: q.balanceHalf, qty: 1, discountPct: 0 },
+      { description: `50% balance — function booking · ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.balanceHalf, qty: 1, discountPct: 0 },
     ] })
   }
 
-  // Place the calendar booking (venue secured) with ±30-min buffer.
-  let calendarBookingId = b.calendarBookingId
+  // Place a calendar hold for EVERY session (venue secured) with ±30-min buffer.
+  let calendarBookingIds = b.calendarBookingIds ?? (b.calendarBookingId ? [b.calendarBookingId] : [])
   const fn = findFunctionSpace ? findFunctionSpace(store.spaces) : null
-  if (fn && b.eventDate && !calendarBookingId) {
-    const { blockStart, blockEnd } = bufferedWindow(b.startTime, b.endTime)
-    const item = store.addBooking({
-      type: 'function', resourceId: fn.id, date: b.eventDate, startTime: blockStart, endTime: blockEnd,
-      title: `${b.eventName || 'Function'} (incl. buffer)`, eventType: b.eventType, guests: Number(b.guests) || null,
-      status: 'Confirmed', approval: 'approved', source: 'Function Bookings', functionRef: b.ref, repeat: 'none', createdBy: 'Admin',
-    })
-    calendarBookingId = item?.id
+  const sessions = bookingSessions(b)
+  if (fn && sessions.length && calendarBookingIds.length === 0) {
+    calendarBookingIds = sessions.map((s, i) => {
+      const { blockStart, blockEnd } = bufferedWindow(s.startTime, s.endTime)
+      const item = store.addBooking({
+        type: 'function', resourceId: fn.id, date: s.date, startTime: blockStart, endTime: blockEnd,
+        title: `${b.eventName || 'Function'}${sessions.length > 1 ? ` — session ${i + 1}/${sessions.length}` : ''} (incl. buffer)`,
+        eventType: b.eventType, guests: Number(b.guests) || null,
+        status: 'Confirmed', approval: 'approved', source: 'Function Bookings', functionRef: b.ref, repeat: 'none', createdBy: 'Admin',
+      })
+      return item?.id
+    }).filter(Boolean)
   }
-  const updated = await persistFn({ ...b, stage: 'confirmed', confirmedAt: nowIso(), depositPaid: true, quote: q, tenantId, companyId: tenantId, calendarBookingId })
+  const updated = await persistFn({ ...b, stage: 'confirmed', confirmedAt: nowIso(), depositPaid: true, quote: q, tenantId, companyId: tenantId, calendarBookingIds, calendarBookingId: calendarBookingIds[0] ?? null })
   fetch('/api/function-bookings/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ booking: updated, mode: 'confirmed' }) }).catch(() => {})
   return updated
 }
 
 // ── Decline ──────────────────────────────────────────────────────────────────
 export async function declineFunctionBooking({ store, booking }) {
-  if (booking.calendarBookingId) store.deleteBooking(booking.calendarBookingId)
-  return persistFn({ ...booking, stage: 'declined', calendarBookingId: null })
+  const holds = booking.calendarBookingIds ?? (booking.calendarBookingId ? [booking.calendarBookingId] : [])
+  holds.forEach((id) => store.deleteBooking(id))
+  return persistFn({ ...booking, stage: 'declined', calendarBookingId: null, calendarBookingIds: [] })
 }
 
 // ── Post-event: resolve the $300 security deposit ────────────────────────────

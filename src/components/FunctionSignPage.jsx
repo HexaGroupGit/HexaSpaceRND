@@ -116,11 +116,31 @@ export default function FunctionSignPage({ token }) {
         <div className="max-w-xl mx-auto my-8 px-4">
           <div className="bg-white border border-gray-200 rounded-md p-7 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900 mb-1">{b?.eventName || 'Function Space Hire'}</h2>
-            <p className="text-sm text-gray-500 mb-5">{fmtDate(b?.eventDate)} · {b?.startTime}–{b?.endTime} · {b?.guests || '—'} guests</p>
+            {(q?.sessionCount ?? 1) > 1 ? (
+              <div className="text-sm text-gray-500 mb-5 space-y-0.5">
+                <p className="font-medium text-gray-700">{q.sessionCount} sessions · {b?.guests || '—'} guests</p>
+                {q.sessions.map((s, i) => (
+                  <p key={i}>{fmtDate(s.date)} · {s.startTime}–{s.endTime}</p>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 mb-5">{fmtDate(b?.eventDate)} · {b?.startTime}–{b?.endTime} · {b?.guests || '—'} guests</p>
+            )}
 
             <div className="border-t border-gray-100 pt-3">
-              <Row label={`Venue hire — ${q?.hours || 0} hrs @ ${money(q?.rate)}/hr ${q?.isWeekend ? '(weekend)' : '(weekday)'}`} value={money(q?.rental)} />
-              <Row label="Cleaning fee" value={money(q?.cleaning)} />
+              {(q?.sessionCount ?? 1) > 1 ? (
+                <>
+                  {q.sessions.map((s, i) => (
+                    <Row key={i} label={`${fmtDate(s.date)} — ${s.hours} hrs @ ${money(s.rate)}/hr ${s.isWeekend ? '(weekend)' : '(weekday)'}`} value={money(s.rental)} />
+                  ))}
+                  <Row label={`Cleaning fee — ${q.sessionCount} sessions`} value={money(q?.cleaning)} />
+                </>
+              ) : (
+                <>
+                  <Row label={`Venue hire — ${q?.hours || 0} hrs @ ${money(q?.rate)}/hr ${q?.isWeekend ? '(weekend)' : '(weekday)'}`} value={money(q?.rental)} />
+                  <Row label="Cleaning fee" value={money(q?.cleaning)} />
+                </>
+              )}
               {q?.staffApplies ? <Row label={`F&B & AV staff (80+ pax) — ${q?.hours} hrs @ $40/hr`} value={money(q?.staff)} /> : null}
               {addonLines.map((a) => <Row key={a.key} label={a.label} value={money(a.price)} />)}
               {q?.lateFee ? <Row label="Late booking surcharge (within 7 days)" value={money(q?.lateFee)} /> : null}
@@ -132,7 +152,7 @@ export default function FunctionSignPage({ token }) {
 
             <div className="mt-5 bg-gray-50 border border-gray-200 rounded-md p-4">
               <Row label="Payable now — 50% deposit + $300 security" value={money(q?.dueNow)} strong />
-              <Row label="Balance (due 14 days before event)" value={money(q?.balanceDue)} muted />
+              <Row label={`Balance (due 14 days before ${(q?.sessionCount ?? 1) > 1 ? 'the first session' : 'event'})`} value={money(q?.balanceDue)} muted />
               <p className="text-xs text-gray-500 mt-2">The $300 security deposit is refundable within 5 business days after your event, provided there’s no damage or excessive cleaning. The 50% venue-hire deposit is non-refundable and secures your date.</p>
             </div>
             {b?.catering && <p className="text-xs text-gray-500 mt-4">You indicated you’d like catering — our team will be in touch to quote this separately.</p>}

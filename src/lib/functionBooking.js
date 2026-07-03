@@ -61,24 +61,66 @@ export function bufferedWindow(startTime, endTime) {
   }
 }
 
+// ── Multi-session series ─────────────────────────────────────────────────────
+// A booking is either single-session (legacy eventDate/startTime/endTime) or a
+// series with sessions: [{ date, startTime, endTime }]. This normaliser is the
+// one place that decides which — everything else works off the returned array.
+// The booking's eventDate/startTime/endTime always mirror the FIRST session so
+// legacy consumers (reminders, sorting, portal cards) keep working.
+export function bookingSessions(b = {}) {
+  if (Array.isArray(b.sessions) && b.sessions.length) {
+    return b.sessions
+      .filter((s) => s?.date && s?.startTime && s?.endTime)
+      .sort((a, z) => `${a.date}T${a.startTime}`.localeCompare(`${z.date}T${z.startTime}`))
+  }
+  return b.eventDate ? [{ date: b.eventDate, startTime: b.startTime, endTime: b.endTime }] : []
+}
+
+// "25/07/2026" for one session, "6 sessions · 25/07 – 30/08/2026" for a series.
+export function sessionsLabel(b = {}) {
+  const ss = bookingSessions(b)
+  if (ss.length === 0) return b.eventDate || ''
+  const dmy = (d) => { const [y, m, day] = String(d).split('-'); return `${day}/${m}/${y}` }
+  if (ss.length === 1) return dmy(ss[0].date)
+  const dm = (d) => { const [, m, day] = String(d).split('-'); return `${day}/${m}` }
+  return `${ss.length} sessions · ${dm(ss[0].date)} – ${dmy(ss[ss.length - 1].date)}`
+}
+
 // ── Pricing engine ──────────────────────────────────────────────────────────
-// input: { eventDate, startTime, endTime, guests, addons:{parking,nameTags,photographer}, bookedOn }
-// bookedOn defaults to eventDate (no late fee) if not supplied — callers that know
-// "today" should pass it so the late-booking surcharge auto-applies.
+// input: single-session { eventDate, startTime, endTime, guests, bookedOn } or a
+// series { sessions: [{date,startTime,endTime}], guests, bookedOn }. Rates are
+// per-session (weekday/weekend by each session's own date); the cleaning fee
+// applies per session (the venue is turned over after every one); the security
+// deposit is held once per booking; the late surcharge applies once, judged
+// against the FIRST session. bookedOn defaults to the first date (no late fee)
+// if not supplied — callers that know "today" should pass it.
 export function computeQuote(input = {}) {
-  const { eventDate, startTime, endTime, guests, addons = {}, bookedOn } = input
-  const isWeekend = isWeekendDate(eventDate)
-  const rate = isWeekend ? RATES.weekend : RATES.weekday
-  const hours = round(hoursBetween(startTime, endTime))
-
-  const rental = round(rate * hours)
-
-  const cleaning = CLEANING_FEE
+  const { guests, bookedOn } = input
+  const sessionList = bookingSessions(input)
   const staffApplies = Number(guests) > STAFF_GUEST_THRESHOLD
-  const staff = staffApplies ? round(STAFF_RATE * hours) : 0
+
+  const sessions = sessionList.map((s) => {
+    const isWeekend = isWeekendDate(s.date)
+    const rate = isWeekend ? RATES.weekend : RATES.weekday
+    const hours = round(hoursBetween(s.startTime, s.endTime))
+    return {
+      date: s.date, startTime: s.startTime, endTime: s.endTime,
+      isWeekend, rate, hours,
+      rental: round(rate * hours),
+      staff: staffApplies ? round(STAFF_RATE * hours) : 0,
+      cleaning: CLEANING_FEE,
+    }
+  })
+  const sessionCount = sessions.length
+  const first = sessions[0] ?? { isWeekend: false, rate: RATES.weekday, date: input.eventDate }
+
+  const hours = round(sessions.reduce((s, x) => s + x.hours, 0))
+  const rental = round(sessions.reduce((s, x) => s + x.rental, 0))
+  const staff = round(sessions.reduce((s, x) => s + x.staff, 0))
+  const cleaning = round(CLEANING_FEE * Math.max(1, sessionCount))
   const addonsTotal = staff
 
-  const days = daysBetween(bookedOn, eventDate)
+  const days = daysBetween(bookedOn, first.date)
   const lateFee = days != null && days >= 0 && days < LATE_WINDOW_DAYS ? LATE_FEE : 0
 
   // Booking cost = everything except the refundable security deposit. GST applies.
@@ -96,7 +138,8 @@ export function computeQuote(input = {}) {
   const balanceDue = round(total - depositIncGst)           // display
 
   return {
-    isWeekend, rate, hours,
+    sessions, sessionCount,
+    isWeekend: first.isWeekend, rate: first.rate, hours,
     rental, depositHalf, balanceHalf,
     cleaning, staff, staffApplies, addonsTotal,
     lateFee,
@@ -168,7 +211,28 @@ export const LAYOUTS = [
 export function dateClashes(rows, eventDate, exceptId) {
   if (!eventDate) return []
   return (rows || []).filter((b) =>
-    b.id !== exceptId && b.eventDate === eventDate && ['awaiting_deposit', 'confirmed'].includes(b.stage))
+    b.id !== exceptId && ['awaiting_deposit', 'confirmed'].includes(b.stage) &&
+    bookingSessions(b).some((s) => s.date === eventDate))
+}
+
+// Series-aware variants: every session is checked, and each hit is tagged with
+// the session date it clashes on so the warning can say which one.
+export function seriesDateClashes(rows, booking) {
+  const out = []
+  for (const s of bookingSessions(booking)) {
+    for (const hit of dateClashes(rows, s.date, booking.id)) out.push({ ...hit, clashDate: s.date })
+  }
+  return out
+}
+
+export function seriesCalendarClashes(bookings, resourceId, booking) {
+  const out = []
+  for (const s of bookingSessions(booking)) {
+    for (const hit of calendarClashes(bookings, resourceId, s.date, s.startTime, s.endTime, booking.ref)) {
+      out.push({ ...hit, clashDate: s.date })
+    }
+  }
+  return out
 }
 
 // Do two [start,end) minute windows overlap?

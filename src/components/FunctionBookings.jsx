@@ -7,7 +7,8 @@ import {
   CalendarDays, Users, ChevronRight, RefreshCw, DollarSign, UserPlus,
 } from 'lucide-react'
 import {
-  ADDONS, STAGES, money, computeQuote, bufferedWindow, dateClashes, calendarClashes,
+  ADDONS, STAGES, money, computeQuote, bufferedWindow,
+  bookingSessions, sessionsLabel, seriesDateClashes, seriesCalendarClashes,
 } from '../lib/functionBooking.js'
 import { findFunctionSpace } from '../portal/functionSpace.js'
 import { approveFunctionBooking, confirmDepositPaid, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite } from '../lib/functionActions.js'
@@ -36,10 +37,24 @@ function QuoteBreakdown({ booking }) {
   const line = (l, v, cls = '') => (
     <div className={`flex justify-between py-1 text-sm ${cls}`}><span>{l}</span><span className="tabular-nums">{money(v)}</span></div>
   )
+  const multi = (q.sessionCount ?? 1) > 1
   return (
     <div className="text-foreground">
-      {line(`Venue hire — ${q.hours} hrs @ ${money(q.rate)}/hr ${q.isWeekend ? '(weekend)' : '(weekday)'}`, q.rental)}
-      {line('Cleaning fee', q.cleaning)}
+      {multi ? (
+        <>
+          {q.sessions.map((s, i) => (
+            <div key={`${s.date}-${i}`}>
+              {line(`${fmtDate(s.date)} ${s.startTime}–${s.endTime} — ${s.hours} hrs @ ${money(s.rate)}/hr ${s.isWeekend ? '(weekend)' : '(weekday)'}`, s.rental)}
+            </div>
+          ))}
+          {line(`Cleaning fee — ${q.sessionCount} sessions @ ${money(q.sessions[0]?.cleaning ?? 200)}`, q.cleaning)}
+        </>
+      ) : (
+        <>
+          {line(`Venue hire — ${q.hours} hrs @ ${money(q.rate)}/hr ${q.isWeekend ? '(weekend)' : '(weekday)'}`, q.rental)}
+          {line('Cleaning fee', q.cleaning)}
+        </>
+      )}
       {q.staffApplies ? line(`F&B & AV staff (80+ pax) — ${q.hours} hrs`, q.staff) : null}
       {addonLines.map((a) => <div key={a.key}>{line(a.label, a.price)}</div>)}
       {q.lateFee ? line('Late booking surcharge', q.lateFee) : null}
@@ -64,18 +79,33 @@ const BLANK = {
 
 function BookingForm({ booking, onSave, onClose }) {
   const [f, setF] = useState(booking ? { ...BLANK, ...booking, addons: { ...BLANK.addons, ...(booking.addons || {}) } } : { ...BLANK })
+  // Session rows: seeded from the saved series, the legacy single date, or one blank row.
+  const [sessions, setSessions] = useState(() => {
+    const existing = bookingSessions(booking || {})
+    return existing.length ? existing.map((s) => ({ ...s })) : [{ date: '', startTime: '18:00', endTime: '22:00' }]
+  })
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
   const setAddon = (k, v) => setF((p) => ({ ...p, addons: { ...p.addons, [k]: v } }))
-  const quote = computeQuote({ ...f, bookedOn: today() })
+  const setSession = (i, k, v) => setSessions((prev) => prev.map((s, idx) => (idx === i ? { ...s, [k]: v } : s)))
+  const addSession = () => setSessions((prev) => [...prev, { date: '', startTime: prev[prev.length - 1]?.startTime || '18:00', endTime: prev[prev.length - 1]?.endTime || '22:00' }])
+  const removeSession = (i) => setSessions((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev))
+  const completeSessions = sessions.filter((s) => s.date && s.startTime && s.endTime)
+  const quote = computeQuote({ ...f, sessions: completeSessions, bookedOn: today() })
 
   async function submit(e) {
     e.preventDefault()
     if (!f.name && !f.organisation) { alert('Enter a contact name or organisation.'); return }
     if (!f.email) { alert('Email is required.'); return }
-    if (!f.eventDate || !f.startTime || !f.endTime) { alert('Event date and times are required.'); return }
+    if (completeSessions.length === 0) { alert('At least one session with a date and times is required.'); return }
     setSaving(true)
-    try { await onSave({ ...f, quote }) } finally { setSaving(false) }
+    try {
+      // eventDate/startTime/endTime always mirror the FIRST session so legacy
+      // consumers (reminders, sorting, portal cards) keep working.
+      const sorted = [...completeSessions].sort((a, z) => `${a.date}T${a.startTime}`.localeCompare(`${z.date}T${z.startTime}`))
+      const first = sorted[0]
+      await onSave({ ...f, sessions: sorted, eventDate: first.date, startTime: first.startTime, endTime: first.endTime, quote })
+    } finally { setSaving(false) }
   }
 
   return (
@@ -105,10 +135,28 @@ function BookingForm({ booking, onSave, onClose }) {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div><label className={lab}>Date</label><input type="date" className={inp} value={f.eventDate} onChange={(e) => set('eventDate', e.target.value)} required /></div>
-              <div><label className={lab}>From</label><input type="time" className={inp} value={f.startTime} onChange={(e) => set('startTime', e.target.value)} required /></div>
-              <div><label className={lab}>To</label><input type="time" className={inp} value={f.endTime} onChange={(e) => set('endTime', e.target.value)} required /></div>
+            <div className="space-y-2">
+              <label className={lab}>Session{sessions.length > 1 ? 's' : ''} (date &amp; times)</label>
+              {sessions.map((s, i) => (
+                <div key={i} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
+                  <input type="date" className={inp} value={s.date} onChange={(e) => setSession(i, 'date', e.target.value)} />
+                  <input type="time" className={`${inp} w-24`} value={s.startTime} onChange={(e) => setSession(i, 'startTime', e.target.value)} />
+                  <input type="time" className={`${inp} w-24`} value={s.endTime} onChange={(e) => setSession(i, 'endTime', e.target.value)} />
+                  <button type="button" onClick={() => removeSession(i)} disabled={sessions.length === 1}
+                    className="p-1.5 text-muted-foreground hover:text-red-600 disabled:opacity-30" title="Remove session">
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+              <button type="button" onClick={addSession} className="flex items-center gap-1.5 text-xs text-blue-700 hover:underline">
+                <Plus size={12} /> Add another session
+              </button>
+              {sessions.length > 1 && (
+                <p className="text-xs text-muted-foreground">
+                  Series of {completeSessions.length} session{completeSessions.length !== 1 ? 's' : ''} — each priced at its own weekday/weekend rate,
+                  cleaning per session; one $300 security deposit; 50% deposit &amp; balance across the whole series.
+                </p>
+              )}
             </div>
             <div><label className={lab}>Estimated guests</label><input type="number" min={1} className={inp} value={f.guests} onChange={(e) => set('guests', e.target.value)} placeholder="e.g. 60" /></div>
           </section>
@@ -160,7 +208,9 @@ function RefundBox({ booking, onResolve }) {
 // ── Detail panel ─────────────────────────────────────────────────────────────
 function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calClash }) {
   const b = booking
-  const passed = b.eventDate && b.eventDate < today()
+  const sessions = bookingSessions(b)
+  const lastDate = sessions[sessions.length - 1]?.date ?? b.eventDate
+  const passed = lastDate && lastDate < today()
   const anyClash = (clash?.length || 0) + (calClash?.length || 0)
   return (
     <div className="w-full md:w-[420px] border-l border-border bg-card flex flex-col h-full shrink-0">
@@ -178,14 +228,32 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         <dl className="grid grid-cols-2 gap-3 text-sm">
-          <div><dt className="text-xs text-muted-foreground uppercase">Date</dt><dd className="text-foreground flex items-center gap-1"><CalendarDays size={12} />{fmtDate(b.eventDate)}</dd></div>
-          <div><dt className="text-xs text-muted-foreground uppercase">Time</dt><dd className="text-foreground">{b.startTime}–{b.endTime}</dd></div>
+          {sessions.length > 1 ? (
+            <div className="col-span-2">
+              <dt className="text-xs text-muted-foreground uppercase">Sessions ({sessions.length})</dt>
+              <dd className="text-foreground mt-1 space-y-0.5">
+                {sessions.map((s, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <CalendarDays size={12} className="text-muted-foreground shrink-0" />
+                    <span>{fmtDate(s.date)}</span>
+                    <span className="text-muted-foreground">{s.startTime}–{s.endTime}</span>
+                  </div>
+                ))}
+              </dd>
+            </div>
+          ) : (
+            <>
+              <div><dt className="text-xs text-muted-foreground uppercase">Date</dt><dd className="text-foreground flex items-center gap-1"><CalendarDays size={12} />{fmtDate(b.eventDate)}</dd></div>
+              <div><dt className="text-xs text-muted-foreground uppercase">Time</dt><dd className="text-foreground">{b.startTime}–{b.endTime}</dd></div>
+            </>
+          )}
           <div><dt className="text-xs text-muted-foreground uppercase">Guests</dt><dd className="text-foreground flex items-center gap-1"><Users size={12} />{b.guests || '—'}</dd></div>
           <div><dt className="text-xs text-muted-foreground uppercase">Source</dt><dd className="text-foreground capitalize">{b.source || '—'}</dd></div>
           <div className="col-span-2"><dt className="text-xs text-muted-foreground uppercase">Contact</dt><dd className="text-foreground">{b.email}{b.phone ? ` · ${b.phone}` : ''}</dd></div>
         </dl>
 
-        {b.eventDate && <p className="text-xs text-muted-foreground">Calendar hold reserves {bufferedWindow(b.startTime, b.endTime).blockStart}–{bufferedWindow(b.startTime, b.endTime).blockEnd} (incl. 30-min buffer each side).</p>}
+        {b.eventDate && sessions.length === 1 && <p className="text-xs text-muted-foreground">Calendar hold reserves {bufferedWindow(b.startTime, b.endTime).blockStart}–{bufferedWindow(b.startTime, b.endTime).blockEnd} (incl. 30-min buffer each side).</p>}
+        {sessions.length > 1 && <p className="text-xs text-muted-foreground">Each session gets its own calendar hold with a 30-min buffer each side. One $300 security deposit covers the series; balance is due 14 days before the first session.</p>}
 
         <div>
           <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Quote</h3>
@@ -216,14 +284,14 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
         {/* Calendar / booking clash warning — shown while the date isn't locked in yet */}
         {anyClash > 0 && !['confirmed', 'completed', 'refunded', 'cancelled', 'declined'].includes(b.stage) && (
           <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2.5 text-xs text-red-700 space-y-1">
-            <div className="font-semibold">⚠ Possible clash on {fmtDate(b.eventDate)}</div>
+            <div className="font-semibold">⚠ Possible clash{sessions.length > 1 ? ' in this series' : ` on ${fmtDate(b.eventDate)}`}</div>
             {calClash?.map((c, i) => (
-              <div key={i}>Calendar: {c.title || c.type || 'Booking'} {c.startTime}–{c.endTime}{c.functionRef ? ` (${c.functionRef})` : ''}</div>
+              <div key={i}>{c.clashDate ? `${fmtDate(c.clashDate)} — ` : ''}Calendar: {c.title || c.type || 'Booking'} {c.startTime}–{c.endTime}{c.functionRef ? ` (${c.functionRef})` : ''}</div>
             ))}
-            {clash?.map((c) => (
-              <div key={c.id}>Function: {c.eventName || c.ref} {c.startTime}–{c.endTime} · {STAGES[c.stage]?.label || c.stage}</div>
+            {clash?.map((c, i) => (
+              <div key={`${c.id}-${i}`}>{c.clashDate ? `${fmtDate(c.clashDate)} — ` : ''}Function: {c.eventName || c.ref} {c.startTime}–{c.endTime} · {STAGES[c.stage]?.label || c.stage}</div>
             ))}
-            <div className="text-red-600/80">Their window incl. buffer: {bufferedWindow(b.startTime, b.endTime).blockStart}–{bufferedWindow(b.startTime, b.endTime).blockEnd}. Ask them to amend, or approve if it's fine.</div>
+            <div className="text-red-600/80">Windows include the 30-min buffer each side. Ask them to amend, or approve if it's fine.</div>
           </div>
         )}
 
@@ -355,7 +423,8 @@ export default function FunctionBookings() {
 
   async function handleDelete(b) {
     if (!confirm('Delete this booking permanently?')) return
-    if (b.calendarBookingId) deleteBooking(b.calendarBookingId)
+    const holds = b.calendarBookingIds ?? (b.calendarBookingId ? [b.calendarBookingId] : [])
+    holds.forEach((id) => deleteBooking(id))
     await supabase.from('function_bookings').delete().eq('id', b.id)
     setRows((prev) => prev.filter((r) => r.id !== b.id))
     setSelected(null)
@@ -402,7 +471,7 @@ export default function FunctionBookings() {
                     <tr key={b.id} onClick={() => setSelected(b)} className={`border-b border-border/60 cursor-pointer hover:bg-muted/40 ${selected?.id === b.id ? 'bg-muted/60' : ''}`}>
                       <td className="px-4 py-3"><div className="font-medium text-foreground">{b.eventName || 'Function'}</div><div className="text-xs text-muted-foreground">{b.ref}</div></td>
                       <td className="px-4 py-3 text-foreground">{b.organisation || b.name || '—'}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{fmtDate(b.eventDate)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{bookingSessions(b).length > 1 ? sessionsLabel(b) : fmtDate(b.eventDate)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-foreground">{money(q.total)}</td>
                       <td className="px-4 py-3"><StageBadge stage={b.stage} /></td>
                       <td className="px-2"><ChevronRight size={14} className="text-muted-foreground" /></td>
@@ -417,8 +486,8 @@ export default function FunctionBookings() {
 
       {selected && (
         <Detail booking={selected} onClose={() => setSelected(null)} onEdit={() => { setEditData(selected); setShowForm(true) }} onDelete={() => handleDelete(selected)} actions={actions} busy={busy}
-          clash={dateClashes(rows, selected.eventDate, selected.id)}
-          calClash={calendarClashes(calendarBookings, findFunctionSpace(spaces)?.id, selected.eventDate, selected.startTime, selected.endTime, selected.ref)} />
+          clash={seriesDateClashes(rows, selected)}
+          calClash={seriesCalendarClashes(calendarBookings, findFunctionSpace(spaces)?.id, selected)} />
       )}
       {showForm && <BookingForm booking={editData} onSave={handleFormSave} onClose={() => { setShowForm(false); setEditData(null) }} />}
     </div>

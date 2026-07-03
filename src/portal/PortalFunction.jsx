@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase.js'
 import { Page, PageHeader, Card, Eyebrow, Empty, money0 } from './ui.jsx'
 import { findFunctionSpace } from './functionSpace.js'
 import SignatureCanvas from '../components/SignatureCanvas.jsx'
-import { ADDONS, LAYOUTS, TERMS, TERMS_INTRO, computeQuote, money } from '../lib/functionBooking.js'
+import { ADDONS, LAYOUTS, TERMS, TERMS_INTRO, computeQuote, money, bookingSessions } from '../lib/functionBooking.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 const fmtDate = (d) => {
@@ -165,8 +165,19 @@ export default function PortalFunction({ spaces, member, company }) {
           <div className="mt-7 border-t border-ink/10 pt-5 grid sm:grid-cols-2 gap-x-10 gap-y-1">
             <Row label="Event" value={b.eventName || '—'} />
             <Row label="Type" value={b.eventType || '—'} />
-            <Row label="Date" value={fmtDate(b.eventDate)} strong />
-            <Row label="Time" value={`${fmtTime(b.startTime)} – ${fmtTime(b.endTime)}`} strong />
+            {bookingSessions(b).length > 1 ? (
+              <div className="sm:col-span-2">
+                <Row label={`Sessions (${bookingSessions(b).length})`} value="" strong />
+                {bookingSessions(b).map((s, i) => (
+                  <p key={i} className="hx-prose text-[13px]">{fmtDate(s.date)} · {fmtTime(s.startTime)} – {fmtTime(s.endTime)}</p>
+                ))}
+              </div>
+            ) : (
+              <>
+                <Row label="Date" value={fmtDate(b.eventDate)} strong />
+                <Row label="Time" value={`${fmtTime(b.startTime)} – ${fmtTime(b.endTime)}`} strong />
+              </>
+            )}
             <Row label="Guests" value={b.guests || '—'} />
             <Row label="Layout" value={b.layout || '—'} />
           </div>

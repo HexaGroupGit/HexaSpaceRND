@@ -5,6 +5,7 @@
 // deposit, and moves the booking to 'awaiting_deposit'. Balance + calendar happen
 // later when the deposit is marked paid.
 import { createClient } from '@supabase/supabase-js'
+import { sessionsLabel } from '../../src/lib/functionBooking.js'
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH1, bP, bSmall, bPanel, bTable, SANS, INK } from '../_brand.js'
 import { invoicePdfBase64 } from '../_invoicePdf.js'
@@ -107,7 +108,7 @@ export default async function handler(req, res) {
     // the $300 refundable security deposit (GST-exempt). Due immediately to secure.
     const depId = `inv${Date.now()}${Math.random().toString(36).slice(2, 6)}`
     const depInv = { ...base, id: depId, number: numFor(), invoiceType: 'function_deposit', dueDate: now.split('T')[0], vatEnabled: true, lineItems: [
-      { description: `50% deposit â€” function booking Â· ${b.eventName || 'Function'} (${b.eventDate})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf ?? 0, qty: 1, discountPct: 0 },
+      { description: `50% deposit â€” function booking Â· ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf ?? 0, qty: 1, discountPct: 0 },
       { description: `Refundable security deposit Â· ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit ?? 300, qty: 1, discountPct: 0, vatExempt: true },
     ] }
     await supabase.from('invoices').upsert([{ id: depId, data: depInv, updated_at: now }])
