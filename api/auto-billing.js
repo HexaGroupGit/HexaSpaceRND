@@ -7,7 +7,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
 import { brandFrame, bKicker, bH1, bH2, bSmall, bBtn, bPanel, bTable, SANS, INK, MUTE } from './_brand.js'
-import { isRentFreeMonth } from '../src/lib/paymentSchedule.js'
+import { buildMonthlyInvoiceForLease, lineItemsSubtotal } from '../src/lib/billingEngine.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -74,17 +74,19 @@ export default async function handler(req, res) {
   })
 
   // Load everything in parallel
-  const [lRes, tRes, iRes, sRes] = await Promise.all([
+  const [lRes, tRes, iRes, sRes, spRes] = await Promise.all([
     supabase.from('leases').select('data'),
     supabase.from('tenants').select('data'),
     supabase.from('invoices').select('data'),
     supabase.from('settings').select('data').eq('id', 'global').single(),
+    supabase.from('spaces').select('data'),
   ])
 
   const leases   = (lRes.data ?? []).map(r => r.data).filter(l => l.status === 'active')
   const tenants  = (tRes.data ?? []).map(r => r.data)
   const invoices = (iRes.data ?? []).map(r => r.data)
   const settings = sRes.data?.data ?? {}
+  const spaces   = (spRes.data ?? []).map(r => r.data)
 
   const now = new Date()
   const { periodStart, periodEnd } = monthBounds(now)
@@ -106,51 +108,23 @@ export default async function handler(req, res) {
     const tenant = tenants.find(t => t.id === lease.tenantId)
     if (!tenant) { errors.push({ leaseId: lease.id, reason: 'No tenant found' }); continue }
 
-    // Skip if invoice already exists for this period
-    const exists = invoices.some(i =>
-      i.leaseId === lease.id &&
-      i.periodStart === periodStart &&
-      i.status !== 'voided'
+    // Shared engine: step pricing, office/parking split, proration, dedup,
+    // rent-free and prepaid skips — identical to the in-app Bill Run.
+    const { invoice: built, reason } = buildMonthlyInvoiceForLease(
+      lease, new Date(periodStart + 'T00:00:00'), { invoices, spaces, settings, source: 'auto-bill' }
     )
-    if (exists) { skipped.push(tenant.businessName); continue }
-
-    // Contract says this month is rent-free (step-encoded $0 or the
-    // final-N-months new-member offer) → nothing to bill.
-    if (isRentFreeMonth(lease, new Date(periodStart + 'T00:00:00'))) {
-      skipped.push(`${tenant.businessName} (rent-free month)`)
+    if (!built) {
+      skipped.push(reason === 'already-billed' ? tenant.businessName : `${tenant.businessName} (${String(reason).replace(/-/g, ' ')})`)
       continue
     }
 
-    const rent       = Number(lease.monthlyRent ?? 0)
-    const discPct    = parseFloat(lease.discount ?? lease.items?.[0]?.steps?.[0]?.discount ?? '') || 0
     const invoiceNum = numTemplate.replace('{{number}}', pad(nextNum++))
-
-    const lineItems = [{
-      id: `li_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      description: `${lease.contractNumber ?? 'Licence'} â€” ${monthLabel(periodStart)}`,
-      revenueAccount: 'Membership Fees',
-      unitPrice: rent,
-      qty: 1,
-      discountPct: discPct,
-    }]
-
     const invoice = {
+      ...built,
       id: `inv_auto_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       number: invoiceNum,
-      tenantId: tenant.id,
-      leaseId: lease.id,
-      status: 'pending',
       sentStatus: 'sent',
-      source: 'auto-bill',
-      issueDate, dueDate, periodStart, periodEnd,
-      vatEnabled: true,
-      xeroSync: false,
-      lineItems,
-      payments: [],
-      comments: [],
-      creditNoteForId: null,
       createdAt: issueDate,
-      isProrated: false,
     }
 
     const { error: saveErr } = await supabase.from('invoices').insert({
@@ -162,8 +136,8 @@ export default async function handler(req, res) {
 
     // Send invoice email
     if (tenant.email && resendKey) {
-      const subtotal = rent * (1 - discPct / 100)
-      const gst      = subtotal * taxRate
+      const subtotal = lineItemsSubtotal(invoice.lineItems)
+      const gst      = invoice.vatEnabled !== false ? subtotal * taxRate : 0
       const total    = subtotal + gst
       const html     = invoiceEmail(invoice, tenant, settings, subtotal, gst, total)
 
@@ -191,7 +165,7 @@ export default async function handler(req, res) {
       bH1(`${periodStart} â†’ ${periodEnd}`) +
       bH2(`âœ“ ${created.length} Invoice${created.length !== 1 ? 's' : ''} Created &amp; Emailed`) +
       listPanel(created, i => typeof i === 'string' ? i : `${i.number} â€” ${i.tenant}`) +
-      (skipped.length ? bH2(`â€” ${skipped.length} Skipped (already invoiced)`) + listPanel(skipped, i => i) : '') +
+      (skipped.length ? bH2(`â€” ${skipped.length} Skipped`) + listPanel(skipped, i => i) : '') +
       (errors.length ? bH2(`âœ— ${errors.length} Error${errors.length !== 1 ? 's' : ''}`) + listPanel(errors, e => `${e.tenant ?? e.leaseId}: ${e.reason}`) : '') +
       bBtn('View Billing', 'https://portal.hexaspace.com.au/billing')
 

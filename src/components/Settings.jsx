@@ -31,6 +31,7 @@ const MENU = [
     section: 'Integrations',
     items: [
       { key: 'xero', label: 'Xero' },
+      { key: 'stripe', label: 'Stripe' },
     ],
   },
 ]
@@ -1177,6 +1178,63 @@ function XeroSection({ settings, updateSettings }) {
   )
 }
 
+// ── Stripe Integration ────────────────────────────────────────────────────────
+function StripeSection({ settings, updateSettings }) {
+  const [st, setSt] = useState(null)
+  const [enabled, setEnabled] = useState(settings.stripe?.paymentsEnabled === true)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/stripe/status').then((r) => r.json()).then(setSt).catch(() => setSt({ configured: false }))
+  }, [])
+
+  function save() {
+    updateSettings({ stripe: { ...(settings.stripe ?? {}), paymentsEnabled: enabled } })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  const ready = st?.configured && st?.webhookConfigured
+
+  return (
+    <div>
+      <h1 className="text-xl font-bold text-foreground mb-1">Stripe</h1>
+      <p className="text-sm text-muted-foreground mb-6">Online invoice payments — members see a Pay button on pending invoices in the portal; payments mark the invoice paid automatically.</p>
+
+      <div className="border border-border rounded-md p-5 mb-6 text-sm">
+        {st === null ? (
+          <span className="text-muted-foreground">Checking configuration…</span>
+        ) : (
+          <div className="space-y-1.5">
+            {[
+              ['Secret key (STRIPE_SECRET_KEY)', st.configured],
+              ['Webhook secret (STRIPE_WEBHOOK_SECRET)', st.webhookConfigured],
+            ].map(([label, ok]) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className={`inline-block w-2 h-2 rounded-full ${ok ? 'bg-green-500' : 'bg-red-400'}`} />
+                <span className={ok ? 'text-foreground' : 'text-muted-foreground'}>{label} {ok ? 'set' : 'missing'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <FormRow
+        label="Enable online payments"
+        description="Master switch. While OFF the Pay button politely refuses and members pay by bank transfer as usual."
+      >
+        <div className="flex justify-end">
+          <Toggle checked={enabled} onChange={setEnabled} />
+        </div>
+      </FormRow>
+      {!ready && st !== null && (
+        <p className="text-xs text-amber-600 mt-2">Both keys must be set in Vercel before enabling — payments will fail otherwise.</p>
+      )}
+      <SaveButton onClick={save} saved={saved} />
+    </div>
+  )
+}
+
 // ── Main Settings ─────────────────────────────────────────────────────────────
 export default function Settings() {
   const { settings, updateSettings } = useOutletContext()
@@ -1195,6 +1253,7 @@ export default function Settings() {
     'invoicing': <InvoicingSection settings={settings} updateSettings={updateSettings} />,
     'email-templates': <EmailTemplatesSection settings={settings} updateSettings={updateSettings} />,
     'xero': <XeroSection settings={settings} updateSettings={updateSettings} />,
+    'stripe': <StripeSection settings={settings} updateSettings={updateSettings} />,
   }
 
   return (

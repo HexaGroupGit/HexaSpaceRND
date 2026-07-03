@@ -52,7 +52,7 @@ loop is done — say so and stop scheduling.
   offers, and reject past `startDate` (< today) with 400.
   Acceptance: node test of the date/expiry helpers; manual trace of each branch.
 
-- [ ] **2. Single shared billing engine.**
+- [x] **2. Single shared billing engine.** _Done: src/lib/billingEngine.js buildMonthlyInvoiceForLease (schedule-based step pricing, office/parking line split, proration, month-key dedup, prepaid/rent-free/ended/not-started skips, lease discount); both Billing.jsx handleBillRun and api/auto-billing.js now call it; cron loads spaces + reports skip reasons; email totals from lineItemsSubtotal. 12 acceptance tests pass._
   Create `src/lib/billingEngine.js` exporting
   `buildMonthlyInvoiceForLease(lease, monthStartDate, { invoices, spaces, settings })`
   → returns an invoice object or `null` (with a `reason`: already-billed /
@@ -205,4 +205,5 @@ loop is done — say so and stop scheduling.
 ## Done log
 
 (append one line per completed item: date, item, commit hash)
-- 2026-07-03 · Item 1 proposal-accept hardening · (commit follows)
+- 2026-07-03 · Item 1 proposal-accept hardening · b00a3bf
+- 2026-07-03 · Item 2 shared billing engine · (commit follows)

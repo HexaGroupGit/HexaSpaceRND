@@ -1,0 +1,88 @@
+// POST /api/stripe/checkout — creates a Stripe Checkout session for a pending
+// invoice and returns { url }. Body: { invoiceId }
+//
+// HARD GATE: returns 403 unless Settings → Integrations → Stripe has
+// "Enable online payments" turned ON (settings.stripe.paymentsEnabled).
+// Amounts are charged inc. GST, matching the invoice PDF/email total.
+
+import { createClient } from '@supabase/supabase-js'
+
+const SUPABASE_URL = process.env.SUPABASE_URL
+
+function totalsIncGst(invoice) {
+  let taxable = 0, exempt = 0
+  for (const li of invoice.lineItems ?? []) {
+    const price = Number(li.unitPrice ?? 0) * Number(li.qty ?? 1)
+    const net = price * (1 - Number(li.discountPct ?? 0) / 100)
+    if (li.vatExempt) exempt += net; else taxable += net
+  }
+  const gst = invoice.vatEnabled !== false ? taxable * 0.1 : 0
+  return taxable + exempt + gst
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  const stripeKey = process.env.STRIPE_SECRET_KEY
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!stripeKey || !serviceKey) return res.status(500).json({ error: 'Stripe not configured.' })
+
+  const { invoiceId } = req.body ?? {}
+  if (!invoiceId) return res.status(400).json({ error: 'invoiceId is required.' })
+
+  try {
+    const supabase = createClient(SUPABASE_URL, serviceKey, { auth: { persistSession: false } })
+
+    const [{ data: settRow }, { data: invRow }] = await Promise.all([
+      supabase.from('settings').select('data').eq('id', 'global').single(),
+      supabase.from('invoices').select('data').eq('id', invoiceId).single(),
+    ])
+    const settings = settRow?.data ?? {}
+    if (settings.stripe?.paymentsEnabled !== true) {
+      return res.status(403).json({ error: 'Online payments are not enabled yet — please pay by bank transfer using the details on your invoice.' })
+    }
+
+    const invoice = invRow?.data
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' })
+    if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' })
+    if (invoice.status === 'voided') return res.status(400).json({ error: 'This invoice has been voided.' })
+
+    const { data: tRow } = await supabase.from('tenants').select('data').eq('id', invoice.tenantId).single()
+    const tenant = tRow?.data
+
+    const total = totalsIncGst(invoice)
+    if (total <= 0) return res.status(400).json({ error: 'Invoice total must be positive to pay online.' })
+
+    const base = `https://${req.headers.host}`
+    const params = new URLSearchParams({
+      mode: 'payment',
+      'line_items[0][price_data][currency]': 'aud',
+      'line_items[0][price_data][product_data][name]': `Invoice ${invoice.number}`,
+      'line_items[0][price_data][product_data][description]': (invoice.lineItems?.[0]?.description ?? '').slice(0, 200) || `Hexa Space invoice ${invoice.number}`,
+      'line_items[0][price_data][unit_amount]': String(Math.round(total * 100)),
+      'line_items[0][quantity]': '1',
+      'metadata[invoiceId]': invoice.id,
+      'metadata[invoiceNumber]': invoice.number ?? '',
+      'payment_intent_data[metadata][invoiceId]': invoice.id,
+      success_url: `${base}/billing?paid=${encodeURIComponent(invoice.number ?? '1')}`,
+      cancel_url: `${base}/billing`,
+    })
+    if (tenant?.email) params.set('customer_email', tenant.email)
+
+    const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${stripeKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params,
+    })
+    const session = await r.json()
+    if (!r.ok || !session.url) {
+      console.error('Stripe checkout create failed:', session)
+      return res.status(500).json({ error: session.error?.message ?? 'Could not start the payment.' })
+    }
+
+    return res.status(200).json({ url: session.url })
+  } catch (err) {
+    console.error('Stripe checkout error:', err)
+    return res.status(500).json({ error: 'Could not start the payment.' })
+  }
+}

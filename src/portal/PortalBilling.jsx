@@ -71,9 +71,27 @@ const FILTERS = ['all', 'pending', 'paid', 'overdue']
 
 function InvoicesTab({ invoices, company }) {
   const [filter, setFilter] = useState('all')
+  const [payingId, setPayingId] = useState(null)
   const filtered = [...invoices]
     .filter(i => filter === 'all' || i.status === filter)
     .sort((a, b) => new Date(b.issueDate) - new Date(a.issueDate))
+
+  async function payNow(inv) {
+    setPayingId(inv.id)
+    try {
+      const r = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceId: inv.id }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(data.error ?? 'Online payment is unavailable right now.')
+      window.location.href = data.url
+    } catch (e) {
+      alert(e.message)
+      setPayingId(null)
+    }
+  }
   return (
     <>
       <div className="mb-6"><Segmented options={FILTERS} active={filter} onChange={setFilter} /></div>
@@ -99,9 +117,21 @@ function InvoicesTab({ invoices, company }) {
                       <td className="px-5 py-4 text-right font-display font-extralight text-lg">{money(total)}</td>
                       <td className="px-5 py-4 text-center"><StatusBadge status={inv.status} /></td>
                       <td className="px-5 py-4 text-right">
-                        <button onClick={() => downloadPDF(inv, company)} className="inline-flex items-center gap-1.5 text-portal-muted hover:text-ink transition-colors">
-                          <Download size={13} /><span className="font-heading uppercase tracking-nav text-[10px]">PDF</span>
-                        </button>
+                        <div className="inline-flex items-center gap-4">
+                          {(inv.status === 'pending' || inv.status === 'overdue') && (
+                            <button
+                              onClick={() => payNow(inv)}
+                              disabled={payingId === inv.id}
+                              className="inline-flex items-center gap-1.5 text-ink hover:opacity-70 transition-opacity disabled:opacity-40"
+                            >
+                              <CreditCard size={13} />
+                              <span className="font-heading uppercase tracking-nav text-[10px]">{payingId === inv.id ? 'Opening…' : 'Pay'}</span>
+                            </button>
+                          )}
+                          <button onClick={() => downloadPDF(inv, company)} className="inline-flex items-center gap-1.5 text-portal-muted hover:text-ink transition-colors">
+                            <Download size={13} /><span className="font-heading uppercase tracking-nav text-[10px]">PDF</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )

@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { format, parseISO, startOfMonth, endOfMonth, getDaysInMonth, isAfter, isBefore, addMonths, differenceInDays } from 'date-fns'
+import { format, parseISO, startOfMonth, isBefore, addMonths, differenceInDays } from 'date-fns'
 import { Plus, Search, X, Check, Download, Send, Ban } from 'lucide-react'
 import InvoiceDetail from './InvoiceDetail.jsx'
 import InvoiceForm from './InvoiceForm.jsx'
 import { sendEmail, invoiceEmailHtml } from '../lib/sendEmail.js'
 import { invoiceLease, invoiceSpace, locationLabel } from '../lib/billing.js'
-import { isRentFreeMonth } from '../lib/paymentSchedule.js'
+import { buildMonthlyInvoiceForLease } from '../lib/billingEngine.js'
 import { jsPDF } from 'jspdf'
 
 const STATUS_STYLE = {
@@ -66,81 +66,18 @@ export default function Billing() {
   }
 
   // ── Bill Run ────────────────────────────────────────────────────────────
+  // Pricing, proration, dedup, rent-free and prepaid skips all live in the
+  // shared engine so this run and the auto-billing cron can never disagree.
   function handleBillRun() {
     const currentMonthStart = startOfMonth(today)
-    const currentMonthEnd = endOfMonth(today)
-
-    const activeLeases = leases.filter((l) => {
-      if (l.status !== 'active') return false
-      const start = parseISO(l.startDate)
-      const end = parseISO(l.endDate)
-      return !isAfter(start, currentMonthEnd) && !isBefore(end, currentMonthStart)
-    })
 
     let generated = 0
     const newInvoices = []
-
-    for (const lease of activeLeases) {
-      // Already billed this month?
-      const alreadyBilled = invoices.some(
-        (inv) =>
-          inv.leaseId === lease.id &&
-          inv.status !== 'voided' &&
-          inv.periodStart &&
-          format(parseISO(inv.periodStart), 'yyyy-MM') === format(currentMonthStart, 'yyyy-MM')
-      )
-      if (alreadyBilled) continue
-
-      // Contract says this month is rent-free (step-encoded $0 or the
-      // final-N-months new-member offer) → nothing to bill.
-      if (isRentFreeMonth(lease, currentMonthStart)) continue
-
-      const leaseStart = parseISO(lease.startDate)
-      const leaseEnd = parseISO(lease.endDate)
-      const space = spaces.find((s) => s.id === lease.spaceId)
-      const tenant = tenants.find((t) => t.id === lease.tenantId)
-
-      // Proration: first month
-      const daysInMonth = getDaysInMonth(currentMonthStart)
-      const periodStart = isAfter(leaseStart, currentMonthStart) ? leaseStart : currentMonthStart
-      const periodEnd = isBefore(leaseEnd, currentMonthEnd) ? leaseEnd : currentMonthEnd
-      const daysOccupied = differenceInDays(periodEnd, periodStart) + 1
-      const isProrated = daysOccupied < daysInMonth
-      const amount = isProrated
-        ? Math.round((lease.monthlyRent * daysOccupied / daysInMonth) * 100) / 100
-        : lease.monthlyRent
-
-      const periodLabel = `${format(periodStart, 'd MMM')} – ${format(periodEnd, 'd MMM yyyy')}${isProrated ? ' (prorated)' : ''}`
-      const desc = `${space?.unitNumber ?? ''}${space?.address ? ` – ${space.address}` : ''} · ${periodLabel}`
-
-      newInvoices.push({
-        tenantId: lease.tenantId,
-        leaseId: lease.id,
-        status: 'pending',
-        sentStatus: 'not_sent',
-        source: 'bill-run',
-        issueDate: format(currentMonthStart, 'yyyy-MM-dd'),
-        dueDate: format(new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth(), 14), 'yyyy-MM-dd'),
-        periodStart: format(periodStart, 'yyyy-MM-dd'),
-        periodEnd: format(periodEnd, 'yyyy-MM-dd'),
-        reference: '',
-        paymentMethod: '',
-        discountPct: 0,
-        vatEnabled: true,
-        xeroSync: false,
-        isProrated,
-        lineItems: [{
-          id: `li${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          description: desc,
-          revenueAccount: 'Membership Fees',
-          unitPrice: amount,
-          qty: 1,
-          discountPct: 0,
-        }],
-        payments: [],
-        comments: [],
-        creditNoteForId: null,
-      })
+    for (const lease of leases) {
+      if (lease.status !== 'active') continue
+      const { invoice } = buildMonthlyInvoiceForLease(lease, currentMonthStart, { invoices, spaces, settings, source: 'bill-run' })
+      if (!invoice) continue
+      newInvoices.push(invoice)
       generated++
     }
 
