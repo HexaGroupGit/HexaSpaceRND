@@ -17,13 +17,15 @@ export default async function handler(req, res) {
   const baseUrl = process.env.SALTO_BASE_URL // e.g. https://clp-acc*.saltoks.com or Salto Space API host
 
   // ── MOCK MODE ──────────────────────────────────────────────────────────────
-  // No creds yet → return a mock so onboarding email/flow still works.
+  // No creds yet → succeed so onboarding continues, but return NO accessLink:
+  // a link the member can't actually use must never reach the welcome email
+  // (the email omits its door-access section when accessLink is absent).
   if (!apiKey || !baseUrl) {
     const saltoUserId = `salto_mock_${Buffer.from(memberEmail).toString('hex').slice(0, 10)}`
     return res.status(200).json({
       mock: true,
       saltoUserId,
-      accessLink: `https://my.saltoks.com/activate/${saltoUserId}`,
+      accessLink: null,
       door: doorId ?? null,
       spaceLabel: spaceLabel ?? null,
       accessFrom: accessFrom ?? null,

@@ -132,7 +132,12 @@ export default function Members() {
               const st = displayStatus(m, hasMem(m))
               return (
                 <tr key={m.id} className="border-b border-border last:border-0 hover:bg-muted/50 cursor-pointer" onClick={() => setSelected(m)}>
-                  <td className="px-4 py-3 font-medium text-blue-700 hover:underline">{m.name}</td>
+                  <td className="px-4 py-3 font-medium text-blue-700 hover:underline">
+                    {m.name}
+                    {m.portalInviteFailed && (
+                      <span className="ml-2 text-[10px] font-semibold uppercase bg-red-100 text-red-700 px-1.5 py-0.5 rounded" title="The portal invite email could not be sent — resend it from the member profile.">Invite failed</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{companyName(m.companyId)}</td>
                   <td className="px-4 py-3 text-muted-foreground">Hexa Space</td>
                   <td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded ${STATUS_STYLE[st] || 'bg-muted text-muted-foreground'}`}>{st}</span></td>

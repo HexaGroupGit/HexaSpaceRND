@@ -176,7 +176,7 @@ loop is done — say so and stop scheduling.
   "Send for signing" path — extract that into a shared helper in src/lib).
   Acceptance: build + trace of the renewal flow.
 
-- [ ] **10. Onboarding resilience.**
+- [x] **10. Onboarding resilience.** _Done: Salto mock mode no longer returns a dead activation link (email's door-access block auto-omits when saltoLink absent — both template paths verified); mock credentials don't mark members saltoAccess:true; onboardLease records portalInviteFailed on invite failure (checked res.ok, was fire-and-forget); red "Invite failed" chip in Members list; "Resend portal invite" button on MemberProfile clears/sets the flag._
   (a) Onboarding email: omit the Salto/door-access section entirely when the
   lease has no `saltoLink` (check DEFAULT_ONBOARDING_EMAIL_HTML and the
   template render in src/lib/onboarding.js).
@@ -222,4 +222,5 @@ loop is done — say so and stop scheduling.
 - 2026-07-03 · Item 6 bond payout tracking · 9fc3516
 - 2026-07-03 · Item 7 Stripe portal payments · 68c36ae
 - 2026-07-03 · Item 8 portal revocation on offboard · b9dcbb7
-- 2026-07-03 · Item 9 renewal auto e-sign · (commit follows)
+- 2026-07-03 · Item 9 renewal auto e-sign · 3e78857
+- 2026-07-03 · Item 10 onboarding resilience · (commit follows)

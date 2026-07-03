@@ -64,7 +64,8 @@ async function onboardLease({ lease, tenant, space, members, settings, templates
       const salto = await provisionSaltoAccess({ member: primary ?? { email }, space, lease })
       saltoLink = salto?.accessLink ?? null
       updateLease(lease.id, { saltoProvisionedAt: now, saltoAccessLink: saltoLink })
-      if (primary && salto?.saltoUserId) updateMember(primary.id, { saltoUserId: salto.saltoUserId, saltoAccess: true })
+      // A mock credential isn't real door access — don't mark the member as having it.
+      if (primary && salto?.saltoUserId && !salto.mock) updateMember(primary.id, { saltoUserId: salto.saltoUserId, saltoAccess: true })
     } catch (e) { console.error('Salto provision failed:', e) }
 
     // 2. Onboarding email (how-to's + portal + Salto link) — subject/intro from
@@ -83,14 +84,24 @@ async function onboardLease({ lease, tenant, space, members, settings, templates
       await sendEmail({ to: email, subject, html, settings, tenantId: tenant?.id, emailType: 'onboarding' })
     } catch (e) { console.error('Onboarding email failed:', e) }
 
-    // 3. Portal invite (creates the Supabase auth user + set-password email)
+    // 3. Portal invite (creates the Supabase auth user + set-password email).
+    // Failures are recorded on the member so the admin sees an "invite failed"
+    // chip and can resend from the member profile.
     try {
-      await fetch('/api/auth/invite', {
+      const r = await fetch('/api/auth/invite', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       })
-      if (primary) updateMember(primary.id, { portalAccess: true })
-    } catch (e) { console.error('Portal invite failed:', e) }
+      if (primary) {
+        updateMember(primary.id, r.ok
+          ? { portalAccess: true, portalInviteFailed: false }
+          : { portalInviteFailed: true })
+      }
+      if (!r.ok) console.error('Portal invite failed:', await r.text().catch(() => r.status))
+    } catch (e) {
+      if (primary) updateMember(primary.id, { portalInviteFailed: true })
+      console.error('Portal invite failed:', e)
+    }
   } catch (e) { console.error('onboardLease failed:', e) }
 }
 

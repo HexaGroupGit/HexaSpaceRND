@@ -38,6 +38,27 @@ function Section({ title, addLabel, onAdd, children }) {
 export default function MemberProfile({ member, ctx, onBack, onEdit }) {
   const { tenants = [], invoices = [], leases = [], updateMember } = ctx
   const [tab, setTab] = useState('Overview')
+  const [inviting, setInviting] = useState(false)
+
+  async function resendPortalInvite() {
+    if (!member.email) { alert('This member has no email address.'); return }
+    setInviting(true)
+    try {
+      const r = await fetch('/api/auth/invite', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: member.email }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d.error ?? 'Invite failed')
+      updateMember(member.id, { portalAccess: true, portalInviteFailed: false })
+      alert(`Portal invite sent to ${member.email}. The set-password link expires in 24 hours.`)
+    } catch (e) {
+      updateMember(member.id, { portalInviteFailed: true })
+      alert(`Could not send the invite: ${e.message}`)
+    } finally {
+      setInviting(false)
+    }
+  }
   const company = tenants.find((t) => t.id === member.companyId)
   const memberInvoices = invoices.filter((i) => i.tenantId === member.companyId)
   const st = displayStatus(member, memberHasActiveMembership(member, leases))
@@ -80,6 +101,16 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Member Apps</div>
             <div className="flex items-center justify-between py-1.5 text-xs"><span className="text-muted-foreground uppercase tracking-wide">Hide from Portal</span><Toggle on={!!member.hideFromPortal} onClick={() => set('hideFromPortal', !member.hideFromPortal)} /></div>
             <div className="flex items-center justify-between py-1.5 text-xs"><span className="text-muted-foreground uppercase tracking-wide">Portal Access</span><Toggle on={!!member.portalAccess} onClick={() => set('portalAccess', !member.portalAccess)} /></div>
+            {member.portalInviteFailed && (
+              <p className="text-[11px] text-red-600 mt-1">The portal invite email failed to send — resend it below.</p>
+            )}
+            <button
+              onClick={resendPortalInvite}
+              disabled={inviting}
+              className="mt-2 w-full text-xs border border-input rounded px-3 py-1.5 text-foreground hover:bg-muted/50 disabled:opacity-50"
+            >
+              {inviting ? 'Sending…' : 'Resend portal invite'}
+            </button>
           </div>
 
           <div className="bg-card border border-border rounded-xl shadow-sm p-4">
