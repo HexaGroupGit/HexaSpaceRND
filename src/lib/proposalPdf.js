@@ -214,7 +214,7 @@ function meetingRoomsPage() {
       <div class="eyebrow">Meeting Rooms &amp; Studios</div>
       <div class="display" style="font-size:44px;margin-top:12px;">Booked by the hour.</div>
       <div style="position:relative;height:3.1in;overflow:hidden;margin-top:22px;">${bgFill(PHOTO + 'room-east.jpg')}</div>
-      <p class="body" style="font-size:10px;margin-top:14px;">Members receive monthly meeting-room credits with every plan, and 40% off once the allowance is used.</p>
+      <p class="body" style="font-size:10px;margin-top:14px;">Members receive monthly meeting-room credits with every plan, and 30% off once the allowance is used.</p>
     </div>
     <div style="width:56%;">
       <table style="width:100%;border-collapse:collapse;font-family:'HxBody';font-size:11px;">
@@ -239,13 +239,13 @@ function meetingRoomsPage() {
         <li>Dedicated Desk — 8 credits ($160 value)</li>
         <li>Private Office — 10 credits per desk ($800 value)</li>
       </ul>
-      <p class="body" style="font-size:9px;color:var(--soft);margin-top:14px;">Credits reset on the 1st of each month. Additional bookings receive 40% off.</p>
+      <p class="body" style="font-size:9px;color:var(--soft);margin-top:14px;">Credits reset on the 1st of each month. Additional bookings receive 30% off.</p>
     </div>
   </div>${FOOT}</div>`
 }
 
 function inclusionsPage() {
-  const items = ['24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', '40% discount on meeting-room rates', 'Unlimited 4-pax consulting room use', 'Prestige business address · Box Hill', 'Mail collection &amp; delivery', 'Clients greeted by reception', 'Community event invitations', 'Onsite parking available ($200/mo)', 'Printing facilities ($30/mo · $0.30 B&amp;W · $0.60 colour)']
+  const items = ['24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', '30% discount on meeting-room rates', 'Unlimited 4-pax consulting room use', 'Prestige business address · Box Hill', 'Mail collection &amp; delivery', 'Clients greeted by reception', 'Community event invitations', 'Onsite parking available ($200/mo)', 'Printing facilities ($30/mo · $0.30 B&amp;W · $0.60 colour)']
   return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
     <div style="width:48%;">
       <div class="eyebrow">Everything Included</div>

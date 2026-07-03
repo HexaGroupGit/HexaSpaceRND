@@ -17,6 +17,28 @@ const TABS = [
 
 function rel(iso) { try { return formatDistanceToNow(parseISO(iso), { addSuffix: true }) } catch { return '' } }
 
+const MEMBERSHIP_TYPES = [
+  { key: 'office', label: 'Private Office' },
+  { key: 'virtual', label: 'Virtual Office' },
+  { key: 'flexi', label: 'Flexible Desk' },
+  { key: 'dedicated', label: 'Dedicated Desk' },
+]
+
+// Term + incentive rules. Free months are the client's LAST months and only apply
+// to new members.
+function computeMembershipOffer(type, price, term, newClient) {
+  if (type === 'virtual') return { type, typeLabel: 'Virtual Office', price, termLabel: '12-month minimum term', notice: null, minTerm: '12 months', freeMonths: 0 }
+  if (type === 'flexi' || type === 'dedicated') {
+    const typeLabel = type === 'flexi' ? 'Flexible Desk' : 'Dedicated Desk'
+    if (term === '6mo') return { type, typeLabel, price, termLabel: '6-month term', notice: '1 month', freeMonths: newClient ? 1 : 0 }
+    return { type, typeLabel, price, termLabel: 'Month-to-month', notice: '1 month', freeMonths: 0 }
+  }
+  // private office
+  if (term === '12mo') return { type, typeLabel: 'Private Office', price, termLabel: '12-month term', notice: null, freeMonths: newClient ? 3 : 0 }
+  if (term === '6mo') return { type, typeLabel: 'Private Office', price, termLabel: '6-month term', notice: null, freeMonths: newClient ? 1 : 0 }
+  return { type, typeLabel: 'Private Office', price, termLabel: 'Month-to-month', notice: '1 month', freeMonths: 0 }
+}
+
 export default function LeadDetail({ lead, store, onClose }) {
   const { appendLeadActivity, updateLead, convertLeadToTenant, deleteLead, recordDealClose, commissions = [], pipelineStages = [], spaces = [], leases = [], tenants = [], templates = [], referrers = [], settings = {} } = store
   const referrer = lead.referrerId ? referrers.find((r) => r.id === lead.referrerId) : null
@@ -88,6 +110,41 @@ export default function LeadDetail({ lead, store, onClose }) {
   const [downloadingProposal, setDownloadingProposal] = useState(false)
   const [compressPdf, setCompressPdf] = useState(false)
   const [proposalResult, setProposalResult] = useState('')
+
+  // ── Membership proposals (Virtual Office / Flexible Desk / Dedicated Desk) ──
+  const virtualRate = spaces.find((s) => s.type === 'virtual')?.rate ?? 150
+  const deskRate = spaces.find((s) => s.type === 'desk')?.rate ?? 650
+  const [propType, setPropType] = useState('office') // office | virtual | flexi | dedicated
+  const [m, setM] = useState({ price: '', term: 'mtm', newClient: true })
+  function selectType(t) {
+    setPropType(t)
+    setProposalResult('')
+    if (t === 'virtual') setM({ price: virtualRate, term: '12mo', newClient: true })
+    else if (t === 'dedicated') setM({ price: deskRate, term: 'mtm', newClient: true })
+    else if (t === 'flexi') setM({ price: '', term: 'mtm', newClient: true })
+  }
+  const mOffer = () => computeMembershipOffer(propType, Number(m.price) || 0, m.term, m.newClient)
+
+  async function sendMembershipProposal() {
+    if (!lead.email) { setProposalResult('No email address on this lead.'); return }
+    if (!(Number(m.price) > 0)) { setProposalResult('Enter a monthly price.'); return }
+    setSendingProposal(true); setProposalResult('')
+    try {
+      const offer = mOffer()
+      const token = (crypto?.randomUUID?.() || `${lead.id}-${Date.now()}`)
+      const acceptLink = `${window.location.origin}/proposal/${token}`
+      const html = buildMembershipProposalHtml({ lead, settings, offer, coverMsg: proposalMsg.trim(), acceptLink, validityDays })
+      const subject = `Your ${offer.typeLabel} proposal — ${settings?.company?.name || 'Hexa Space'}`
+      await sendEmail({ to: lead.email, subject, html, settings, emailType: 'proposal' })
+      const quoted = pipelineStages.find((s) => /quote/i.test(s.name || '') || s.category === 'quoted')
+      updateLead(lead.id, {
+        proposal: { token, status: 'sent', sentAt: new Date().toISOString(), membershipType: propType, typeLabel: offer.typeLabel, price: Number(m.price), term: m.term, freeMonths: offer.freeMonths, newClient: m.newClient, validityDays, message: proposalMsg },
+        ...(quoted ? { stageId: quoted.id, stageEnteredAt: new Date().toISOString().split('T')[0] } : {}),
+      })
+      appendLeadActivity(lead.id, { type: 'email', text: `Proposal sent — ${offer.typeLabel}, ${offer.termLabel} ($${Number(m.price).toLocaleString('en-AU')}/mo${offer.freeMonths ? `, ${offer.freeMonths} mo free` : ''})` })
+      setProposalResult('Sent ✓'); setTab('activity')
+    } catch (e) { setProposalResult(e.message) } finally { setSendingProposal(false) }
+  }
   const togglePick = (o) => setPicked((p) => ({
     ...p,
     [o.space.id]: p[o.space.id]?.on
@@ -253,6 +310,17 @@ export default function LeadDetail({ lead, store, onClose }) {
 
           {tab === 'proposal' && (
             <div className="space-y-4">
+              {/* Membership type selector */}
+              <div className="bg-card border border-border rounded-xl shadow-sm p-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {MEMBERSHIP_TYPES.map((t) => (
+                    <button key={t.key} onClick={() => selectType(t.key)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${propType === t.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground border-input hover:border-muted-foreground'}`}>{t.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              {propType === 'office' && (<>
               <div className="bg-card border border-border rounded-xl shadow-sm p-4">
                 <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-1">Offices to propose</h3>
                 <p className="text-xs text-muted-foreground mb-3">Tick the offices to include. Available now and those becoming available (lease ending within 90 days) are listed — edit the price for a negotiated rate.</p>
@@ -297,11 +365,24 @@ export default function LeadDetail({ lead, store, onClose }) {
                   {proposalResult && <span className={`text-xs ${proposalResult.includes('✓') ? 'text-green-600' : 'text-red-600'}`}>{proposalResult}</span>}
                 </div>
               </div>
+              </>)}
+
+              {propType !== 'office' && (
+                <MembershipProposal type={propType} m={m} setM={setM} offer={mOffer()} proposalMsg={proposalMsg} setProposalMsg={setProposalMsg} validityDays={validityDays} setValidityDays={setValidityDays} onSend={sendMembershipProposal} sending={sendingProposal} result={proposalResult} hasEmail={!!lead.email} input={input} />
+              )}
+
               {lead.proposal && (
                 <div className="bg-card border border-border rounded-xl shadow-sm p-4 text-sm">
                   <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-2">Last proposal</h3>
                   <p className="text-muted-foreground text-xs mb-2">Sent {lead.proposal.sentAt ? format(parseISO(lead.proposal.sentAt), 'd MMM yyyy, h:mm a') : ''}</p>
-                  {(lead.proposal.offices || []).map((o) => <div key={o.spaceId} className="flex justify-between text-foreground"><span>{o.unit}</span><span>${Number(o.price).toLocaleString('en-AU')}/mo</span></div>)}
+                  {lead.proposal.membershipType ? (
+                    <div className="text-foreground">
+                      <div className="flex justify-between"><span>{lead.proposal.typeLabel || lead.proposal.membershipType}</span><span>${Number(lead.proposal.price || 0).toLocaleString('en-AU')}/mo</span></div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{computeMembershipOffer(lead.proposal.membershipType, lead.proposal.price, lead.proposal.term, lead.proposal.newClient).termLabel}{lead.proposal.freeMonths ? ` · ${lead.proposal.freeMonths} month${lead.proposal.freeMonths > 1 ? 's' : ''} rent-free` : ''}</div>
+                    </div>
+                  ) : (
+                    (lead.proposal.offices || []).map((o) => <div key={o.spaceId} className="flex justify-between text-foreground"><span>{o.unit}</span><span>${Number(o.price).toLocaleString('en-AU')}/mo</span></div>)
+                  )}
                 </div>
               )}
             </div>
