@@ -55,7 +55,10 @@ function injectStyles() {
     .hxbro .seg{display:flex;align-items:center;justify-content:center;font-family:'HxHeading';font-weight:600;font-size:7.5px;letter-spacing:.08em;text-transform:uppercase;color:#4a463c;border-bottom:1px solid rgba(255,255,255,.5)}
     .hxbro .rc{text-align:left;padding:10px 6px;border-bottom:1px solid var(--line)}
     .hxbro .cc{text-align:center;padding:10px 6px;border-bottom:1px solid var(--line);color:var(--soft)}
-    .hxbro .rr{text-align:right;padding:10px 6px;border-bottom:1px solid var(--line);font-family:'HxHeading';font-weight:600}`
+    .hxbro .rr{text-align:right;padding:10px 6px;border-bottom:1px solid var(--line);font-family:'HxHeading';font-weight:600}
+    .hxbro .rc2{text-align:left;padding:13px 8px;border-bottom:1px solid var(--line)}
+    .hxbro .cc2{text-align:center;padding:13px 8px;border-bottom:1px solid var(--line);color:var(--soft)}
+    .hxbro .rr2{text-align:right;padding:13px 8px;border-bottom:1px solid var(--line);font-family:'HxHeading';font-weight:600;font-size:10.5px}`
   document.head.appendChild(st)
   stylesInjected = true
 }
@@ -321,16 +324,10 @@ function closingPage(ctx) {
   </div>`
 }
 
-// `compress`: true → lighter, email-friendly file (lower raster scale + JPEG
-// quality); false → full-resolution print quality.
-export async function buildProposalPdf({ offices = [], coverMsg = '', validityDays = 14, lead = {}, settings = {}, dateStr = '', compress = false }) {
-  injectStyles()
-  // Full quality is already only ~2.5–3 MB (modest source photos), so "compress"
-  // is a gentle optimisation, not a heavy one — keeps the brochure crisp.
-  const scale = compress ? 1.7 : 2
-  const jpegQ = compress ? 0.8 : 0.9
+// Shared brand context (sender / contact) for the cover + closing pages.
+function makeCtx(lead, settings, dateStr) {
   const c = settings?.company || {}, e = settings?.emails || {}
-  const ctx = {
+  return {
     client: lead.name || '', business: lead.businessName || '', dateStr,
     sender: e.signName || c.salesContact || 'Eric Kuang',
     title: c.salesTitle || 'Manager',
@@ -339,6 +336,51 @@ export async function buildProposalPdf({ offices = [], coverMsg = '', validityDa
     addr: c.address || '402/830 Whitehorse Road, Box Hill VIC 3128',
     web: c.website || 'hexaspace.com.au',
   }
+}
+
+// Rasterise an array of page-HTML strings into a landscape 16:9 PDF.
+// `compress`: gentle optimisation (lower scale + JPEG quality) for email.
+async function renderPagesToPdf(pagesHtml, { compress = false } = {}) {
+  injectStyles()
+  const scale = compress ? 1.7 : 2
+  const jpegQ = compress ? 0.8 : 0.9
+  const host = document.createElement('div')
+  host.className = 'hxbro'
+  host.style.cssText = `position:fixed;left:-20000px;top:0;width:${PAGE_W}px;background:${BG};z-index:-1`
+  host.innerHTML = pagesHtml.join('')
+  document.body.appendChild(host)
+  try {
+    try {
+      await Promise.all([
+        document.fonts.load('200 40px "HxDisplay"'),
+        document.fonts.load('300 13px "HxBody"'),
+        document.fonts.load('600 10px "HxHeading"'),
+      ])
+      await document.fonts.ready
+    } catch { /* fonts optional */ }
+    const imgs = [...host.querySelectorAll('img')]
+    await Promise.all(imgs.map((im) => im.complete ? im.decode().catch(() => {}) : new Promise((res) => { im.onload = im.onerror = res })))
+    await new Promise((r) => setTimeout(r, 350))
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'px', format: [PAGE_W, PAGE_H], compress: true })
+    const pages = [...host.querySelectorAll('.page')]
+    for (let i = 0; i < pages.length; i++) {
+      const canvas = await html2canvas(pages[i], {
+        scale, backgroundColor: BG, useCORS: true, logging: false,
+        width: PAGE_W, height: PAGE_H, windowWidth: PAGE_W, windowHeight: PAGE_H,
+      })
+      const data = canvas.toDataURL('image/jpeg', jpegQ)
+      if (i > 0) doc.addPage([PAGE_W, PAGE_H], 'landscape')
+      doc.addImage(data, 'JPEG', 0, 0, PAGE_W, PAGE_H)
+    }
+    return doc
+  } finally {
+    document.body.removeChild(host)
+  }
+}
+
+// `compress`: true → lighter, email-friendly file; false → full quality.
+export async function buildProposalPdf({ offices = [], coverMsg = '', validityDays = 14, lead = {}, settings = {}, dateStr = '', compress = false }) {
+  const ctx = makeCtx(lead, settings, dateStr)
 
   // Group chosen offices by floor (Level 2 → 4 → 5) for the plan pages.
   const byFloor = {}
@@ -359,39 +401,246 @@ export async function buildProposalPdf({ offices = [], coverMsg = '', validityDa
     closingPage(ctx),
   ]
 
-  const host = document.createElement('div')
-  host.className = 'hxbro'
-  host.style.cssText = `position:fixed;left:-20000px;top:0;width:${PAGE_W}px;background:${BG};z-index:-1`
-  host.innerHTML = pagesHtml.join('')
-  document.body.appendChild(host)
+  return renderPagesToPdf(pagesHtml, { compress })
+}
 
-  try {
-    try {
-      await Promise.all([
-        document.fonts.load('200 40px "HxDisplay"'),
-        document.fonts.load('300 13px "HxBody"'),
-        document.fonts.load('600 10px "HxHeading"'),
-      ])
-      await document.fonts.ready
-    } catch { /* fonts optional */ }
-    const imgs = [...host.querySelectorAll('img')]
-    await Promise.all(imgs.map((im) => im.complete ? im.decode().catch(() => {}) : new Promise((res) => { im.onload = im.onerror = res })))
-    // background-image divs: give the browser a tick to fetch them
-    await new Promise((r) => setTimeout(r, 350))
+// ── Membership desk brochures (Dedicated Desk / Flexible Desk) ────────────────
+const DESK = {
+  dedicated: {
+    kind: 'Dedicated Desk',
+    coverPhoto: 'dedicated-desk.jpg',
+    coverKicker: 'Your own desk, in the heart of Box Hill.',
+    statement: 'A desk to call<br>your own —<br>with a whole<br>centre behind it.',
+    spaceTail: 'A dedicated desk puts you inside it all: a permanent spot of your own, with the run of the centre around you.',
+    offerTitle: 'Be settled. Be<br>seen. Belong.',
+    offerDesc: 'A permanent, reserved desk in our shared studio — set up the way you like it, ready whenever you are. Room to focus, a community to plug into, and every amenity of the centre included.',
+    benefitsA: (n) => ['Your own reserved desk · 24/7 access', 'Lockable pedestal storage', 'Unlimited internet — 1000/1000 Mbps', `${n} monthly meeting-room credits`, 'Unlimited 4-pax consulting room use', '30% off meeting rooms thereafter'],
+    benefitsB: ['Prestige business address · Box Hill', 'Mail collection &amp; delivery', 'Clients greeted by reception', 'Printing facilities', 'Barista coffee, tea &amp; filtered water', 'Community events &amp; networking'],
+    inclusions: ['24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', '30% discount on meeting-room rates', 'Unlimited 4-pax consulting room use', 'Prestige business address · Box Hill', 'Mail collection &amp; delivery', 'Clients greeted by reception', 'Community event invitations', 'Onsite parking available ($200/mo)', 'Printing facilities ($30/mo · $0.30 B&amp;W · $0.60 colour)'],
+    credits: 8, creditValue: 160,
+    offerPhotoTop: 'dd-3188.jpg', offerPhotoBot: 'dd-3159.jpg',
+  },
+  flexi: {
+    kind: 'Flexible Desk',
+    coverPhoto: 'flexible-desk.jpg',
+    coverKicker: 'A desk when you need it, in the heart of Box Hill.',
+    statement: 'Work your way —<br>a seat whenever<br>you need one.',
+    spaceTail: 'A flexible membership puts you inside it all: a seat whenever you need one, with the run of the centre around you.',
+    offerTitle: 'Come and go.<br>Belong anyway.',
+    offerDesc: 'Hot-desk access to our shared studio — grab any available desk and plug straight in. All the amenity and community of the centre, on a membership that flexes with your week.',
+    benefitsA: (n) => ['Hot-desk access · any available desk', '24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', `${n} monthly meeting-room credits`, 'Unlimited 4-pax consulting room use', '30% off meeting rooms thereafter'],
+    benefitsB: ['Day-locker storage', 'Clients greeted by reception', 'Printing facilities', 'Barista coffee, tea &amp; filtered water', 'Community events &amp; networking', 'Business address available'],
+    inclusions: ['24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', '30% discount on meeting-room rates', 'Unlimited 4-pax consulting room use', 'Any available desk in the shared studio', 'Day-locker storage', 'Clients greeted by reception', 'Community event invitations', 'Onsite parking available ($200/mo)', 'Printing facilities ($30/mo · $0.30 B&amp;W · $0.60 colour)'],
+    credits: 4, creditValue: 80,
+    offerPhotoTop: 'dd-3188.jpg', offerPhotoBot: 'flexible-desk.jpg',
+  },
+}
 
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'px', format: [PAGE_W, PAGE_H], compress: true })
-    const pages = [...host.querySelectorAll('.page')]
-    for (let i = 0; i < pages.length; i++) {
-      const canvas = await html2canvas(pages[i], {
-        scale, backgroundColor: BG, useCORS: true, logging: false,
-        width: PAGE_W, height: PAGE_H, windowWidth: PAGE_W, windowHeight: PAGE_H,
-      })
-      const data = canvas.toDataURL('image/jpeg', jpegQ)
-      if (i > 0) doc.addPage([PAGE_W, PAGE_H], 'landscape')
-      doc.addImage(data, 'JPEG', 0, 0, PAGE_W, PAGE_H)
-    }
-    return doc
-  } finally {
-    document.body.removeChild(host)
-  }
+function deskCoverPage(cfg, ctx) {
+  const who = ctx.client || ctx.business || ''
+  return `<div class="page" style="display:flex;">
+    <div style="position:relative;width:54%;height:100%;">${bgFill(PHOTO + cfg.coverPhoto)}</div>
+    <div style="width:46%;height:100%;position:relative;padding:.8in;">
+      <div class="eyebrow" style="letter-spacing:.34em;">HEXA SPACE &nbsp;·&nbsp; 六合空间</div>
+      <div style="position:absolute;left:.8in;top:2.3in;right:.8in;">
+        <div class="eyebrow" style="margin-bottom:14px;">${esc(cfg.kind)} Quote</div>
+        <div class="display" style="font-size:70px;letter-spacing:.02em;">Hexa<br>Space</div>
+        <div class="kicker" style="margin-top:18px;">${cfg.coverKicker}</div>
+      </div>
+      <div style="position:absolute;left:.8in;right:.8in;bottom:.8in;">
+        <hr class="ruleThin" style="margin-bottom:16px;">
+        <div class="label" style="color:var(--olive);margin-bottom:6px;">Prepared for</div>
+        ${who ? `<div class="label" style="margin-bottom:10px;">${esc(who)}${ctx.dateStr ? ` &nbsp;·&nbsp; ${esc(ctx.dateStr)}` : ''}</div>` : ''}
+        <div class="body" style="font-size:11px;line-height:1.7;">${esc(ctx.addr)}<br>${esc(ctx.web)} &nbsp;·&nbsp; ${esc(ctx.email)} &nbsp;·&nbsp; ${esc(ctx.phone)}</div>
+      </div>
+    </div>
+  </div>`
+}
+
+function deskStatementPage(cfg) {
+  return `<div class="page">
+    ${bgFill(PHOTO + 'lounge-main.jpg')}
+    <div style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(15,15,12,.62) 0%,rgba(15,15,12,.15) 55%,rgba(15,15,12,0) 100%);"></div>
+    <div style="position:absolute;left:.9in;bottom:1.1in;right:5in;">
+      <div class="eyebrow" style="color:#c9d08a;">Box Hill · Whitehorse Road</div>
+      <div class="display" style="color:#fff;font-size:50px;margin-top:16px;">${cfg.statement}</div>
+    </div>
+    <div class="foot" style="color:rgba(255,255,255,.6);"><span style="color:#cfd69a;">HEXA SPACE</span> &nbsp;|&nbsp; 六合空间</div>
+  </div>`
+}
+
+function deskSpacePage(cfg) {
+  const stat = (n, l) => `<div style="flex:1;"><div class="display" style="font-size:30px;">${n}</div><div class="label" style="font-size:7.5px;color:var(--soft);margin-top:4px;">${l}</div></div>`
+  const bl = (t) => `<li>${t}</li>`
+  const col1 = ['24/7 Secure Access', 'High-Speed Internet 1000/1000', 'Dedicated Community Manager', 'End-of-Trip Facilities', 'Daily Cleaning']
+  const col2 = ['Barista Coffee &amp; Filtered Water', 'Outdoor Terrace', 'Functions &amp; Events', 'Onsite &amp; Box Hill Central Parking', 'Reception &amp; Concierge']
+  return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
+    <div style="width:47%;display:flex;flex-direction:column;">
+      <div class="eyebrow">The Space</div>
+      <div class="display" style="font-size:54px;margin-top:16px;">A workspace for<br>every phase.</div>
+      <div class="kicker" style="margin-top:18px;">Hotel-style amenity. Serviced, flexible, effortless.</div>
+      <p class="body" style="margin-top:20px;max-width:4.3in;">Hexa Space blends warm communal areas with the privacy of bespoke office suites — bathed in natural light, wrapped in first-class amenity and hospitality-led service. ${cfg.spaceTail}</p>
+      <div style="margin-top:auto;display:flex;gap:14px;padding-top:24px;">
+        ${stat('1,763', 'SQM Centre')}${stat('43', 'Private Offices')}${stat('8', 'Meeting Rooms')}${stat('3', 'Levels')}
+      </div>
+    </div>
+    <div style="width:53%;display:flex;flex-direction:column;gap:.28in;">
+      <div style="position:relative;height:3.5in;overflow:hidden;">${bgFill(PHOTO + 'reception.jpg')}</div>
+      <div style="display:flex;gap:36px;">
+        <ul class="bullets" style="flex:1;">${col1.map(bl).join('')}</ul>
+        <ul class="bullets" style="flex:1;">${col2.map(bl).join('')}</ul>
+      </div>
+    </div>
+  </div>${FOOT}</div>`
+}
+
+function deskOfferPage(cfg, offer, coverMsg) {
+  const price = Number(offer.price) || 0
+  const pa = price * 12
+  const term = offer.termLabel || 'Month-to-month'
+  const freeNote = offer.freeMonths ? ` · ${offer.freeMonths} month${offer.freeMonths > 1 ? 's' : ''} free` : ''
+  const A = cfg.benefitsA(cfg.credits).map((li) => `<li>${li}</li>`).join('')
+  const B = cfg.benefitsB.map((li) => `<li>${li}</li>`).join('')
+  return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
+    <div style="width:50%;display:flex;flex-direction:column;">
+      <div class="eyebrow">The ${esc(cfg.kind)}</div>
+      <div class="display" style="font-size:46px;margin-top:12px;">${cfg.offerTitle}</div>
+      <p class="body" style="margin-top:16px;max-width:4.4in;">${cfg.offerDesc}</p>
+      ${coverMsg ? `<p class="body" style="margin-top:10px;max-width:4.4in;font-style:italic;color:var(--soft);">${esc(coverMsg)}</p>` : ''}
+      <div class="label" style="color:var(--olive);margin-top:22px;">Everything included</div>
+      <div style="display:flex;gap:36px;margin-top:8px;">
+        <ul class="bullets" style="flex:1;">${A}</ul>
+        <ul class="bullets" style="flex:1;">${B}</ul>
+      </div>
+      <div style="margin-top:auto;padding-top:22px;display:flex;align-items:center;gap:24px;">
+        <div>
+          <div class="label" style="color:var(--soft);">Total cost</div>
+          <div class="display" style="font-size:46px;color:var(--olive);margin-top:2px;">$${money(price)}<span style="font-size:15px;color:var(--soft);"> / month</span></div>
+        </div>
+        <div style="border-left:1px solid var(--line);padding-left:24px;">
+          <div class="label" style="color:var(--soft);margin-bottom:6px;">ex GST · ${esc(term)}${freeNote}</div>
+          <div class="body" style="font-size:11px;max-width:2.6in;">$${money(pa)} per annum. One inclusive fee — no setup or admin charges.</div>
+        </div>
+      </div>
+    </div>
+    <div style="width:50%;display:flex;flex-direction:column;gap:.28in;">
+      <div style="position:relative;height:3.55in;overflow:hidden;">${bgFill(PHOTO + cfg.offerPhotoTop)}</div>
+      <div style="position:relative;height:2.05in;overflow:hidden;">${bgFill(PHOTO + cfg.offerPhotoBot)}</div>
+    </div>
+  </div>${FOOT}</div>`
+}
+
+function deskInclusionsPage(cfg) {
+  return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
+    <div style="width:48%;">
+      <div class="eyebrow">Everything Included</div>
+      <div class="display" style="font-size:46px;margin-top:12px;">No hidden extras.</div>
+      <ul class="bullets" style="margin-top:24px;">${cfg.inclusions.map((i) => `<li>${i}</li>`).join('')}</ul>
+    </div>
+    <div style="width:52%;display:flex;flex-direction:column;gap:.28in;">
+      <div style="position:relative;height:3.4in;overflow:hidden;">${bgFill(PHOTO + 'lounge.jpg')}</div>
+      <div style="position:relative;height:2in;overflow:hidden;">${bgFill(PHOTO + 'media-1.jpg')}</div>
+    </div>
+  </div>${FOOT}</div>`
+}
+
+function deskMeetingPage(cfg) {
+  const tr = (r, cap, cr, price) => `<tr><td class="rc">${r}</td><td class="cc">${cap}</td><td class="cc">${cr}</td><td class="rr">${price}</td></tr>`
+  return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
+    <div style="width:44%;">
+      <div class="eyebrow">Meeting Rooms &amp; Studios</div>
+      <div class="display" style="font-size:44px;margin-top:12px;">Booked by the hour.</div>
+      <div style="position:relative;height:3.1in;overflow:hidden;margin-top:22px;">${bgFill(PHOTO + 'room-east.jpg')}</div>
+      <p class="body" style="font-size:10px;margin-top:14px;">Your ${cfg.kind.toLowerCase()} includes ${cfg.credits} meeting-room credits every month ($${cfg.creditValue} value), then 30% off standard rates. Credits reset on the 1st.</p>
+    </div>
+    <div style="width:56%;">
+      <table style="width:100%;border-collapse:collapse;font-family:'HxBody';font-size:11px;">
+        <thead><tr>
+          <th style="text-align:left;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Room</th>
+          <th style="text-align:center;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Capacity</th>
+          <th style="text-align:center;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Credits / Hr</th>
+          <th style="text-align:right;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">$ / Hr</th>
+        </tr></thead>
+        <tbody>
+          ${tr('Sky · Earth (Consulting)', '4', '1', '$20')}
+          ${tr('North · South · West', '8', '4', '$80')}
+          ${tr('East (Chinese Tearoom)', '8', '6', '$120')}
+          ${tr('Central (Boardroom)', '12', '7', '$140')}
+          ${tr('Large Boardroom', '26', '11', '$220')}
+          ${tr('Media Studio', '—', '5', '$100')}
+        </tbody>
+      </table>
+      <div class="label" style="margin-top:26px;color:var(--soft);">How credits work</div>
+      <ul class="bullets" style="margin-top:10px;">
+        <li>1 credit = $10 of room time</li>
+        <li>${esc(cfg.kind)} — ${cfg.credits} credits included ($${cfg.creditValue} value)</li>
+        <li>Extra credit packs available on 6-month terms</li>
+      </ul>
+      <p class="body" style="font-size:9px;color:var(--soft);margin-top:14px;">Room value depends on size, capacity and time of booking. Additional bookings receive 30% off.</p>
+    </div>
+  </div>${FOOT}</div>`
+}
+
+function deskAdvantagePage(cfg) {
+  const row = (label, typ, hexa) => `<tr><td class="rc2">${label}</td><td class="cc2">${typ}</td><td class="rr2" style="color:var(--olive);">${hexa}</td></tr>`
+  return `<div class="page"><div class="pad" style="display:flex;gap:.8in;">
+    <div style="width:44%;display:flex;flex-direction:column;justify-content:center;">
+      <div class="eyebrow">The Hexa Advantage</div>
+      <div class="display" style="font-size:46px;margin-top:12px;">One simple fee.</div>
+      <p class="body" style="margin-top:20px;max-width:4.2in;">Many serviced desks quote a low monthly rate, then stack setup fees, access-pass charges and large make-good bonds on top. Hexa keeps it honest — one inclusive monthly fee, a fair one-month deposit, and you're in.</p>
+      <p class="body" style="font-size:9px;color:var(--soft);margin-top:16px;">Comparison against typical serviced-desk quotes in the market. Subject to terms.</p>
+    </div>
+    <div style="width:56%;display:flex;align-items:center;justify-content:center;">
+      <table style="width:100%;border-collapse:collapse;font-family:'HxBody';font-size:12px;">
+        <thead><tr>
+          <th style="text-align:left;padding:12px 8px;border-bottom:1.5px solid var(--ink);" class="label">Getting started</th>
+          <th style="text-align:center;padding:12px 8px;border-bottom:1.5px solid var(--ink);" class="label">Typical desk</th>
+          <th style="text-align:right;padding:12px 8px;border-bottom:1.5px solid var(--ink);" class="label">Hexa Space</th>
+        </tr></thead>
+        <tbody>
+          ${row('Setup &amp; administration', '$265', 'Included')}
+          ${row('Access pass / key', '$100', 'Included')}
+          ${row('Security deposit', '$1,000 + make-good', '1 month, refundable')}
+          ${row('Meeting-room credits', 'Extra', `$${cfg.creditValue} / mo included`)}
+          ${row('Minimum term', '6 months', 'Month-to-month')}
+        </tbody>
+      </table>
+    </div>
+  </div>${FOOT}</div>`
+}
+
+function deskClosingPage(ctx) {
+  return `<div class="page" style="background:#1b1b18;">
+    <div class="pad" style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;">
+      <div class="display" style="color:#fff;font-size:80px;line-height:1.16;padding-bottom:6px;">Thank you</div>
+      <div class="eyebrow" style="color:#cfd69a;margin-top:20px;letter-spacing:.4em;">六合空间 · Box Hill</div>
+      <div style="width:2in;height:1px;background:#3a3a34;margin:34px 0;"></div>
+      <p class="body" style="color:#d7d5cf;font-size:12px;line-height:2;">
+        ${esc(ctx.sender)}${ctx.title ? ` · ${esc(ctx.title)}` : ''}<br>
+        ${esc(ctx.email)} &nbsp;·&nbsp; ${esc(ctx.phone)}<br>
+        ${esc(ctx.addr)}<br>
+        ${esc(ctx.web)}
+      </p>
+      <div class="label" style="color:#8f8c93;margin-top:34px;">We'd love to show you around.</div>
+    </div>
+  </div>`
+}
+
+// Build a Dedicated/Flexible Desk brochure PDF. `type` ∈ {'dedicated','flexi'};
+// `offer` comes from the membership proposal (price, termLabel, freeMonths).
+export async function buildDeskBrochurePdf({ type = 'dedicated', offer = {}, coverMsg = '', lead = {}, settings = {}, dateStr = '', compress = false }) {
+  const cfg = DESK[type] || DESK.dedicated
+  const ctx = makeCtx(lead, settings, dateStr)
+  const pagesHtml = [
+    deskCoverPage(cfg, ctx),
+    deskStatementPage(cfg),
+    deskSpacePage(cfg),
+    deskOfferPage(cfg, offer, coverMsg),
+    deskInclusionsPage(cfg),
+    deskMeetingPage(cfg),
+    deskAdvantagePage(cfg),
+    communityPage(),
+    deskClosingPage(ctx),
+  ]
+  return renderPagesToPdf(pagesHtml, { compress })
 }

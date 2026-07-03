@@ -5,7 +5,7 @@ import {
   UserPlus, CheckCircle2, Send, Loader2, ArrowRight, Sparkles, Trash2, FileText, FileDown,
 } from 'lucide-react'
 import { sendEmail, renderProposalTemplate, messageEmailHtml, brandShell } from '../lib/sendEmail.js'
-import { buildProposalPdf } from '../lib/proposalPdf.js'
+import { buildProposalPdf, buildDeskBrochurePdf } from '../lib/proposalPdf.js'
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: User },
@@ -137,6 +137,20 @@ export default function LeadDetail({ lead, store, onClose }) {
   const [officeTerm, setOfficeTerm] = useState('12mo')
   const [officeNewClient, setOfficeNewClient] = useState(true)
 
+  // Dedicated / Flexible Desk memberships get the branded desk brochure attached.
+  const isDeskType = (t) => t === 'dedicated' || t === 'flexi'
+  const deskArgs = (offer) => ({ type: propType, offer, coverMsg: proposalMsg.trim(), lead, settings, dateStr: format(new Date(), 'd MMMM yyyy'), compress: compressPdf })
+
+  async function downloadMembershipBrochure() {
+    if (!isDeskType(propType)) { setProposalResult('A brochure is available for Desk memberships.'); return }
+    if (!(Number(m.price) > 0)) { setProposalResult('Enter a monthly price.'); return }
+    setDownloadingProposal(true); setProposalResult('')
+    try {
+      const doc = await buildDeskBrochurePdf(deskArgs(mOffer()))
+      doc.save(`${mOffer().typeLabel.replace(/\s+/g, '_')}_${(lead.name || lead.businessName || 'lead').replace(/\s+/g, '_')}.pdf`)
+    } catch (e) { setProposalResult(e.message) } finally { setDownloadingProposal(false) }
+  }
+
   async function sendMembershipProposal() {
     if (!lead.email) { setProposalResult('No email address on this lead.'); return }
     if (!(Number(m.price) > 0)) { setProposalResult('Enter a monthly price.'); return }
@@ -147,7 +161,12 @@ export default function LeadDetail({ lead, store, onClose }) {
       const acceptLink = `${window.location.origin}/proposal/${token}`
       const html = buildMembershipProposalHtml({ lead, settings, offer, coverMsg: proposalMsg.trim(), acceptLink, validityDays })
       const subject = `Your ${offer.typeLabel} proposal — ${settings?.company?.name || 'Hexa Space'}`
-      await sendEmail({ to: lead.email, subject, html, settings, emailType: 'proposal' })
+      let attachments
+      if (isDeskType(propType)) {
+        const doc = await buildDeskBrochurePdf(deskArgs(offer))
+        attachments = [{ filename: `${offer.typeLabel.replace(/\s+/g, '_')}_${(lead.businessName || lead.name || 'lead').replace(/\s+/g, '_')}.pdf`, content: doc.output('base64') }]
+      }
+      await sendEmail({ to: lead.email, subject, html, settings, emailType: 'proposal', attachments })
       const quoted = pipelineStages.find((s) => /quote/i.test(s.name || '') || s.category === 'quoted')
       updateLead(lead.id, {
         proposal: { token, status: 'sent', sentAt: new Date().toISOString(), membershipType: propType, typeLabel: offer.typeLabel, price: Number(m.price), term: m.term, vpkg: m.pkg, freeMonths: offer.freeMonths, newClient: m.newClient, validityDays, message: proposalMsg },
@@ -396,7 +415,7 @@ export default function LeadDetail({ lead, store, onClose }) {
               </>)}
 
               {propType !== 'office' && (
-                <MembershipProposal type={propType} m={m} setM={setM} offer={mOffer()} proposalMsg={proposalMsg} setProposalMsg={setProposalMsg} validityDays={validityDays} setValidityDays={setValidityDays} onSend={sendMembershipProposal} sending={sendingProposal} result={proposalResult} hasEmail={!!lead.email} input={input} />
+                <MembershipProposal type={propType} m={m} setM={setM} offer={mOffer()} proposalMsg={proposalMsg} setProposalMsg={setProposalMsg} validityDays={validityDays} setValidityDays={setValidityDays} onSend={sendMembershipProposal} sending={sendingProposal} result={proposalResult} hasEmail={!!lead.email} input={input} onPreview={downloadMembershipBrochure} downloading={downloadingProposal} />
               )}
 
               {lead.proposal && (
@@ -539,7 +558,7 @@ export default function LeadDetail({ lead, store, onClose }) {
   )
 }
 
-function MembershipProposal({ type, m, setM, offer, proposalMsg, setProposalMsg, validityDays, setValidityDays, onSend, sending, result, hasEmail, input }) {
+function MembershipProposal({ type, m, setM, offer, proposalMsg, setProposalMsg, validityDays, setValidityDays, onSend, sending, result, hasEmail, input, onPreview, downloading }) {
   const isDesk = type === 'flexi' || type === 'dedicated'
   const isVirtual = type === 'virtual'
   const priceNum = Number(m.price) || 0
@@ -600,10 +619,13 @@ function MembershipProposal({ type, m, setM, offer, proposalMsg, setProposalMsg,
       <label className="block"><span className="block text-xs text-muted-foreground mb-1">Cover message (optional)</span><textarea rows={2} value={proposalMsg} onChange={(e) => setProposalMsg(e.target.value)} className={`${input} resize-none`} /></label>
       <label className="block w-32"><span className="block text-xs text-muted-foreground mb-1">Valid for (days)</span><input type="number" value={validityDays} onChange={(e) => setValidityDays(Number(e.target.value) || 14)} className={input} /></label>
       <div className="flex items-center gap-3 pt-1">
+        {isDesk && onPreview && (
+          <button onClick={onPreview} disabled={downloading} className="flex items-center gap-1.5 border border-input text-foreground px-3 py-2 rounded-md text-sm hover:bg-muted/50 disabled:opacity-40">{downloading ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />} Preview PDF</button>
+        )}
         <button onClick={onSend} disabled={sending || !hasEmail} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">{sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send proposal</button>
         {result && <span className={`text-xs ${result.includes('✓') ? 'text-green-600' : 'text-red-600'}`}>{result}</span>}
       </div>
-      <p className="text-xs text-muted-foreground">The offer, term and any rent-free months are included in the emailed proposal. (PDF attachments are handled separately.)</p>
+      <p className="text-xs text-muted-foreground">{isDesk ? 'The branded desk brochure is attached to the emailed proposal automatically.' : 'The offer, term and any rent-free months are included in the emailed proposal.'}</p>
     </div>
   )
 }
