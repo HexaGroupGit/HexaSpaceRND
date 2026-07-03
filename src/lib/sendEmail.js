@@ -151,7 +151,7 @@ export function invoiceEmailHtml({ invoice, tenant, settings }) {
   const company = settings?.company ?? {}
   const billing = settings?.billing ?? {}
   const name = billing.businessName || company.name || 'Hexa Space'
-  const address = billing.address || 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'
+  const address = billing.address || '402/830 Whitehorse Road, Box Hill VIC 3128'
   const website = company.website || 'hexaspace.com.au'
   const bsb = billing.bsb || '—'
   const acc = billing.acc || '—'

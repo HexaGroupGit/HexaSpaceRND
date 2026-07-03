@@ -74,7 +74,7 @@ export default async function handler(req, res) {
   </div>
   <div style="background:#f6f5f1;padding:24px 40px;border-top:1px solid #eeeeee;">
     <p style="color:#999999;font-size:11px;margin:0;text-align:center;line-height:1.6;">
-      Hexa Space Pty Ltd &nbsp;·&nbsp; Level 4, 830 Whitehorse Road, Box Hill VIC 3128<br>
+      Hexa Space Pty Ltd &nbsp;·&nbsp; 402/830 Whitehorse Road, Box Hill VIC 3128<br>
       <a href="https://hexaspace.com.au" style="color:#999999;">hexaspace.com.au</a>
     </p>
   </div>

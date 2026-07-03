@@ -254,7 +254,7 @@ export default function Events() {
                   value={form.location}
                   onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
                   className="w-full border border-input rounded px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                  placeholder="7 Distribution Circuit, Huntingdale"
+                  placeholder="402/830 Whitehorse Road, Box Hill"
                 />
               </div>
               <div>

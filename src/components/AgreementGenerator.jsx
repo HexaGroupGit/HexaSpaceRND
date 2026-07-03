@@ -13,7 +13,7 @@ const TYPE_LABEL = {
 }
 
 const LOCATION_LABEL = {
-  huntingdale: 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128',
+  huntingdale: '402/830 Whitehorse Road, Box Hill VIC 3128',
   lonsdale: 'Lonsdale Street, Melbourne VIC',
   whitehorse: 'Whitehorse Road, Mitcham VIC',
 }
@@ -60,7 +60,7 @@ export default function AgreementGenerator() {
     doc.text('build locally, scale sustainably', margin, 20)
     doc.setFontSize(8)
     doc.text('hexaspace.com.au', pageW - margin, 14, { align: 'right' })
-    doc.text('Level 4, 830 Whitehorse Road, Box Hill VIC 3128', pageW - margin, 20, { align: 'right' })
+    doc.text('402/830 Whitehorse Road, Box Hill VIC 3128', pageW - margin, 20, { align: 'right' })
 
     // --- Title ---
     doc.setTextColor(0, 0, 0)
@@ -116,7 +116,7 @@ export default function AgreementGenerator() {
     y += 5
     doc.text('ABN: 00 000 000 000', margin + 50, y)
     y += 5
-    doc.text('Level 4, 830 Whitehorse Road, Box Hill VIC 3128', margin + 50, y)
+    doc.text('402/830 Whitehorse Road, Box Hill VIC 3128', margin + 50, y)
     y += 8
 
     doc.setFont('helvetica', 'bold')

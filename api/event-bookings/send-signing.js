@@ -25,7 +25,7 @@ function frame(bodyHtml) {
   <div style="padding:32px">${bodyHtml}</div>
   <div style="background:#f5f5f5;padding:16px 32px;border-top:1px solid #eee">
     <p style="color:#999;font-size:11px;margin:0;text-align:center">
-      HexaHub Pty Ltd &nbsp;·&nbsp; 7 Distribution Circuit, Huntingdale VIC 3166<br>
+      HexaHub Pty Ltd &nbsp;·&nbsp; 402/830 Whitehorse Road, Box Hill VIC 3128<br>
       <em>build locally, scale sustainably</em> &nbsp;·&nbsp;
       <a href="https://hexahub.com.au" style="color:#999">hexahub.com.au</a>
     </p>

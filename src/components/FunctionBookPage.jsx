@@ -138,7 +138,7 @@ export default function FunctionBookPage() {
       </main>
 
       <footer className="bg-charcoal text-paper/60 px-6 md:px-16 py-8 mt-8">
-        <div className="max-w-3xl mx-auto font-heading uppercase tracking-nav text-[11px]">Hexa Space · 7 Distribution Circuit, Huntingdale VIC 3166 · hexaspace.com.au</div>
+        <div className="max-w-3xl mx-auto font-heading uppercase tracking-nav text-[11px]">Hexa Space · 402/830 Whitehorse Road, Box Hill VIC 3128 · hexaspace.com.au</div>
       </footer>
     </div>
   )

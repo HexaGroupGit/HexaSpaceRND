@@ -33,7 +33,7 @@ function frame(inner) {
     </div>
     <div style="text-align:center;padding:22px 8px 6px">
       <div style="font-family:${CAPS};font-size:10px;letter-spacing:.3em;color:${OLIVE};text-transform:uppercase">Function Space Hire</div>
-      <div style="font-family:${SANS};font-size:11px;color:#9a9aa0;margin-top:7px">Hexa Space · 7 Distribution Circuit, Huntingdale VIC 3166 · {{website}}</div>
+      <div style="font-family:${SANS};font-size:11px;color:#9a9aa0;margin-top:7px">Hexa Space · 402/830 Whitehorse Road, Box Hill VIC 3128 · {{website}}</div>
     </div>
   </div>
 </body></html>`

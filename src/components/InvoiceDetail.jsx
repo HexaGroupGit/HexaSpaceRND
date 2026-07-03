@@ -68,7 +68,7 @@ export default function InvoiceDetail({
     const billingName = settings?.billing?.businessName ?? companyName
     const billingBsb = settings?.billing?.bsb ?? '063-000'
     const billingAcc = settings?.billing?.acc ?? '00000000'
-    const billingAddress = settings?.billing?.address ?? 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'
+    const billingAddress = settings?.billing?.address ?? '402/830 Whitehorse Road, Box Hill VIC 3128'
     const addrComma = billingAddress.indexOf(',')
     const addrLine1 = addrComma > -1 ? billingAddress.slice(0, addrComma).trim() : billingAddress
     const addrLine2 = addrComma > -1 ? billingAddress.slice(addrComma + 1).trim() : ''

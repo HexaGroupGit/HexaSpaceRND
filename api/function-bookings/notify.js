@@ -26,7 +26,7 @@ function frame(fromName, inner) {
     <span style="color:#888;font-size:12px;margin-left:12px">Function Space Hire</span></div>
   <div style="padding:32px">${inner}</div>
   <div style="background:#f5f5f5;padding:16px 32px;border-top:1px solid #eee">
-    <p style="color:#999;font-size:11px;margin:0;text-align:center">Hexa Space · 7 Distribution Circuit, Huntingdale VIC 3166 · hexaspace.com.au</p>
+    <p style="color:#999;font-size:11px;margin:0;text-align:center">Hexa Space · 402/830 Whitehorse Road, Box Hill VIC 3128 · hexaspace.com.au</p>
   </div>
 </div></body></html>`
 }

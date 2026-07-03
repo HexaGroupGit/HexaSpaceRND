@@ -1,7 +1,7 @@
 # HexaHub Management System
 
 ## About HexaHub
-HexaHub is a business infrastructure platform at 7 Distribution Circuit, Huntingdale 3166, Melbourne, Australia.
+HexaHub is a business infrastructure platform at 402/830 Whitehorse Road, Box Hill VIC 3128, Melbourne, Australia.
 Website: hexahub.com.au
 Slogan: "build locally, scale sustainably"
 

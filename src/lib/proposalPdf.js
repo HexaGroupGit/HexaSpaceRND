@@ -334,7 +334,7 @@ export async function buildProposalPdf({ offices = [], coverMsg = '', validityDa
     title: c.salesTitle || 'Manager',
     email: e.replyTo || c.email || 'eric@hexaspace.com.au',
     phone: c.phone || '+61 406 016 666',
-    addr: c.address || 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128',
+    addr: c.address || '402/830 Whitehorse Road, Box Hill VIC 3128',
     web: c.website || 'hexaspace.com.au',
   }
 

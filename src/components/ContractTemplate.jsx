@@ -2,14 +2,14 @@ import { format, parseISO } from 'date-fns'
 
 const DEFAULT_BUSINESS = {
   name: 'Hexa Space Pty Ltd',
-  line1: '7 Distribution Circuit',
-  line2: 'Huntingdale VIC 3166',
+  line1: '402/830 Whitehorse Road',
+  line2: 'Box Hill VIC 3128',
   country: 'Australia, Victoria',
 }
 
 function getBusinessAddress(settings) {
   if (!settings?.billing) return DEFAULT_BUSINESS
-  const addr = settings.billing.address ?? 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'
+  const addr = settings.billing.address ?? '402/830 Whitehorse Road, Box Hill VIC 3128'
   const commaIdx = addr.indexOf(',')
   return {
     name: settings.billing.businessName || settings.company?.name || DEFAULT_BUSINESS.name,

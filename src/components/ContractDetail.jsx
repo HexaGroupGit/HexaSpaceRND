@@ -210,7 +210,7 @@ export default function ContractDetail({
 
       // ── Header: LICENCE AGREEMENT / HEXA SPACE (matches template) ──
       const companyName = settings?.billing?.businessName ?? settings?.company?.name ?? 'Hexa Space Pty Ltd'
-      const billingAddress = settings?.billing?.address ?? 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'
+      const billingAddress = settings?.billing?.address ?? '402/830 Whitehorse Road, Box Hill VIC 3128'
       const addrComma = billingAddress.indexOf(',')
       const addrLine1 = addrComma > -1 ? billingAddress.slice(0, addrComma).trim() : billingAddress
       const addrLine2 = addrComma > -1 ? billingAddress.slice(addrComma + 1).trim() : ''
@@ -465,7 +465,7 @@ export default function ContractDetail({
       // ── Footer on every page ──────────────────────────────────
       const pages = doc.getNumberOfPages()
       const footerCompany = settings?.billing?.businessName ?? settings?.company?.name ?? 'Hexa Space Pty Ltd'
-      const footerAddr = settings?.billing?.address ?? 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'
+      const footerAddr = settings?.billing?.address ?? '402/830 Whitehorse Road, Box Hill VIC 3128'
       for (let i = 1; i <= pages; i++) {
         doc.setPage(i)
         doc.setFillColor(20, 20, 20)
@@ -812,7 +812,7 @@ export default function ContractDetail({
                 <span className="text-muted-foreground text-xs mt-0.5">📍</span>
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">Location</p>
-                  <p className="text-sm text-foreground">{settings?.billing?.address ?? 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'}</p>
+                  <p className="text-sm text-foreground">{settings?.billing?.address ?? '402/830 Whitehorse Road, Box Hill VIC 3128'}</p>
                 </div>
               </div>
 

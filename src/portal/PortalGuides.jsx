@@ -13,7 +13,7 @@ export default function PortalGuides() {
   return (
     <Page>
       <PageHeader kicker="Help · Box Hill" title="How-To Guides">
-        Everything you need to get the most from Hexa Space. Level 4, 830 Whitehorse Road, Box Hill.
+        Everything you need to get the most from Hexa Space. 402/830 Whitehorse Road, Box Hill VIC 3128.
       </PageHeader>
 
       <div className="grid gap-px bg-ink/10 sm:grid-cols-2 lg:grid-cols-3 mb-12">

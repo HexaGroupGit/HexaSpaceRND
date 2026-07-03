@@ -61,7 +61,7 @@ export function generateAgreementPdf(booking, adminSig) {
     doc.setFont('helvetica', 'italic')
     doc.setFontSize(7)
     doc.setTextColor(180, 180, 180)
-    doc.text('Hexa Space Pty Ltd · Level 4, 830 Whitehorse Road, Box Hill VIC 3128 · hexaspace.com.au', W / 2, footerY, { align: 'center' })
+    doc.text('Hexa Space Pty Ltd · 402/830 Whitehorse Road, Box Hill VIC 3128 · hexaspace.com.au', W / 2, footerY, { align: 'center' })
   }
 
   function ensureSpace(needed) {
@@ -223,7 +223,7 @@ export function generateAgreementPdf(booking, adminSig) {
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(140, 140, 140)
   doc.text('LICENSOR', colL, y); doc.text('LICENSEE', colR, y); y += 5
   const sy = y
-  const licLines = [['bold','Hexa Space Pty Ltd'],['n','7 Distribution Circuit'],['n','Huntingdale VIC 3166'],['n','info@hexaspace.com.au']]
+  const licLines = [['bold','Hexa Space Pty Ltd'],['n','402/830 Whitehorse Road'],['n','Box Hill VIC 3128'],['n','info@hexaspace.com.au']]
   licLines.forEach(([w,t]) => { doc.setFont('helvetica', w==='bold'?'bold':'normal'); doc.setFontSize(9); doc.setTextColor(20,20,20); doc.text(t,colL,y); y+=5 })
   y = sy
   const venLines = [['bold', vendorDisplay], ...(b.vendorAbn?[['n',`ABN: ${b.vendorAbn}`]]:[]), ['n',b.vendorName||'—'], ...(b.vendorEmail?[['n',b.vendorEmail]]:[])]
@@ -288,7 +288,7 @@ export function generateAgreementPdf(booking, adminSig) {
   // Schedule
   heading('Schedule — Booking Details', { sz: 8, upper: false, before: 4, after: 3 })
   scheduleRow('Licensor', 'Hexa Space Pty Ltd (ABN 51 234 567 890)')
-  scheduleRow('Licensor Address', 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128')
+  scheduleRow('Licensor Address', '402/830 Whitehorse Road, Box Hill VIC 3128')
   scheduleRow('Licensor Contact', 'info@hexaspace.com.au')
   scheduleRow('Licensee', vendorDisplay)
   scheduleRow('Licensee Contact', b.vendorName || '—')

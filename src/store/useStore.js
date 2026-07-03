@@ -117,7 +117,7 @@ const DEFAULT_SETTINGS = {
     bankName: 'Commonwealth Bank',
     bsb: '063-000',
     acc: '00000000',
-    address: 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128',
+    address: '402/830 Whitehorse Road, Box Hill VIC 3128',
   },
   adminUsers: [
     { id: 'u1', name: 'Hexa Space Admin', email: 'info@hexaspace.com.au', role: 'Super Admin', access: 'Full Access' },

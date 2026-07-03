@@ -38,7 +38,7 @@ export default async function handler(req, res) {
 
   <div style="background:#f5f5f5;padding:20px 40px;border-top:1px solid #eeeeee;">
     <p style="color:#999999;font-size:11px;margin:0;text-align:center;line-height:1.6;">
-      HexaHub Pty Ltd &nbsp;·&nbsp; 7 Distribution Circuit, Huntingdale VIC 3166<br>
+      HexaHub Pty Ltd &nbsp;·&nbsp; 402/830 Whitehorse Road, Box Hill VIC 3128<br>
       <a href="https://hexahub.com.au" style="color:#999999;">hexahub.com.au</a>
     </p>
   </div>

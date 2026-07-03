@@ -93,7 +93,7 @@ export default function PortalLogin() {
         </div>
 
         <p className="text-center hx-eyebrow mt-6 normal-case tracking-normal">
-          Level 4, 830 Whitehorse Road, Box Hill · hexaspace.com.au
+          402/830 Whitehorse Road, Box Hill VIC 3128 · hexaspace.com.au
         </p>
       </div>
     </div>

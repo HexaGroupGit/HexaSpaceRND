@@ -125,7 +125,7 @@ export default function Layout({ store, onLogout }) {
         ))}
       </nav>
       <div className="px-5 py-4 border-t border-white/5 text-xs text-zinc-500 shrink-0">
-        <div className="mb-3 leading-relaxed">Level 4, 830 Whitehorse Road<br />Box Hill VIC 3128</div>
+        <div className="mb-3 leading-relaxed">402/830 Whitehorse Road<br />Box Hill VIC 3128</div>
         <button
           onClick={() => { logout(); onLogout?.() }}
           className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"

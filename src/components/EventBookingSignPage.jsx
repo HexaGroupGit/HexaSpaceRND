@@ -53,7 +53,7 @@ function LicenceAgreementDoc({ booking }) {
           <tbody>
             {[
               ['Licensor', 'Hexa Space Pty Ltd (ABN 51 234 567 890)'],
-              ['Licensor Address', 'Level 4, 830 Whitehorse Road, Box Hill VIC 3128'],
+              ['Licensor Address', '402/830 Whitehorse Road, Box Hill VIC 3128'],
               ['Licensor Contact', 'info@hexaspace.com.au'],
               ['Licensee', vendorDisplay || b.vendorName],
               ['Licensee Contact', b.vendorName],

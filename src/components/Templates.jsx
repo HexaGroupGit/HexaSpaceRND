@@ -72,7 +72,7 @@ const varsFor = (emailType) => VARS_BY_TYPE[emailType] || ['{{company}}', '{{ten
 const PREVIEW_VARS = {
   company: 'Hexa Space', tenantName: 'Jane Smith', unit: 'Office 4', startDate: '1 August 2026',
   contract: 'CON-259', portalUrl: 'https://members.hexaspace.com.au', website: 'hexaspace.com.au',
-  address: '830 Whitehorse Road, Box Hill VIC 3128', saltoBlock: '',
+  address: '402/830 Whitehorse Road, Box Hill VIC 3128', saltoBlock: '',
   signLink: 'https://app.hexaspace.com.au/sign/sample-token', signerName: 'Hexa Space',
   signedDate: '2 July 2026',
   name: 'Jane Smith', membershipType: 'Dedicated Desk', tourLink: 'https://hexaspace.com.au/book-a-tour', officeOptions: '',
