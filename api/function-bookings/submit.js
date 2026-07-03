@@ -12,6 +12,16 @@ import { invoicePdfBase64 } from '../_invoicePdf.js'
 const SUPABASE_URL = process.env.SUPABASE_URL
 const money = (v) => `$${(Number(v) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
+// Deposit due 7 days before the event (clamped to today so it's never back-dated).
+const DEPOSIT_DUE_DAYS = 7
+function depositDueDateFor(eventDate, today) {
+  if (!eventDate) return today
+  const d = new Date(`${eventDate}T00:00:00`)
+  d.setDate(d.getDate() - DEPOSIT_DUE_DAYS)
+  const due = d.toISOString().split('T')[0]
+  return due < today ? today : due
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -105,8 +115,10 @@ export default async function handler(req, res) {
 
     // One deposit invoice, two lines: 50% of the booking cost (GST applies) and
     // the $300 refundable security deposit (GST-exempt).
+    // Deposit is due 7 days before the event (never back-dated), not immediately.
+    const depDue = depositDueDateFor(b.eventDate, now.split('T')[0])
     const depId = `inv${Date.now()}${Math.random().toString(36).slice(2, 6)}`
-    const depInv = { ...base, id: depId, number: numFor(), invoiceType: 'function_deposit', dueDate: now.split('T')[0], vatEnabled: true, lineItems: [
+    const depInv = { ...base, id: depId, number: numFor(), invoiceType: 'function_deposit', dueDate: depDue, vatEnabled: true, lineItems: [
       { description: `50% deposit — function booking · ${b.eventName || 'Function'} (${b.eventDate})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf ?? 0, qty: 1, discountPct: 0 },
       { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit ?? 300, qty: 1, discountPct: 0, vatExempt: true },
     ] }
@@ -145,10 +157,10 @@ async function emailDeposit(settings, b, q, depInv) {
   const inner =
     bKicker('Deposit due to secure your date') +
     bH1(`Thanks ${b.name || 'there'} — one step to secure your booking`) +
-    bP(`Your details are in. To secure <strong>${b.eventDate || 'your date'}</strong> we just need your deposit. Your date isn't held until the deposit is received.`) +
+    bP(`Your details are in. To secure <strong>${b.eventDate || 'your date'}</strong> we just need your deposit${depInv?.dueDate ? `, due by <strong>${depInv.dueDate}</strong>` : ''}. Your date isn't held until the deposit is received.`) +
     bTable([
       ['Total (inc GST)', money(q.total)],
-      ['Deposit due now', money(q.dueNow), true],
+      [`Deposit${depInv?.dueDate ? ` (due ${depInv.dueDate})` : ' due'}`, money(q.dueNow), true],
       ['Balance (14 days before event)', money(q.balanceDue)],
     ]) +
     bankBlock +

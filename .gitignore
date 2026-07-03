@@ -16,6 +16,9 @@ dist-ssr
 .env.local
 .env.production
 
+# MCP config holds Xero credentials — never commit
+.mcp.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
