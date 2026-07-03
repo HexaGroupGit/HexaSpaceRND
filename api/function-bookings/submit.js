@@ -7,6 +7,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH1, bP, bSmall, bPanel, bTable, SANS, INK } from '../_brand.js'
+import { invoicePdfBase64 } from '../_invoicePdf.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const money = (v) => `$${(Number(v) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -54,16 +55,31 @@ export default async function handler(req, res) {
       else if (!existingTenant?.phone && b.phone) patch.phone = b.phone
       await supabase.from('tenants').upsert({ id: tenantId, data: patch, updated_at: now })
     } else {
-      tenantId = `t${Date.now()}`
-      const t = { id: tenantId, businessName: ci.businessName || b.organisation || b.name || 'Function client', contactName: ci.contactName || b.name || '', email: b.email || '', phone: ci.phone || b.phone || '', abn: ci.abn || '', clientType: 'function', status: 'client', industry: 'Function client', createdAt: now.split('T')[0] }
-      await supabase.from('tenants').upsert({ id: tenantId, data: t, updated_at: now })
+      // No companyId — reuse an existing tenant with this email before creating one.
+      const email = (b.email || '').toLowerCase()
+      const match = email ? tenants.find((t) => (t.email || '').toLowerCase() === email) : null
+      if (match) {
+        tenantId = match.id
+        await supabase.from('tenants').upsert({ id: tenantId, data: { ...match, clientType: 'function' }, updated_at: now })
+      } else {
+        tenantId = `t${Date.now()}`
+        const t = { id: tenantId, businessName: ci.businessName || b.organisation || b.name || 'Function client', contactName: ci.contactName || b.name || '', email: b.email || '', phone: ci.phone || b.phone || '', abn: ci.abn || '', clientType: 'function', status: 'client', industry: 'Function client', createdAt: now.split('T')[0] }
+        await supabase.from('tenants').upsert({ id: tenantId, data: t, updated_at: now })
+      }
     }
     const members = (memberRows ?? []).map((r) => r.data)
     let memberId = b.memberId
+    const email = (b.email || '').toLowerCase()
+    // Reuse an existing member with this email — never create a duplicate person.
+    if (!memberId && email) memberId = members.find((m) => (m.email || '').toLowerCase() === email)?.id
     if (!memberId && (mi.name || b.name)) {
       memberId = `m${Date.now()}`
       const m = { id: memberId, name: mi.name || b.name, email: mi.email || b.email, phone: mi.phone || b.phone || '', companyId: tenantId, clientType: 'function', role: 'Function contact', status: 'active', createdAt: now.split('T')[0] }
       await supabase.from('members').upsert({ id: memberId, data: m, updated_at: now })
+    } else if (memberId) {
+      // Make sure the reused member points at this company so the portal resolves it.
+      const m = members.find((x) => x.id === memberId)
+      if (m && m.companyId !== tenantId) await supabase.from('members').upsert({ id: memberId, data: { ...m, companyId: tenantId }, updated_at: now })
     }
 
     // ── Raise deposit (50%, GST) + refundable $300 security (no GST) ──
@@ -88,8 +104,8 @@ export default async function handler(req, res) {
     const updated = { ...b, stage: 'awaiting_deposit', depositRaisedAt: now, tenantId, companyId: tenantId, memberId, depositInvoiceId: depId, read: false, updatedAt: now }
     await supabase.from('function_bookings').upsert({ id: b.id, data: updated, updated_at: now })
 
-    // ── Email the deposit-due notice ──
-    emailDeposit(settings, updated, q).catch(() => {})
+    // ── Email the deposit-due notice (with the tax-invoice PDF attached) ──
+    emailDeposit(settings, updated, q, depInv).catch(() => {})
     return res.status(200).json({ success: true, dueNow: q.dueNow })
   } catch (err) {
     console.error('function submit error:', err)
@@ -97,7 +113,7 @@ export default async function handler(req, res) {
   }
 }
 
-async function emailDeposit(settings, b, q) {
+async function emailDeposit(settings, b, q, depInv) {
   if (!b.email) return
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
   const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
@@ -124,7 +140,17 @@ async function emailDeposit(settings, b, q) {
       ['Balance (14 days before event)', money(q.balanceDue)],
     ]) +
     bankBlock +
-    bSmall("Deposit includes your 50% venue hire and the $300 refundable security deposit. Once received, we'll confirm and lock in your booking.")
+    bSmall("Your tax invoice is attached. Deposit includes your 50% venue hire and the $300 refundable security deposit. Once received, we'll confirm and lock in your booking.")
   const html = brandFrame(inner, { footerLabel: 'Function Space Hire' })
-  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: b.email, replyTo, subject: `Deposit due to secure your function — ${b.ref}`, html })
+
+  // Attach the deposit tax-invoice PDF (best-effort — never block the send).
+  let attachments
+  try {
+    if (depInv) {
+      const content = invoicePdfBase64(depInv, settings)
+      if (content) attachments = [{ filename: `Invoice ${depInv.number || b.ref}.pdf`, content }]
+    }
+  } catch (err) { console.error('invoice pdf failed:', err) }
+
+  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: b.email, replyTo, subject: `Deposit due to secure your function — ${b.ref}`, html, attachments })
 }

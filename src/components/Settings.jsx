@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { Plus, Trash2, Check } from 'lucide-react'
 import { XERO_ACCOUNTS, DEFAULT_XERO_ACCOUNTS } from './spaces/shared.jsx'
+import { xeroStatus, connectXero, disconnectXero, xeroSync } from '../lib/xero.js'
 
 const MENU = [
   {

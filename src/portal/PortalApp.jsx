@@ -122,9 +122,12 @@ export default function PortalApp() {
     loadedFor.current = email
     setLoading(true)
     try {
-      const tables = ['tenants', 'members', 'leases', 'invoices', 'spaces', 'bookings', 'fees', 'templates', 'function_bookings']
+      // NB: a plain select() is capped at 1000 rows by Supabase, so large tables
+      // (invoices, leases) MUST be fetched scoped to the tenant — otherwise recent
+      // rows fall outside the cap and never reach the member.
+      const tables = ['tenants', 'members', 'spaces', 'bookings', 'fees', 'templates', 'function_bookings']
       const results = await Promise.all(tables.map((t) => supabase.from(t).select('data')))
-      const [companies, members, leases, invoices, spaces, bookings, fees, templates, functionBookings] =
+      const [companies, members, spaces, bookings, fees, templates, functionBookings] =
         results.map((r) => (r.data ?? []).map((row) => row.data))
 
       const lc = email?.toLowerCase()
@@ -136,14 +139,25 @@ export default function PortalApp() {
         null
 
       const cid = company?.id
+      const myEmail = (company?.email || member?.email || '').toLowerCase()
+
+      // Tenant-scoped fetches (JSONB filter → immune to the 1000-row cap).
+      const [invRes, leaseRes] = cid
+        ? await Promise.all([
+            supabase.from('invoices').select('data').eq('data->>tenantId', cid),
+            supabase.from('leases').select('data').eq('data->>tenantId', cid),
+          ])
+        : [{ data: [] }, { data: [] }]
+      const invoices = (invRes.data ?? []).map((r) => r.data)
+      const leases = (leaseRes.data ?? []).map((r) => r.data)
+
       const mine = (rows) => rows.filter((r) =>
         r.tenantId === cid || r.companyId === cid || (member && r.memberId === member.id))
-      const myEmail = (company?.email || member?.email || '').toLowerCase()
 
       setData({
         company, member, members, companies, spaces, templates,
-        leases: cid ? leases.filter((l) => l.tenantId === cid) : [],
-        invoices: cid ? invoices.filter((i) => i.tenantId === cid) : [],
+        leases,
+        invoices,
         bookings: cid ? mine(bookings) : (member ? bookings.filter((b) => b.memberId === member.id) : []),
         allBookings: bookings, // every booking — used by the calendar for availability
         functionBookings: functionBookings.filter((fb) =>

@@ -46,16 +46,21 @@ export async function sendBrochure({ booking, settings }) {
 }
 
 // ── 2. Portal invite → drop-in account ───────────────────────────────────────
+// Reuse an existing client/member with the same email — never create duplicates.
+// If they already have an account they just log in to see their booking.
 export async function sendBookingInvite({ store, booking, settings }) {
+  const email = (booking.email || '').toLowerCase()
   let tenantId = booking.companyId
   if (!tenantId) {
-    const t = store.addTenant({
+    const existing = email ? (store.tenants || []).find((t) => (t.email || '').toLowerCase() === email) : null
+    if (existing) tenantId = existing.id
+    else tenantId = store.addTenant({
       businessName: booking.organisation || booking.name || 'Function client',
       contactName: booking.name || '', email: booking.email || '', phone: booking.phone || '',
       clientType: 'function', status: 'prospect', industry: 'Function client',
-    })
-    tenantId = t.id
+    }).id
   }
+  const memberMatch = email ? (store.members || []).find((m) => (m.email || '').toLowerCase() === email) : null
   await fetch('/api/auth/invite', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -66,7 +71,7 @@ export async function sendBookingInvite({ store, booking, settings }) {
       ctaLabel: 'Set up access & continue',
     }),
   }).catch(() => {})
-  return persistFn({ ...booking, companyId: tenantId, stage: 'invited', inviteSentAt: nowIso() })
+  return persistFn({ ...booking, companyId: tenantId, memberId: booking.memberId || memberMatch?.id || null, stage: 'invited', inviteSentAt: nowIso() })
 }
 
 // ── 3. Approve a requested booking ───────────────────────────────────────────
