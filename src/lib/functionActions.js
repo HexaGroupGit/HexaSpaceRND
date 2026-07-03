@@ -159,7 +159,10 @@ export async function declineFunctionBooking({ store, booking }) {
 export async function resolveDeposit({ store, booking, damage, refund, overflow, notes }) {
   const tenantId = booking.tenantId || booking.companyId || null
   const clientName = booking.organisation || booking.name || 'Function client'
-  if (refund > 0) store.addInvoice({ tenantId, source: 'function', invoiceType: 'bond_refund', status: 'pending', sentStatus: 'not_sent', functionRef: booking.ref, clientName, clientEmail: booking.email, issueDate: today(), dueDate: today(), vatEnabled: false, lineItems: [{ description: `Security deposit refund · ${booking.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: -refund, qty: 1, discountPct: 0 }] })
+  // Credit note against the security deposit — routed through the same admin
+  // approval + tenant-notify queue as lease bond refunds (Billing → pending
+  // bond refunds → Approve → client emailed). Linked to the deposit invoice.
+  if (refund > 0) store.addInvoice({ tenantId, source: 'function', invoiceType: 'bond_refund', status: 'pending', approvalStatus: 'pending', creditNoteForId: booking.depositInvoiceId || null, sentStatus: 'not_sent', functionRef: booking.ref, reference: `Security deposit refund — ${booking.ref}`, clientName, clientEmail: booking.email, issueDate: today(), dueDate: today(), vatEnabled: false, lineItems: [{ description: `Security deposit refund · ${booking.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: -refund, qty: 1, discountPct: 0 }] })
   if (overflow > 0) store.addInvoice({ tenantId, source: 'function', invoiceType: 'function_damage', status: 'pending', sentStatus: 'not_sent', functionRef: booking.ref, clientName, clientEmail: booking.email, issueDate: today(), dueDate: today(), vatEnabled: true, lineItems: [{ description: `Damage / excess cleaning · ${booking.eventName || 'Function'} — ${notes || ''}`, revenueAccount: 'Function Space Hire', unitPrice: overflow, qty: 1, discountPct: 0 }] })
   return persistFn({ ...booking, stage: 'refunded', refundedAt: nowIso(), refundAmount: refund, damageAmount: damage, damageNotes: notes, securityStatus: damage >= 300 ? 'withheld' : damage > 0 ? 'partial' : 'refunded' })
 }
