@@ -2,6 +2,7 @@
 // Emails confirmed function clients 1 week and 1 day before their event.
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
+import { brandFrame, bKicker, bH1, bP, bTable } from './_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -50,21 +51,17 @@ async function emailReminder(settings, b, when) {
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
   const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
   const replyTo = settings?.emails?.replyTo || settings?.emails?.notificationEmail
-  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px"><span style="color:#fff;font-size:18px;font-weight:900;letter-spacing:3px">${fromName.toUpperCase()}</span><span style="color:#888;font-size:12px;margin-left:12px">Function Space Hire</span></div>
-    <div style="padding:32px">
-      <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Event reminder</p>
-      <h2 style="font-size:20px;color:#111;margin:0 0 18px">Your function is ${when}, ${b.name || 'there'}!</h2>
-      <table style="width:100%;border-collapse:collapse;margin:0 0 20px;font-size:13px">
-        <tr><td style="padding:6px 0;color:#888;width:120px">Event</td><td style="padding:6px 0;color:#111">${b.eventName || '—'}</td></tr>
-        <tr><td style="padding:6px 0;color:#888">Date</td><td style="padding:6px 0;color:#111">${b.eventDate} · ${b.startTime || ''}–${b.endTime || ''}</td></tr>
-        <tr><td style="padding:6px 0;color:#888">Guests</td><td style="padding:6px 0;color:#111">${b.guests || '—'}</td></tr>
-        <tr><td style="padding:6px 0;color:#888">Layout</td><td style="padding:6px 0;color:#111">${b.layout || '—'}</td></tr>
-      </table>
-      <p style="font-size:13px;color:#555;margin:0 0 8px">You have 1 hour of complimentary bump-in and bump-out either side of your booking. If you have any final questions, just reply to this email.</p>
-      <p style="font-size:13px;color:#555;margin:0">See you soon!</p>
-    </div>
-  </div></body></html>`
+  const inner =
+    bKicker('Event reminder') +
+    bH1(`Your function is ${when}, ${b.name || 'there'}!`) +
+    bTable([
+      ['Event', b.eventName || '—'],
+      ['Date', `${b.eventDate} · ${b.startTime || ''}–${b.endTime || ''}`],
+      ['Guests', b.guests || '—'],
+      ['Layout', b.layout || '—'],
+    ]) +
+    bP('You have 1 hour of complimentary bump-in and bump-out either side of your booking. If you have any final questions, just reply to this email.') +
+    bP('See you soon!')
+  const html = brandFrame(inner, { footerLabel: 'Function Space Hire' })
   await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: b.email, replyTo, subject: `Reminder: your Hexa Space function is ${when}`, html })
 }

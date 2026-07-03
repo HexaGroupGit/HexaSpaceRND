@@ -5,6 +5,7 @@
 // mode='insurance_deferred' — Vendor deferred insurance → remind admin
 
 import { sendResendEmail } from '../_email.js'
+import { brandFrame, bH2, bP, bBtn, bKicker, bSmall, bPanel, bTable, OLIVE, INK, MUTE, HAIR } from '../_brand.js'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 
@@ -16,225 +17,140 @@ const EVENT = {
 }
 
 function frame(bodyHtml) {
-  return `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-<div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-  <div style="background:#000;padding:24px 32px">
-    <span style="color:#fff;font-size:20px;font-weight:900;letter-spacing:3px">HEXAHUB</span>
-    <span style="color:#666;font-size:12px;margin-left:12px">Found Underground · 7 June 2026</span>
-  </div>
-  <div style="padding:32px">${bodyHtml}</div>
-  <div style="background:#f5f5f5;padding:16px 32px;border-top:1px solid #eee">
-    <p style="color:#999;font-size:11px;margin:0;text-align:center">
-      HexaHub Pty Ltd &nbsp;·&nbsp; 402/830 Whitehorse Road, Box Hill VIC 3128<br>
-      <em>build locally, scale sustainably</em> &nbsp;·&nbsp;
-      <a href="https://hexahub.com.au" style="color:#999">hexahub.com.au</a>
-    </p>
-  </div>
-</div></body></html>`
+  return brandFrame(bodyHtml, { footerLabel: 'Agreement' })
 }
 
 function buildVendorSigningEmail({ booking, signingUrl }) {
   const vendor = booking.vendorBusiness || booking.vendorName
-  const body = `
-    <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Vendor Participation Agreement</p>
-    <h2 style="font-size:20px;color:#111;margin:0 0 20px">Hi ${booking.vendorName} — please review &amp; sign your vendor agreement</h2>
-    <p style="font-size:14px;color:#555;margin:0 0 20px">
-      We're excited to have <strong>${vendor}</strong> joining us at the <strong>Found Underground on 7 June 2026</strong>.
-      Before the event, please review and sign the Vendor Participation Agreement, Liability Waiver, and Venue Rules using the button below.
-    </p>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:28px;font-size:13px">
-      <tr><td style="padding:8px 0;color:#888;width:130px">Event</td><td style="padding:8px 0;font-weight:600;color:#111">${EVENT.name}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Date</td><td style="padding:8px 0;color:#111">${EVENT.date}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Hours</td><td style="padding:8px 0;color:#111">${EVENT.hours}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Venue</td><td style="padding:8px 0;color:#111">${EVENT.venue}</td></tr>
-      ${booking.vendorType ? `<tr><td style="padding:8px 0;color:#888">Vendor Type</td><td style="padding:8px 0;color:#111">${booking.vendorType}</td></tr>` : ''}
-      ${booking.allocatedSpace ? `<tr><td style="padding:8px 0;color:#888">Allocated Space</td><td style="padding:8px 0;color:#111">${booking.allocatedSpace}</td></tr>` : ''}
-    </table>
-    <div style="text-align:center;margin:28px 0">
-      <a href="${signingUrl}"
-         style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 36px;font-size:14px;font-weight:700;border-radius:6px">
-        Review &amp; Sign Documents
-      </a>
-    </div>
-    <p style="font-size:12px;color:#999;margin:0 0 12px">
-      If the button doesn't work, copy this link:<br>
-      <a href="${signingUrl}" style="color:#888;word-break:break-all">${signingUrl}</a>
-    </p>
-    <p style="font-size:12px;color:#bbb;margin:0">
-      After signing, you'll be asked to submit a Certificate of Currency for Public Liability Insurance (min. AUD $10,000,000). Please have this ready.
-      Any questions? Reply to this email or contact <a href="mailto:info@hexahub.com.au" style="color:#888">info@hexahub.com.au</a>.
-    </p>`
+  const body =
+    bKicker('Vendor Participation Agreement') +
+    bH2(`Hi ${booking.vendorName} — please review &amp; sign your vendor agreement`) +
+    bP(`We're excited to have <strong>${vendor}</strong> joining us at the <strong>Found Underground on 7 June 2026</strong>. Before the event, please review and sign the Vendor Participation Agreement, Liability Waiver, and Venue Rules using the button below.`) +
+    bTable([
+      ['Event', EVENT.name, true],
+      ['Date', EVENT.date],
+      ['Hours', EVENT.hours],
+      ['Venue', EVENT.venue],
+      ...(booking.vendorType ? [['Vendor Type', booking.vendorType]] : []),
+      ...(booking.allocatedSpace ? [['Allocated Space', booking.allocatedSpace]] : []),
+    ]) +
+    bBtn('Review &amp; Sign Documents', signingUrl) +
+    bSmall(`If the button doesn't work, copy this link:<br><a href="${signingUrl}" style="color:${MUTE};word-break:break-all">${signingUrl}</a>`) +
+    bSmall(`After signing, you'll be asked to submit a Certificate of Currency for Public Liability Insurance (min. AUD $10,000,000). Please have this ready. Any questions? Reply to this email or contact <a href="mailto:info@hexahub.com.au" style="color:${OLIVE}">info@hexahub.com.au</a>.`)
   return frame(body)
 }
 
 function buildAdminNotifyEmail({ booking }) {
   const vendor = booking.vendorBusiness || booking.vendorName
-  const body = `
-    <h2 style="font-size:18px;color:#111;margin:0 0 16px">Vendor Agreement Signed ✅</h2>
-    <p style="font-size:14px;color:#555;margin:0 0 20px">
-      <strong>${vendor}</strong> has signed their vendor agreement for the <strong>Found Underground</strong>.
-    </p>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:13px">
-      <tr><td style="padding:8px 0;color:#888;width:130px">Ref</td><td style="padding:8px 0;font-weight:600;color:#111">${booking.ref}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Vendor</td><td style="padding:8px 0;color:#111">${vendor}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Vendor Type</td><td style="padding:8px 0;color:#111">${booking.vendorType || '—'}</td></tr>
-      ${booking.allocatedSpace ? `<tr><td style="padding:8px 0;color:#888">Space</td><td style="padding:8px 0;color:#111">${booking.allocatedSpace}</td></tr>` : ''}
-      <tr><td style="padding:8px 0;color:#888">Signed by</td><td style="padding:8px 0;color:#111">${booking.signerName}${booking.signerTitle ? ` — ${booking.signerTitle}` : ''}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Email</td><td style="padding:8px 0;color:#111">${booking.vendorEmail}</td></tr>
-    </table>
-    <p style="font-size:13px;color:#555;margin:0 0 16px">
-      The vendor has been asked to submit their Certificate of Currency. Check the admin portal to confirm insurance status.
-    </p>
-    <a href="https://app.hexahub.com.au/event-bookings"
-       style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:12px 28px;font-size:13px;font-weight:700;border-radius:6px">
-      Open Admin Portal →
-    </a>`
+  const body =
+    bH2('Vendor Agreement Signed ✅') +
+    bP(`<strong>${vendor}</strong> has signed their vendor agreement for the <strong>Found Underground</strong>.`) +
+    bTable([
+      ['Ref', booking.ref, true],
+      ['Vendor', vendor],
+      ['Vendor Type', booking.vendorType || '—'],
+      ...(booking.allocatedSpace ? [['Space', booking.allocatedSpace]] : []),
+      ['Signed by', `${booking.signerName}${booking.signerTitle ? ` — ${booking.signerTitle}` : ''}`],
+      ['Email', booking.vendorEmail],
+    ]) +
+    bP('The vendor has been asked to submit their Certificate of Currency. Check the admin portal to confirm insurance status.') +
+    bBtn('Open Admin Portal →', 'https://app.hexahub.com.au/event-bookings')
   return frame(body)
 }
 
 function buildSpaceAssignedEmail({ booking }) {
   const vendor = booking.vendorBusiness || booking.vendorName
   const space = booking.allocatedSpace
-  const body = `
-    <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Found Underground · Space Confirmed</p>
-    <h2 style="font-size:20px;color:#111;margin:0 0 20px">Your space has been assigned, ${booking.vendorName}!</h2>
-    <p style="font-size:14px;color:#555;margin:0 0 24px">
-      Great news — your vendor space at the Found Underground has been confirmed. Here are your details:
-    </p>
-    <div style="background:#f5f5f5;border-radius:6px;padding:20px 24px;margin-bottom:28px">
-      <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Your Allocated Space</div>
-      <div style="font-size:28px;font-weight:900;color:#111;letter-spacing:-0.5px">${space}</div>
-    </div>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:28px;font-size:13px">
-      <tr><td style="padding:8px 0;color:#888;width:130px">Event</td><td style="padding:8px 0;font-weight:600;color:#111">${EVENT.name}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Date</td><td style="padding:8px 0;color:#111">${EVENT.date}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Hours</td><td style="padding:8px 0;color:#111">${EVENT.hours}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Venue</td><td style="padding:8px 0;color:#111">${EVENT.venue}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Bump-In From</td><td style="padding:8px 0;color:#111">11:00 AM</td></tr>
-      ${booking.vendorType ? `<tr><td style="padding:8px 0;color:#888">You are</td><td style="padding:8px 0;color:#111">${booking.vendorType}</td></tr>` : ''}
-    </table>
-    <p style="font-size:13px;color:#555;margin:0 0 8px">
-      If you have any questions about your space or the event, reply to this email or contact us at
-      <a href="mailto:info@hexahub.com.au" style="color:#111">info@hexahub.com.au</a>.
-    </p>
-    <p style="font-size:13px;color:#555;margin:0">See you on June 7! 🏁</p>`
+  const body =
+    bKicker('Found Underground · Space Confirmed') +
+    bH2(`Your space has been assigned, ${booking.vendorName}!`) +
+    bP('Great news — your vendor space at the Found Underground has been confirmed. Here are your details:') +
+    bPanel(
+      `<div style="font-family:'HexaRework','Helvetica Neue',Arial,sans-serif;font-size:11px;color:${MUTE};text-transform:uppercase;letter-spacing:.2em;margin-bottom:6px">Your Allocated Space</div>` +
+      `<div style="font-family:'HexaBig',Georgia,serif;font-size:28px;color:${INK};letter-spacing:-0.5px">${space}</div>`
+    ) +
+    bTable([
+      ['Event', EVENT.name, true],
+      ['Date', EVENT.date],
+      ['Hours', EVENT.hours],
+      ['Venue', EVENT.venue],
+      ['Bump-In From', '11:00 AM'],
+      ...(booking.vendorType ? [['You are', booking.vendorType]] : []),
+    ]) +
+    bP(`If you have any questions about your space or the event, reply to this email or contact us at <a href="mailto:info@hexahub.com.au" style="color:${OLIVE}">info@hexahub.com.au</a>.`) +
+    bP('See you on June 7! 🏁')
   return frame(body)
 }
 
 function buildInsuranceUploadedEmail({ booking }) {
   const vendor = booking.vendorBusiness || booking.vendorName
-  const body = `
-    <h2 style="font-size:18px;color:#111;margin:0 0 16px">Insurance Certificate Uploaded ✅</h2>
-    <p style="font-size:14px;color:#555;margin:0 0 20px">
-      <strong>${vendor}</strong> has uploaded their Certificate of Currency for the Found Underground.
-    </p>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:13px">
-      <tr><td style="padding:8px 0;color:#888;width:130px">Vendor</td><td style="padding:8px 0;color:#111">${vendor}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Ref</td><td style="padding:8px 0;color:#111">${booking.ref}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">File</td><td style="padding:8px 0;color:#111">${booking.insuranceFileName || 'Certificate uploaded'}</td></tr>
-    </table>
-    ${booking.insuranceUrl ? `<a href="${booking.insuranceUrl}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:12px 28px;font-size:13px;font-weight:700;border-radius:6px">View Certificate →</a>` : ''}
-    <p style="font-size:12px;color:#888;margin:16px 0 0">Please review the certificate and mark the vendor as confirmed in the admin portal.</p>`
+  const body =
+    bH2('Insurance Certificate Uploaded ✅') +
+    bP(`<strong>${vendor}</strong> has uploaded their Certificate of Currency for the Found Underground.`) +
+    bTable([
+      ['Vendor', vendor],
+      ['Ref', booking.ref],
+      ['File', booking.insuranceFileName || 'Certificate uploaded'],
+    ]) +
+    (booking.insuranceUrl ? bBtn('View Certificate →', booking.insuranceUrl) : '') +
+    bSmall('Please review the certificate and mark the vendor as confirmed in the admin portal.')
   return frame(body)
 }
 
 function buildSigningReminderEmail({ booking, signingUrl }) {
   const vendor = booking.vendorBusiness || booking.vendorName
-  const body = `
-    <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Friendly Reminder · Vendor Participation Agreement</p>
-    <h2 style="font-size:20px;color:#111;margin:0 0 20px">Hi ${booking.vendorName} — just a reminder to sign your vendor agreement</h2>
-    <p style="font-size:14px;color:#555;margin:0 0 20px">
-      We noticed you haven't had a chance to sign yet. Here's your link — it only takes a few minutes.
-      Please review and sign the Vendor Participation Agreement, Liability Waiver, and Venue Rules using the button below.
-    </p>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:28px;font-size:13px">
-      <tr><td style="padding:8px 0;color:#888;width:130px">Event</td><td style="padding:8px 0;font-weight:600;color:#111">${EVENT.name}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Date</td><td style="padding:8px 0;color:#111">${EVENT.date}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Hours</td><td style="padding:8px 0;color:#111">${EVENT.hours}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Venue</td><td style="padding:8px 0;color:#111">${EVENT.venue}</td></tr>
-      ${booking.vendorType ? `<tr><td style="padding:8px 0;color:#888">Vendor Type</td><td style="padding:8px 0;color:#111">${booking.vendorType}</td></tr>` : ''}
-      ${booking.allocatedSpace ? `<tr><td style="padding:8px 0;color:#888">Allocated Space</td><td style="padding:8px 0;color:#111">${booking.allocatedSpace}</td></tr>` : ''}
-    </table>
-    <div style="text-align:center;margin:28px 0">
-      <a href="${signingUrl}"
-         style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 36px;font-size:14px;font-weight:700;border-radius:6px">
-        Review &amp; Sign Documents
-      </a>
-    </div>
-    <p style="font-size:12px;color:#999;margin:0 0 12px">
-      If the button doesn't work, copy this link:<br>
-      <a href="${signingUrl}" style="color:#888;word-break:break-all">${signingUrl}</a>
-    </p>
-    <p style="font-size:12px;color:#bbb;margin:0">
-      After signing, you'll be asked to submit a Certificate of Currency for Public Liability Insurance (min. AUD $10,000,000).
-      Any questions? Reply to this email or contact <a href="mailto:info@hexahub.com.au" style="color:#888">info@hexahub.com.au</a>.
-    </p>`
+  const body =
+    bKicker('Friendly Reminder · Vendor Participation Agreement') +
+    bH2(`Hi ${booking.vendorName} — just a reminder to sign your vendor agreement`) +
+    bP(`We noticed you haven't had a chance to sign yet. Here's your link — it only takes a few minutes. Please review and sign the Vendor Participation Agreement, Liability Waiver, and Venue Rules using the button below.`) +
+    bTable([
+      ['Event', EVENT.name, true],
+      ['Date', EVENT.date],
+      ['Hours', EVENT.hours],
+      ['Venue', EVENT.venue],
+      ...(booking.vendorType ? [['Vendor Type', booking.vendorType]] : []),
+      ...(booking.allocatedSpace ? [['Allocated Space', booking.allocatedSpace]] : []),
+    ]) +
+    bBtn('Review &amp; Sign Documents', signingUrl) +
+    bSmall(`If the button doesn't work, copy this link:<br><a href="${signingUrl}" style="color:${MUTE};word-break:break-all">${signingUrl}</a>`) +
+    bSmall(`After signing, you'll be asked to submit a Certificate of Currency for Public Liability Insurance (min. AUD $10,000,000). Any questions? Reply to this email or contact <a href="mailto:info@hexahub.com.au" style="color:${OLIVE}">info@hexahub.com.au</a>.`)
   return frame(body)
 }
 
 function buildInsuranceReminderEmail({ booking, signingUrl }) {
   const vendor = booking.vendorBusiness || booking.vendorName
-  const body = `
-    <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Action Required · Insurance Certificate</p>
-    <h2 style="font-size:20px;color:#111;margin:0 0 20px">Hi ${booking.vendorName} — please upload your insurance certificate</h2>
-    <p style="font-size:14px;color:#555;margin:0 0 20px">
-      Thanks for signing your Vendor Participation Agreement for the <strong>Found Underground on 7 June 2026</strong>.
-      We're following up to request your <strong>Certificate of Currency for Public Liability Insurance</strong> (minimum AUD $10,000,000).
-    </p>
-    ${signingUrl ? `
-    <div style="text-align:center;margin:28px 0">
-      <a href="${signingUrl}"
-         style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 36px;font-size:14px;font-weight:700;border-radius:6px">
-        Upload Insurance Certificate
-      </a>
-    </div>
-    <p style="font-size:12px;color:#999;margin:0 0 20px">
-      If the button doesn't work, copy this link:<br>
-      <a href="${signingUrl}" style="color:#888;word-break:break-all">${signingUrl}</a>
-    </p>` : ''}
-    <div style="background:#fff8ed;border:1px solid #ffe4b2;border-radius:6px;padding:16px 20px;margin:0 0 20px">
-      <p style="font-size:13px;color:#92600a;margin:0;font-weight:600">Don't have Public Liability Insurance?</p>
-      <p style="font-size:13px;color:#92600a;margin:8px 0 0">
-        Contact <strong>Jitesh on 0404 339 815</strong> and he'll organise a one-day policy for you.
-      </p>
-    </div>
-    <p style="font-size:12px;color:#bbb;margin:0">
-      Alternatively, you can email your certificate directly to <a href="mailto:info@hexahub.com.au" style="color:#888">info@hexahub.com.au</a>.
-      Please reference your business name in the subject line.
-    </p>`
+  const body =
+    bKicker('Action Required · Insurance Certificate') +
+    bH2(`Hi ${booking.vendorName} — please upload your insurance certificate`) +
+    bP(`Thanks for signing your Vendor Participation Agreement for the <strong>Found Underground on 7 June 2026</strong>. We're following up to request your <strong>Certificate of Currency for Public Liability Insurance</strong> (minimum AUD $10,000,000).`) +
+    (signingUrl
+      ? bBtn('Upload Insurance Certificate', signingUrl) +
+        bSmall(`If the button doesn't work, copy this link:<br><a href="${signingUrl}" style="color:${MUTE};word-break:break-all">${signingUrl}</a>`)
+      : '') +
+    bPanel(
+      `<p style="font-family:'HexaGT','Helvetica Neue',Arial,sans-serif;font-size:13px;color:#92600a;margin:0;font-weight:600">Don't have Public Liability Insurance?</p>` +
+      `<p style="font-family:'HexaGT','Helvetica Neue',Arial,sans-serif;font-size:13px;color:#92600a;margin:8px 0 0">Contact <strong>Jitesh on 0404 339 815</strong> and he'll organise a one-day policy for you.</p>`
+    ) +
+    bSmall(`Alternatively, you can email your certificate directly to <a href="mailto:info@hexahub.com.au" style="color:${OLIVE}">info@hexahub.com.au</a>. Please reference your business name in the subject line.`)
   return frame(body)
 }
 
 function buildAgreementCopyEmail({ booking }) {
   const vendor = booking.vendorBusiness || booking.vendorName
-  const body = `
-    <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Found Underground · Signed Agreement</p>
-    <h2 style="font-size:20px;color:#111;margin:0 0 20px">Your signed agreement is ready, ${booking.vendorName}</h2>
-    <p style="font-size:14px;color:#555;margin:0 0 20px">
-      Thank you for signing your Vendor Participation Agreement for the <strong>Found Underground on 7 June 2026</strong>.
-      Your countersigned copy is ready to download and keep for your records.
-    </p>
-    <div style="text-align:center;margin:28px 0">
-      <a href="${booking.agreementPdfUrl}"
-         style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 36px;font-size:14px;font-weight:700;border-radius:6px">
-        Download Signed Agreement (PDF)
-      </a>
-    </div>
-    <p style="font-size:12px;color:#999;margin:0 0 20px">
-      If the button doesn't work, copy this link:<br>
-      <a href="${booking.agreementPdfUrl}" style="color:#888;word-break:break-all">${booking.agreementPdfUrl}</a>
-    </p>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:28px;font-size:13px">
-      <tr><td style="padding:8px 0;color:#888;width:130px">Ref</td><td style="padding:8px 0;font-weight:600;color:#111">${booking.ref}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Business</td><td style="padding:8px 0;color:#111">${vendor}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Signed by</td><td style="padding:8px 0;color:#111">${booking.signerName}${booking.signerTitle ? ` — ${booking.signerTitle}` : ''}</td></tr>
-      ${booking.allocatedSpace ? `<tr><td style="padding:8px 0;color:#888">Allocated Space</td><td style="padding:8px 0;color:#111">${booking.allocatedSpace}</td></tr>` : ''}
-    </table>
-    <p style="font-size:13px;color:#555;margin:0 0 8px">
-      Next step: please upload your <strong>Certificate of Currency for Public Liability Insurance</strong> (minimum AUD $10,000,000)
-      if you haven't already. Don't have PLI? Contact Jitesh on <strong>0404 339 815</strong>.
-    </p>
-    <p style="font-size:13px;color:#555;margin:0">See you on June 7! 🏁</p>`
+  const body =
+    bKicker('Found Underground · Signed Agreement') +
+    bH2(`Your signed agreement is ready, ${booking.vendorName}`) +
+    bP(`Thank you for signing your Vendor Participation Agreement for the <strong>Found Underground on 7 June 2026</strong>. Your countersigned copy is ready to download and keep for your records.`) +
+    bBtn('Download Signed Agreement (PDF)', booking.agreementPdfUrl) +
+    bSmall(`If the button doesn't work, copy this link:<br><a href="${booking.agreementPdfUrl}" style="color:${MUTE};word-break:break-all">${booking.agreementPdfUrl}</a>`) +
+    bTable([
+      ['Ref', booking.ref, true],
+      ['Business', vendor],
+      ['Signed by', `${booking.signerName}${booking.signerTitle ? ` — ${booking.signerTitle}` : ''}`],
+      ...(booking.allocatedSpace ? [['Allocated Space', booking.allocatedSpace]] : []),
+    ]) +
+    bP(`Next step: please upload your <strong>Certificate of Currency for Public Liability Insurance</strong> (minimum AUD $10,000,000) if you haven't already. Don't have PLI? Contact Jitesh on <strong>0404 339 815</strong>.`) +
+    bP('See you on June 7! 🏁')
   return frame(body)
 }
 
@@ -251,95 +167,60 @@ const EVENT_DOCS = {
 
 function buildEventDocsEmail({ booking }) {
   const vendor = booking.vendorBusiness || booking.vendorName
-  const body = `
-    <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Found Underground · Event Documents</p>
-    <h2 style="font-size:20px;color:#111;margin:0 0 16px">Hi ${booking.vendorName} — your event documents are ready</h2>
-    <p style="font-size:14px;color:#555;margin:0 0 24px">
-      We're getting excited for <strong>Sunday 7 June 2026</strong>! Please find your event documents below.
-      Review these carefully before the day.
-    </p>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:13px">
-      <tr><td style="padding:8px 0;color:#888;width:130px">Event</td><td style="padding:8px 0;font-weight:600;color:#111">${EVENT.name}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Date</td><td style="padding:8px 0;color:#111">${EVENT.date}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Hours</td><td style="padding:8px 0;color:#111">${EVENT.hours}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Venue</td><td style="padding:8px 0;color:#111">${EVENT.venue}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Bump-In From</td><td style="padding:8px 0;color:#111">11:00 AM</td></tr>
-      ${booking.allocatedSpace ? `<tr><td style="padding:8px 0;color:#888">Your Space</td><td style="padding:8px 0;font-weight:600;color:#111">${booking.allocatedSpace}</td></tr>` : ''}
-    </table>
-    <div style="display:flex;flex-direction:column;gap:12px;margin:0 0 28px">
-      <a href="${EVENT_DOCS.rundown.url}"
-         style="display:block;border:1px solid #e5e5e5;border-radius:6px;padding:16px 20px;text-decoration:none;color:#111">
-        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Event Rundown</div>
-        <div style="font-size:14px;font-weight:700;color:#111">Download Rundown →</div>
-      </a>
-      <a href="${EVENT_DOCS.map.url}"
-         style="display:block;border:1px solid #e5e5e5;border-radius:6px;padding:16px 20px;text-decoration:none;color:#111">
-        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Vendor Map</div>
-        <div style="font-size:14px;font-weight:700;color:#111">Download Map →</div>
-      </a>
-    </div>
-    <p style="font-size:13px;color:#555;margin:0 0 8px">
-      If you have any questions, reply to this email or contact us at
-      <a href="mailto:info@hexahub.com.au" style="color:#111">info@hexahub.com.au</a>.
-    </p>
-    <p style="font-size:13px;color:#555;margin:0">See you on June 7! 🏁</p>`
+  const docCard = (label, cta, url) => `<a href="${url}" style="display:block;border:1px solid ${HAIR};border-radius:8px;padding:16px 20px;text-decoration:none;color:${INK};margin:0 0 12px">` +
+    `<div style="font-family:'HexaRework','Helvetica Neue',Arial,sans-serif;font-size:11px;color:${OLIVE};text-transform:uppercase;letter-spacing:.2em;margin-bottom:4px">${label}</div>` +
+    `<div style="font-family:'HexaGT','Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:600;color:${INK}">${cta}</div></a>`
+  const body =
+    bKicker('Found Underground · Event Documents') +
+    bH2(`Hi ${booking.vendorName} — your event documents are ready`) +
+    bP(`We're getting excited for <strong>Sunday 7 June 2026</strong>! Please find your event documents below. Review these carefully before the day.`) +
+    bTable([
+      ['Event', EVENT.name, true],
+      ['Date', EVENT.date],
+      ['Hours', EVENT.hours],
+      ['Venue', EVENT.venue],
+      ['Bump-In From', '11:00 AM'],
+      ...(booking.allocatedSpace ? [['Your Space', booking.allocatedSpace, true]] : []),
+    ]) +
+    `<div style="margin:0 0 20px">${docCard('Event Rundown', 'Download Rundown →', EVENT_DOCS.rundown.url)}${docCard('Vendor Map', 'Download Map →', EVENT_DOCS.map.url)}</div>` +
+    bP(`If you have any questions, reply to this email or contact us at <a href="mailto:info@hexahub.com.au" style="color:${OLIVE}">info@hexahub.com.au</a>.`) +
+    bP('See you on June 7! 🏁')
   return frame(body)
 }
 
 function buildExecutedAgreementEmail({ booking }) {
   const vendor = booking.vendorBusiness || booking.vendorName
   const licensorName = booking.licensorSignerName || 'HexaHub Pty Ltd'
-  const body = `
-    <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Found Underground · Fully Executed Agreement</p>
-    <h2 style="font-size:20px;color:#111;margin:0 0 20px">Your agreement is fully executed, ${booking.vendorName}!</h2>
-    <p style="font-size:14px;color:#555;margin:0 0 20px">
-      Your Vendor Participation Agreement for the <strong>Found Underground on 7 June 2026</strong> has been
-      countersigned by <strong>${licensorName}</strong> on behalf of HexaHub. The agreement is now fully executed.
-      Please download your copy for your records.
-    </p>
-    <div style="text-align:center;margin:28px 0">
-      <a href="${booking.agreementPdfUrl}"
-         style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 36px;font-size:14px;font-weight:700;border-radius:6px">
-        Download Executed Agreement (PDF)
-      </a>
-    </div>
-    <p style="font-size:12px;color:#999;margin:0 0 20px">
-      If the button doesn't work, copy this link:<br>
-      <a href="${booking.agreementPdfUrl}" style="color:#888;word-break:break-all">${booking.agreementPdfUrl}</a>
-    </p>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:28px;font-size:13px">
-      <tr><td style="padding:8px 0;color:#888;width:130px">Ref</td><td style="padding:8px 0;font-weight:600;color:#111">${booking.ref}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Business</td><td style="padding:8px 0;color:#111">${vendor}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Signed by</td><td style="padding:8px 0;color:#111">${booking.signerName}${booking.signerTitle ? ` — ${booking.signerTitle}` : ''}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Countersigned by</td><td style="padding:8px 0;color:#111">${licensorName}${booking.licensorSignerTitle ? ` — ${booking.licensorSignerTitle}` : ''}</td></tr>
-      ${booking.allocatedSpace ? `<tr><td style="padding:8px 0;color:#888">Allocated Space</td><td style="padding:8px 0;color:#111">${booking.allocatedSpace}</td></tr>` : ''}
-    </table>
-    <p style="font-size:13px;color:#555;margin:0 0 8px">
-      We're looking forward to having you at the event. See you on June 7! 🏁
-    </p>
-    <p style="font-size:12px;color:#bbb;margin:0">
-      Questions? Reply to this email or contact <a href="mailto:info@hexahub.com.au" style="color:#888">info@hexahub.com.au</a>.
-    </p>`
+  const body =
+    bKicker('Found Underground · Fully Executed Agreement') +
+    bH2(`Your agreement is fully executed, ${booking.vendorName}!`) +
+    bP(`Your Vendor Participation Agreement for the <strong>Found Underground on 7 June 2026</strong> has been countersigned by <strong>${licensorName}</strong> on behalf of HexaHub. The agreement is now fully executed. Please download your copy for your records.`) +
+    bBtn('Download Executed Agreement (PDF)', booking.agreementPdfUrl) +
+    bSmall(`If the button doesn't work, copy this link:<br><a href="${booking.agreementPdfUrl}" style="color:${MUTE};word-break:break-all">${booking.agreementPdfUrl}</a>`) +
+    bTable([
+      ['Ref', booking.ref, true],
+      ['Business', vendor],
+      ['Signed by', `${booking.signerName}${booking.signerTitle ? ` — ${booking.signerTitle}` : ''}`],
+      ['Countersigned by', `${licensorName}${booking.licensorSignerTitle ? ` — ${booking.licensorSignerTitle}` : ''}`],
+      ...(booking.allocatedSpace ? [['Allocated Space', booking.allocatedSpace]] : []),
+    ]) +
+    bP(`We're looking forward to having you at the event. See you on June 7! 🏁`) +
+    bSmall(`Questions? Reply to this email or contact <a href="mailto:info@hexahub.com.au" style="color:${OLIVE}">info@hexahub.com.au</a>.`)
   return frame(body)
 }
 
 function buildInsuranceDeferredEmail({ booking }) {
   const vendor = booking.vendorBusiness || booking.vendorName
-  const body = `
-    <h2 style="font-size:18px;color:#111;margin:0 0 16px">Insurance Pending — Follow Up Required ⚠️</h2>
-    <p style="font-size:14px;color:#555;margin:0 0 20px">
-      <strong>${vendor}</strong> has indicated they will email their Certificate of Currency separately.
-      Please follow up to ensure it is received before the event date.
-    </p>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:13px">
-      <tr><td style="padding:8px 0;color:#888;width:130px">Vendor</td><td style="padding:8px 0;color:#111">${vendor}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Email</td><td style="padding:8px 0;color:#111">${booking.vendorEmail}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Ref</td><td style="padding:8px 0;color:#111">${booking.ref}</td></tr>
-      <tr><td style="padding:8px 0;color:#888">Requirement</td><td style="padding:8px 0;color:#111">Min. AUD $10,000,000 Public Liability Insurance</td></tr>
-    </table>
-    <p style="font-size:12px;color:#888;margin:0">
-      Once received, mark the vendor as "Insurance Received" in the admin portal.
-    </p>`
+  const body =
+    bH2('Insurance Pending — Follow Up Required ⚠️') +
+    bP(`<strong>${vendor}</strong> has indicated they will email their Certificate of Currency separately. Please follow up to ensure it is received before the event date.`) +
+    bTable([
+      ['Vendor', vendor],
+      ['Email', booking.vendorEmail],
+      ['Ref', booking.ref],
+      ['Requirement', 'Min. AUD $10,000,000 Public Liability Insurance'],
+    ]) +
+    bSmall('Once received, mark the vendor as "Insurance Received" in the admin portal.')
   return frame(body)
 }
 

@@ -4,6 +4,7 @@
 // creates a new record — to the 'requested' stage for admin review.
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
+import { brandFrame, bH2, bTable, bSmall } from './_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -80,20 +81,17 @@ async function notifyAdmin(supabase, b) {
   if (!to.length) return
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
   const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
-  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
-  <div style="max-width:560px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:20px 32px"><span style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px">${fromName.toUpperCase()}</span></div>
-    <div style="padding:32px">
-      <h2 style="margin:0 0 12px;font-size:16px">Function booking request — review needed 🗓️</h2>
-      <div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:4px;padding:16px;font-size:13px;color:#555">
-        <div><strong>Name:</strong> ${b.name || '—'}${b.organisation ? ` (${b.organisation})` : ''}</div>
-        <div><strong>Email:</strong> ${b.email || '—'}</div>
-        <div><strong>Event:</strong> ${b.eventName || '—'}${b.eventType ? ` · ${b.eventType}` : ''}</div>
-        <div><strong>Requested date:</strong> ${b.eventDate || '—'} ${b.startTime || ''}${b.endTime ? `–${b.endTime}` : ''}</div>
-        <div><strong>Layout:</strong> ${b.layout || '—'} · <strong>Guests:</strong> ${b.guests || '—'}</div>
-      </div>
-      <p style="font-size:12px;color:#888;margin-top:20px">Review in Function Bookings — check for clashes, then approve to invite them to the portal.</p>
-    </div>
-  </div></body></html>`
+  const html = brandFrame(
+    bH2('Function booking request — review needed 🗓️') +
+    bTable([
+      ['Name', `${b.name || '—'}${b.organisation ? ` (${b.organisation})` : ''}`],
+      ['Email', b.email || '—'],
+      ['Event', `${b.eventName || '—'}${b.eventType ? ` · ${b.eventType}` : ''}`],
+      ['Requested date', `${b.eventDate || '—'} ${b.startTime || ''}${b.endTime ? `–${b.endTime}` : ''}`],
+      ['Layout', `${b.layout || '—'} · ${b.guests || '—'} guests`],
+    ]) +
+    bSmall('Review in Function Bookings — check for clashes, then approve to invite them to the portal.'),
+    { footerLabel: 'Function Space Hire' }
+  )
   await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `Function request — ${b.name || b.email} (${b.eventDate || 'no date'})`, html })
 }

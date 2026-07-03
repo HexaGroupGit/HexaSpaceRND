@@ -12,6 +12,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
+import { brandFrame, bKicker, bH1, bP, bSmall, bBtn, bPanel, bTable, SANS, MUTE, OLIVE } from './_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SITE = 'https://www.hexahub.com.au'
@@ -144,20 +145,22 @@ async function emailReferrer(supabase, referrer) {
   const shareUrl = `${SITE}/?ref=${referrer.code}`
   const dashUrl = `${APP}/refer/${referrer.token}`
 
-  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1a1a1a;background:#f5f5f5;margin:0;padding:0">
-    <div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-      <div style="background:#000;padding:18px 28px"><span style="color:#fff;font-weight:bold;letter-spacing:2px">${fromName.toUpperCase()}</span></div>
-      <div style="padding:28px;font-size:14px;line-height:1.6">
-        <p style="margin:0 0 14px">Hi ${referrer.name},</p>
-        <p style="margin:0 0 14px">Thanks for joining the ${fromName} referral program! Here are your links.</p>
-        <p style="margin:0 0 6px;font-weight:bold">Your referral link — share this:</p>
-        <p style="margin:0 0 16px"><a href="${shareUrl}" style="color:#2a3065;word-break:break-all">${shareUrl}</a></p>
-        <p style="margin:0 0 6px;font-weight:bold">Track your referrals &amp; rewards:</p>
-        <p style="margin:0 0 20px"><a href="${dashUrl}" style="color:#2a3065;word-break:break-all">${dashUrl}</a></p>
-        <p style="margin:0 0 14px;color:#555">When someone enquires through your link and a deal closes, you earn a reward. Keep this email — your dashboard link is your private access (no password needed).</p>
-        <p style="margin:0;font-size:12px;color:#888">${fromName} &middot; hexahub.com.au</p>
-      </div>
-    </div></body></html>`
+  const inner =
+    bKicker('Referral Partners') +
+    bH1(`Welcome to the ${fromName} referral program`) +
+    bP(`Hi ${referrer.name},`) +
+    bP(`Thanks for joining the ${fromName} referral program! Here are your links.`) +
+    bPanel(
+      `<div style="font-family:${SANS};font-size:11px;color:${MUTE};text-transform:uppercase;letter-spacing:.12em;margin:0 0 7px">Your referral link — share this</div>` +
+      `<a href="${shareUrl}" style="font-family:${SANS};font-size:13px;color:${OLIVE};word-break:break-all;text-decoration:none">${shareUrl}</a>`
+    ) +
+    bPanel(
+      `<div style="font-family:${SANS};font-size:11px;color:${MUTE};text-transform:uppercase;letter-spacing:.12em;margin:0 0 7px">Track your referrals &amp; rewards</div>` +
+      `<a href="${dashUrl}" style="font-family:${SANS};font-size:13px;color:${OLIVE};word-break:break-all;text-decoration:none">${dashUrl}</a>`
+    ) +
+    bBtn('Open Your Dashboard', dashUrl) +
+    bSmall(`When someone enquires through your link and a deal closes, you earn a reward. Keep this email — your dashboard link is your private access (no password needed).`)
+  const html = brandFrame(inner, { footerLabel: 'Referral Partners' })
 
   await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: referrer.email, subject: `Your ${fromName} referral link`, html })
 }
@@ -172,18 +175,17 @@ async function notifyAdmin(supabase, referrer, { alreadyEnrolled, directLeadCrea
   const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
 
   const headline = alreadyEnrolled ? 'Returning referrer activity' : 'New referrer self-enrolled 🎉'
-  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
-    <div style="max-width:560px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-      <div style="background:#000;padding:20px 32px"><span style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px">${fromName.toUpperCase()}</span></div>
-      <div style="padding:32px;font-size:13px;color:#555">
-        <h2 style="margin:0 0 12px;font-size:16px;color:#1a1a1a">${headline}</h2>
-        <div><strong>Name:</strong> ${referrer.name}</div>
-        <div><strong>Email:</strong> ${referrer.email}</div>
-        <div><strong>Code:</strong> ${referrer.code}</div>
-        ${directLeadCreated ? `<div style="margin-top:8px"><strong>Direct referral submitted:</strong> ${referralName}</div>` : ''}
-        <p style="margin-top:16px">Set their commission rate in Marketing → Referrals.</p>
-      </div>
-    </div></body></html>`
+  const inner =
+    bKicker('Referral Partners') +
+    bH1(headline) +
+    bTable([
+      ['Name', referrer.name],
+      ['Email', referrer.email],
+      ['Code', referrer.code],
+      ...(directLeadCreated ? [['Direct referral submitted', referralName]] : []),
+    ]) +
+    bP('Set their commission rate in Marketing → Referrals.')
+  const html = brandFrame(inner, { footerLabel: 'Referral Partners' })
 
   await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `${headline} — ${referrer.name}`, html })
 }

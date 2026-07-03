@@ -8,6 +8,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from '../_email.js'
+import { brandFrame, bKicker, bH1, bP, bBtn, bTable } from '../_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -73,50 +74,18 @@ export default async function handler(req, res) {
 
   if (!recipients.length) return res.status(200).json({ sent: 0, reason: 'No active portal members.' })
 
-  const html = `
-<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
-  <div style="background:#000000;padding:28px 40px;">
-    <div style="color:#ffffff;font-size:20px;font-weight:900;letter-spacing:4px;">HEXAHUB</div>
-    <div style="color:#888888;font-size:11px;margin-top:3px;">New Event</div>
-  </div>
+  const eventRows = []
+  if (event.date) eventRows.push(['Date', `${fmtDate(event.date)}${event.time ? ` · ${event.time}` : ''}`, true])
+  if (event.location) eventRows.push(['Location', event.location])
 
-  <div style="padding:36px 40px;">
-    <p style="color:#888888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px;">You're invited</p>
-    <h2 style="font-size:22px;color:#111111;margin:0 0 20px;">${event.title}</h2>
-
-    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
-      ${event.date ? `
-      <tr>
-        <td style="padding:8px 0;font-size:13px;color:#888888;width:80px;vertical-align:top;">Date</td>
-        <td style="padding:8px 0;font-size:13px;color:#111111;font-weight:600;">
-          ${fmtDate(event.date)}${event.time ? ` · ${event.time}` : ''}
-        </td>
-      </tr>` : ''}
-      ${event.location ? `
-      <tr>
-        <td style="padding:8px 0;font-size:13px;color:#888888;vertical-align:top;">Location</td>
-        <td style="padding:8px 0;font-size:13px;color:#111111;">${event.location}</td>
-      </tr>` : ''}
-    </table>
-
-    ${event.description ? `
-    <p style="color:#444444;font-size:14px;line-height:1.7;margin:0 0 28px;">${event.description}</p>` : ''}
-
-    <a href="${event.link || 'https://www.hexahub.com.au/events'}"
-       style="display:inline-block;background:#000000;color:#ffffff;text-decoration:none;
-              padding:12px 28px;font-size:13px;font-weight:600;border-radius:6px;">
-      Find Out More
-    </a>
-  </div>
-
-  <div style="background:#f5f5f5;padding:20px 40px;border-top:1px solid #eeeeee;">
-    <p style="color:#999999;font-size:11px;margin:0;text-align:center;line-height:1.6;">
-      HexaHub Pty Ltd &nbsp;·&nbsp; 402/830 Whitehorse Road, Box Hill VIC 3128<br>
-      <em>build locally, scale sustainably</em> &nbsp;·&nbsp;
-      <a href="https://hexahub.com.au" style="color:#999999;">hexahub.com.au</a>
-    </p>
-  </div>
-</div>`
+  const html = brandFrame(
+    bKicker("You're invited") +
+    bH1(event.title) +
+    (eventRows.length ? bTable(eventRows) : '') +
+    (event.description ? bP(event.description) : '') +
+    bBtn('Find Out More', event.link || 'https://www.hexahub.com.au/events'),
+    { footerLabel: 'Member Portal' }
+  )
 
   let sent = 0
   for (const tenant of recipients) {

@@ -3,6 +3,7 @@
 // the same company and emails them a portal set-password link.
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from '../_email.js'
+import { brandFrame, bKicker, bH2, bP, bBtn, bSmall, OLIVE } from '../_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -47,16 +48,14 @@ export default async function handler(req, res) {
     if (resendKey && actionLink) {
       const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
       const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
-      const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff">
-        <div style="background:#161614;padding:32px 40px"><span style="color:#fff;font-size:20px;font-weight:700;letter-spacing:4px">HEXA SPACE</span><div style="color:#888;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-top:6px">Member Portal</div></div>
-        <div style="padding:40px">
-          <h2 style="font-size:20px;color:#111;margin:0 0 16px;font-weight:600">You've been added to ${tenant.businessName || 'your company'}</h2>
-          <p style="color:#444;font-size:14px;line-height:1.7;margin:0 0 24px">Hi ${name}, you've been given access to the Hexa Space member portal — book meeting rooms, view your company's details and message our team.</p>
-          <a href="${actionLink}" style="display:inline-block;background:#161614;color:#fff;text-decoration:none;padding:14px 36px;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:28px">Set up your password</a>
-          <p style="color:#999;font-size:12px;line-height:1.6;margin:0">This link expires in 24 hours. Questions? <a href="mailto:info@hexaspace.com.au" style="color:#7F8B2F">info@hexaspace.com.au</a></p>
-        </div>
-        <div style="background:#f6f5f1;padding:22px 40px;border-top:1px solid #eee"><p style="color:#999;font-size:11px;margin:0;text-align:center">Hexa Space Pty Ltd · 402/830 Whitehorse Road, Box Hill VIC 3128 · hexaspace.com.au</p></div>
-      </div>`
+      const html = brandFrame(
+        bKicker('Member Portal') +
+        bH2(`You've been added to ${tenant.businessName || 'your company'}`) +
+        bP(`Hi ${name}, you've been given access to the Hexa Space member portal — book meeting rooms, view your company's details and message our team.`) +
+        bBtn('Set up your password', actionLink) +
+        bSmall(`This link expires in 24 hours. Questions? <a href="mailto:info@hexaspace.com.au" style="color:${OLIVE};text-decoration:none">info@hexaspace.com.au</a>`),
+        { footerLabel: 'Member Portal' }
+      )
       await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: email, subject: `You've been added to ${tenant.businessName || 'Hexa Space'} on the member portal`, html })
     }
 

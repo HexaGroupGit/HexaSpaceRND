@@ -10,6 +10,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
+import { brandFrame, bH2, bP, bTable, bSmall } from './_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const VENUE = 'Lonsdale 369'
@@ -89,20 +90,19 @@ async function notifyAdmin(supabase, b) {
   const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
   const fee = b.participationFee ? `$${Number(b.participationFee).toLocaleString('en-AU')}` : '—'
 
-  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
-    <div style="max-width:560px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-      <div style="background:#000;padding:20px 32px"><span style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px">${fromName.toUpperCase()}</span></div>
-      <div style="padding:32px;font-size:13px;color:#555">
-        <h2 style="margin:0 0 12px;font-size:16px;color:#1a1a1a">New ${b.venue} pop-up booking 🛍️</h2>
-        <div><strong>Name:</strong> ${b.vendorName}${b.vendorBusiness ? ` (${b.vendorBusiness})` : ''}</div>
-        <div><strong>Email:</strong> ${b.vendorEmail}</div>
-        <div><strong>Phone:</strong> ${b.vendorPhone || '—'}</div>
-        <div><strong>Dates:</strong> ${b.bookingStartDate} → ${b.bookingEndDate} (${b.bookingDays} day${b.bookingDays === 1 ? '' : 's'})</div>
-        <div><strong>Estimated fee:</strong> ${fee}</div>
-        ${b.vendorDescription ? `<div style="margin-top:8px"><strong>Note:</strong><br>${String(b.vendorDescription).replace(/</g, '&lt;')}</div>` : ''}
-        <p style="margin-top:16px">Review availability in Pop-up Bookings, then send the licence to sign.</p>
-      </div>
-    </div></body></html>`
+  const html = brandFrame(
+    bH2(`New ${b.venue} pop-up booking 🛍️`) +
+    bTable([
+      ['Name', `${b.vendorName}${b.vendorBusiness ? ` (${b.vendorBusiness})` : ''}`],
+      ['Email', b.vendorEmail],
+      ['Phone', b.vendorPhone || '—'],
+      ['Dates', `${b.bookingStartDate} → ${b.bookingEndDate} (${b.bookingDays} day${b.bookingDays === 1 ? '' : 's'})`],
+      ['Estimated fee', fee, true],
+    ]) +
+    (b.vendorDescription ? bP(`<strong>Note:</strong><br>${String(b.vendorDescription).replace(/</g, '&lt;')}`) : '') +
+    bSmall('Review availability in Pop-up Bookings, then send the licence to sign.'),
+    { footerLabel: 'Hexa Space' }
+  )
 
   await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `New ${b.venue} pop-up booking — ${b.vendorName}`, html })
 }

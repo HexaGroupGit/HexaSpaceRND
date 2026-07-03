@@ -4,6 +4,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
+import { brandFrame, bKicker, bH1, bP, bSmall, bTable } from './_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -71,32 +72,18 @@ export default async function handler(req, res) {
         }, 0)
         const gst = inv.vatEnabled !== false ? Math.round(sub * 0.1 * 100) / 100 : 0
         const total = sub + gst
-        return `<tr>
-          <td style="padding:8px 12px;border-bottom:1px solid #eee">${inv.number}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #eee">${inv.dueDate}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">$${total.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD</td>
-        </tr>`
-      }).join('')
+        return [inv.number, `Due ${inv.dueDate} · $${total.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD`, true]
+      })
 
-      const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
-<div style="max-width:560px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-  <div style="background:#000;padding:20px 32px"><span style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px">${fromName.toUpperCase()}</span></div>
-  <div style="padding:32px">
-    <h2 style="margin:0 0 12px;font-size:16px;color:#c00">Payment Reminder</h2>
-    <p style="color:#555;font-size:14px;margin:0 0 16px">Hi ${tenant.contactName ?? tenant.businessName},</p>
-    <p style="color:#555;font-size:14px;margin:0 0 20px">The following invoice(s) are overdue. Please arrange payment at your earliest convenience.</p>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
-      <thead><tr style="background:#f9f9f9">
-        <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #eee">Invoice</th>
-        <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #eee">Due Date</th>
-        <th style="padding:8px 12px;text-align:right;border-bottom:2px solid #eee">Amount</th>
-      </tr></thead>
-      <tbody>${invoiceRows}</tbody>
-    </table>
-    <p style="color:#555;font-size:13px;margin:0 0 8px">Please contact us if you have any questions regarding your account.</p>
-    <p style="font-size:12px;color:#888;margin-top:24px">This is an automated reminder from ${fromName}.</p>
-  </div>
-</div></body></html>`
+      const inner =
+        bKicker('Payment Reminder') +
+        bH1(`${invs.length} overdue invoice${invs.length > 1 ? 's' : ''}`) +
+        bP(`Hi ${tenant.contactName ?? tenant.businessName},`) +
+        bP('The following invoice(s) are overdue. Please arrange payment at your earliest convenience.') +
+        bTable(invoiceRows) +
+        bP('Please contact us if you have any questions regarding your account.') +
+        bSmall(`This is an automated reminder from ${fromName}.`)
+      const html = brandFrame(inner, { footerLabel: 'Accounts' })
 
       await sendResendEmail({
         from: `${fromName} <${fromEmail}>`,

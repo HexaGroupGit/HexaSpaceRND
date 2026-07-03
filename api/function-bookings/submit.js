@@ -6,6 +6,7 @@
 // later when the deposit is marked paid.
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from '../_email.js'
+import { brandFrame, bKicker, bH1, bP, bSmall, bPanel, bTable, SANS, INK } from '../_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const money = (v) => `$${(Number(v) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -99,29 +100,27 @@ async function emailDeposit(settings, b, q) {
   const replyTo = settings?.emails?.replyTo || settings?.emails?.notificationEmail
   const bank = settings?.billing || {}
   const bankBlock = (bank.bankName || bank.bsb || bank.acc)
-    ? `<div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:6px;padding:16px 20px;margin:0 0 20px;font-size:13px;color:#555">
-        <div style="font-weight:700;color:#111;margin-bottom:6px">Payment details</div>
-        ${bank.bankName ? `<div>Bank: ${bank.bankName}</div>` : ''}
-        ${bank.businessName ? `<div>Account name: ${bank.businessName}</div>` : ''}
-        ${bank.bsb ? `<div>BSB: ${bank.bsb}</div>` : ''}
-        ${bank.acc ? `<div>Account: ${bank.acc}</div>` : ''}
-        <div style="margin-top:6px">Reference: ${b.ref}</div>
-      </div>` : ''
-  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:0;background:#f5f5f5">
-  <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:24px 32px"><span style="color:#fff;font-size:18px;font-weight:900;letter-spacing:3px">${(fromName).toUpperCase()}</span><span style="color:#888;font-size:12px;margin-left:12px">Function Space Hire</span></div>
-    <div style="padding:32px">
-      <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px">Deposit due to secure your date</p>
-      <h2 style="font-size:20px;color:#111;margin:0 0 18px">Thanks ${b.name || 'there'} — one step to secure your booking</h2>
-      <p style="font-size:14px;color:#555;margin:0 0 18px">Your details are in. To secure <strong>${b.eventDate || 'your date'}</strong> we just need your deposit. Your date isn't held until the deposit is received.</p>
-      <table style="width:100%;border-collapse:collapse;margin:0 0 20px;font-size:14px">
-        <tr><td style="padding:8px 0;color:#888">Total (inc GST)</td><td style="padding:8px 0;text-align:right;color:#111">${money(q.total)}</td></tr>
-        <tr><td style="padding:8px 0;color:#111;font-weight:700">Deposit due now</td><td style="padding:8px 0;text-align:right;color:#111;font-weight:700">${money(q.dueNow)}</td></tr>
-        <tr><td style="padding:8px 0;color:#888">Balance (14 days before event)</td><td style="padding:8px 0;text-align:right;color:#888">${money(q.balanceDue)}</td></tr>
-      </table>
-      ${bankBlock}
-      <p style="font-size:12px;color:#999;margin:0">Deposit includes your 50% venue hire and the $300 refundable security deposit. Once received, we'll confirm and lock in your booking.</p>
-    </div>
-  </div></body></html>`
+    ? bPanel(
+        `<div style="font-family:${SANS};font-size:11px;font-weight:600;color:${INK};text-transform:uppercase;letter-spacing:.12em;margin:0 0 8px">Payment details</div>` +
+        `<div style="font-family:${SANS};font-size:13px;color:#555;line-height:1.7">` +
+        (bank.bankName ? `<div>Bank: ${bank.bankName}</div>` : '') +
+        (bank.businessName ? `<div>Account name: ${bank.businessName}</div>` : '') +
+        (bank.bsb ? `<div>BSB: ${bank.bsb}</div>` : '') +
+        (bank.acc ? `<div>Account: ${bank.acc}</div>` : '') +
+        `<div style="margin-top:6px">Reference: ${b.ref}</div>` +
+        `</div>`
+      ) : ''
+  const inner =
+    bKicker('Deposit due to secure your date') +
+    bH1(`Thanks ${b.name || 'there'} — one step to secure your booking`) +
+    bP(`Your details are in. To secure <strong>${b.eventDate || 'your date'}</strong> we just need your deposit. Your date isn't held until the deposit is received.`) +
+    bTable([
+      ['Total (inc GST)', money(q.total)],
+      ['Deposit due now', money(q.dueNow), true],
+      ['Balance (14 days before event)', money(q.balanceDue)],
+    ]) +
+    bankBlock +
+    bSmall("Deposit includes your 50% venue hire and the $300 refundable security deposit. Once received, we'll confirm and lock in your booking.")
+  const html = brandFrame(inner, { footerLabel: 'Function Space Hire' })
   await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: b.email, replyTo, subject: `Deposit due to secure your function — ${b.ref}`, html })
 }

@@ -6,6 +6,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
+import { brandFrame, bKicker, bH1, bH2, bSmall, bBtn, bPanel, bTable, SANS, INK, MUTE } from './_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -33,66 +34,31 @@ function monthLabel(periodStart) {
 
 function invoiceEmail(invoice, tenant, settings, subtotal, gst, total) {
   const b = settings.billing ?? {}
-  return `
-<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
-  <div style="background:#000000;padding:28px 40px;">
-    <div style="color:#ffffff;font-size:20px;font-weight:900;letter-spacing:4px;">HEXAHUB</div>
-    <div style="color:#888888;font-size:11px;margin-top:3px;">HexaHub Pty Ltd</div>
-  </div>
-  <div style="padding:36px 40px;">
-    <p style="color:#888888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Invoice</p>
-    <h2 style="font-size:22px;color:#111111;margin:0 0 4px;">${invoice.number}</h2>
-    <p style="color:#888888;font-size:13px;margin:0 0 28px;">Due ${invoice.dueDate}</p>
-
-    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-      <thead>
-        <tr style="background:#000;">
-          <th style="text-align:left;padding:10px 14px;color:#fff;font-size:12px;">Description</th>
-          <th style="text-align:right;padding:10px 14px;color:#fff;font-size:12px;">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${invoice.lineItems.map(li => {
-          const net = li.unitPrice * (li.qty ?? 1) * (1 - (li.discountPct ?? 0) / 100)
-          return `<tr style="border-bottom:1px solid #f0f0f0;">
-            <td style="padding:12px 14px;font-size:13px;color:#333;">${li.description}</td>
-            <td style="padding:12px 14px;font-size:13px;color:#333;text-align:right;">${fmtAud(net)}</td>
-          </tr>`
-        }).join('')}
-      </tbody>
-    </table>
-
-    <table style="width:100%;border-collapse:collapse;margin-bottom:28px;">
-      <tr><td style="padding:5px 14px;font-size:13px;color:#666;">Subtotal</td><td style="padding:5px 14px;font-size:13px;color:#666;text-align:right;">${fmtAud(subtotal)}</td></tr>
-      <tr><td style="padding:5px 14px;font-size:13px;color:#666;">GST (10%)</td><td style="padding:5px 14px;font-size:13px;color:#666;text-align:right;">${fmtAud(gst)}</td></tr>
-      <tr style="background:#f5f5f5;">
-        <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#111;">Total Due</td>
-        <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#111;text-align:right;">${fmtAud(total)}</td>
-      </tr>
-    </table>
-
-    ${b.bankName ? `
-    <div style="background:#f9f9f9;border:1px solid #eee;border-radius:6px;padding:16px 20px;margin-bottom:28px;">
-      <p style="font-size:12px;font-weight:bold;color:#111;margin:0 0 10px;text-transform:uppercase;letter-spacing:1px;">Payment Details</p>
-      <p style="font-size:13px;color:#444;margin:3px 0;">Bank: ${b.bankName}</p>
-      <p style="font-size:13px;color:#444;margin:3px 0;">BSB: ${b.bsb}</p>
-      <p style="font-size:13px;color:#444;margin:3px 0;">Account: ${b.acc}</p>
-      <p style="font-size:13px;color:#444;margin:3px 0;">Reference: <strong>${invoice.number}</strong></p>
-    </div>` : ''}
-
-    <a href="https://members.hexahub.com.au/billing"
-       style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:12px 28px;font-size:13px;font-weight:600;border-radius:6px;">
-      View in Member Portal
-    </a>
-  </div>
-  <div style="background:#f5f5f5;padding:20px 40px;border-top:1px solid #eee;">
-    <p style="color:#999;font-size:11px;margin:0;text-align:center;line-height:1.6;">
-      HexaHub Pty Ltd &nbsp;·&nbsp; ABN ${b.abn ?? ''}<br>
-      ${b.address ?? '402/830 Whitehorse Road, Box Hill VIC 3128'} &nbsp;·&nbsp;
-      <a href="https://hexahub.com.au" style="color:#999;">hexahub.com.au</a>
-    </p>
-  </div>
-</div>`
+  const rows = [
+    ...invoice.lineItems.map(li => {
+      const net = li.unitPrice * (li.qty ?? 1) * (1 - (li.discountPct ?? 0) / 100)
+      return [li.description, fmtAud(net)]
+    }),
+    ['Subtotal', fmtAud(subtotal)],
+    ['GST (10%)', fmtAud(gst)],
+    ['Total Due', fmtAud(total), true],
+  ]
+  const bank = b.bankName ? bPanel(
+    `<div style="font-family:${SANS};font-size:11px;font-weight:600;color:${INK};text-transform:uppercase;letter-spacing:.12em;margin:0 0 10px">Payment Details</div>` +
+    `<div style="font-family:${SANS};font-size:13px;color:#444;margin:3px 0">Bank: ${b.bankName}</div>` +
+    `<div style="font-family:${SANS};font-size:13px;color:#444;margin:3px 0">BSB: ${b.bsb}</div>` +
+    `<div style="font-family:${SANS};font-size:13px;color:#444;margin:3px 0">Account: ${b.acc}</div>` +
+    `<div style="font-family:${SANS};font-size:13px;color:#444;margin:3px 0">Reference: <strong>${invoice.number}</strong></div>`
+  ) : ''
+  const inner =
+    bKicker('Invoice') +
+    bH1(invoice.number) +
+    bSmall(`Due ${invoice.dueDate}`) +
+    bTable(rows) +
+    bank +
+    bBtn('View in Member Portal', 'https://members.hexahub.com.au/billing') +
+    bSmall(`HexaHub Pty Ltd &nbsp;·&nbsp; ABN ${b.abn ?? ''}<br>${b.address ?? '402/830 Whitehorse Road, Box Hill VIC 3128'}`)
+  return brandFrame(inner, { footerLabel: 'Accounts' })
 }
 
 export default async function handler(req, res) {
@@ -206,62 +172,26 @@ export default async function handler(req, res) {
 
   // Send admin summary email
   if (resendKey) {
-    const rows = (items) => items.map(i =>
-      `<tr><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;">${typeof i === 'string' ? i : `${i.number} — ${i.tenant}`}</td></tr>`
-    ).join('')
+    const listPanel = (items, render) => bPanel(
+      items.length
+        ? items.map(i => `<div style="font-family:${SANS};font-size:13px;color:${INK};padding:4px 0">${render(i)}</div>`).join('')
+        : `<div style="font-family:${SANS};font-size:13px;color:${MUTE};font-style:italic;padding:4px 0">None</div>`
+    )
+
+    const inner =
+      bKicker('Auto Bill Run') +
+      bH1(`${periodStart} → ${periodEnd}`) +
+      bH2(`✓ ${created.length} Invoice${created.length !== 1 ? 's' : ''} Created &amp; Emailed`) +
+      listPanel(created, i => typeof i === 'string' ? i : `${i.number} — ${i.tenant}`) +
+      (skipped.length ? bH2(`— ${skipped.length} Skipped (already invoiced)`) + listPanel(skipped, i => i) : '') +
+      (errors.length ? bH2(`✗ ${errors.length} Error${errors.length !== 1 ? 's' : ''}`) + listPanel(errors, e => `${e.tenant ?? e.leaseId}: ${e.reason}`) : '') +
+      bBtn('View Billing', 'https://app.hexahub.com.au/billing')
 
     await sendResendEmail({
         from: 'HexaHub <info@hexahub.com.au>',
         to: ['info@hexahub.com.au'],
         subject: `Auto Bill Run — ${periodStart} → ${periodEnd}`,
-        html: `
-<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#fff;">
-  <div style="background:#000;padding:24px 32px;">
-    <div style="color:#fff;font-size:18px;font-weight:900;letter-spacing:3px;">HEXAHUB</div>
-    <div style="color:#888;font-size:11px;margin-top:2px;">Auto Bill Run Report</div>
-  </div>
-  <div style="padding:28px 32px;">
-    <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Billing Period</p>
-    <h2 style="font-size:18px;color:#111;margin:0 0 24px;">${periodStart} → ${periodEnd}</h2>
-
-    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-      <tr style="background:#000;">
-        <td style="padding:8px 12px;color:#fff;font-size:12px;font-weight:bold;">
-          ✓ ${created.length} Invoice${created.length !== 1 ? 's' : ''} Created &amp; Emailed
-        </td>
-      </tr>
-      ${created.length ? rows(created) : '<tr><td style="padding:6px 12px;color:#888;font-style:italic;">None</td></tr>'}
-    </table>
-
-    ${skipped.length ? `
-    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-      <tr style="background:#f5f5f5;">
-        <td style="padding:8px 12px;color:#555;font-size:12px;font-weight:bold;">
-          — ${skipped.length} Skipped (already invoiced)
-        </td>
-      </tr>
-      ${rows(skipped)}
-    </table>` : ''}
-
-    ${errors.length ? `
-    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-      <tr style="background:#fef2f2;">
-        <td style="padding:8px 12px;color:#dc2626;font-size:12px;font-weight:bold;">
-          ✗ ${errors.length} Error${errors.length !== 1 ? 's' : ''}
-        </td>
-      </tr>
-      ${errors.map(e => `<tr><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;color:#dc2626;">${e.tenant ?? e.leaseId}: ${e.reason}</td></tr>`).join('')}
-    </table>` : ''}
-
-    <a href="https://app.hexahub.com.au/billing"
-       style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:10px 24px;font-size:13px;font-weight:600;border-radius:6px;">
-      View Billing
-    </a>
-  </div>
-  <div style="background:#f5f5f5;padding:16px 32px;border-top:1px solid #eee;">
-    <p style="color:#999;font-size:11px;margin:0;text-align:center;">HexaHub Pty Ltd · hexahub.com.au</p>
-  </div>
-</div>`,
+        html: brandFrame(inner, { footerLabel: 'Accounts' }),
     }).catch(() => {})
   }
 

@@ -11,6 +11,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
+import { brandFrame, bH2, bP, bSmall, bPanel } from './_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -77,22 +78,19 @@ async function notifyAdmin(supabase, reg) {
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'HexaHub'
   const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
 
-  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
-  <div style="max-width:560px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:20px 32px"><span style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px">${fromName.toUpperCase()}</span></div>
-    <div style="padding:32px">
-      <h2 style="margin:0 0 12px;font-size:16px">New event registration 🎟️</h2>
-      <div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:4px;padding:16px;font-size:13px;color:#555">
-        <div><strong>Event:</strong> ${reg.eventName || reg.eventSlug}</div>
-        <div><strong>Name:</strong> ${reg.name || '—'}${reg.businessName ? ` (${reg.businessName})` : ''}</div>
-        <div><strong>Email:</strong> ${reg.email || '—'}</div>
-        <div><strong>Phone:</strong> ${reg.phone || '—'}</div>
-        <div><strong>Guests:</strong> ${reg.guests}</div>
-        ${reg.message ? `<div style="margin-top:8px"><strong>Message:</strong><br>${reg.message.replace(/</g, '&lt;')}</div>` : ''}
-      </div>
-      <p style="font-size:12px;color:#888;margin-top:20px">Saved to Event Registrations in HexaHub.</p>
-    </div>
-  </div></body></html>`
+  const html = brandFrame(
+    bH2('New event registration 🎟️') +
+    bPanel(
+      bP(`<strong>Event:</strong> ${reg.eventName || reg.eventSlug}`) +
+      bP(`<strong>Name:</strong> ${reg.name || '—'}${reg.businessName ? ` (${reg.businessName})` : ''}`) +
+      bP(`<strong>Email:</strong> ${reg.email || '—'}`) +
+      bP(`<strong>Phone:</strong> ${reg.phone || '—'}`) +
+      bP(`<strong>Guests:</strong> ${reg.guests}`) +
+      (reg.message ? bP(`<strong>Message:</strong><br>${reg.message.replace(/</g, '&lt;')}`) : '')
+    ) +
+    bSmall('Saved to Event Registrations in HexaHub.'),
+    { footerLabel: 'Events' }
+  )
 
   await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `New RSVP — ${reg.eventName || reg.eventSlug}`, html })
 }

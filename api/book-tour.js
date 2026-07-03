@@ -5,6 +5,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { fillVars, findEmailTemplate, sendResend } from './_leads.js'
 import { sendResendEmail } from './_email.js'
+import { brandFrame, bH2, bTable, bSmall } from './_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -91,21 +92,18 @@ async function notifyAdmin(supabase, lead) {
   if (!to.length) return
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
   const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'
-  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
-  <div style="max-width:560px;margin:32px auto;background:#fff;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden">
-    <div style="background:#000;padding:20px 32px"><span style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px">${fromName.toUpperCase()}</span></div>
-    <div style="padding:32px">
-      <h2 style="margin:0 0 12px;font-size:16px">New tour request 🗓️</h2>
-      <div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:4px;padding:16px;font-size:13px;color:#555">
-        <div><strong>Name:</strong> ${lead.name || '—'}${lead.businessName ? ` (${lead.businessName})` : ''}</div>
-        <div><strong>Email:</strong> ${lead.email || '—'}</div>
-        <div><strong>Phone:</strong> ${lead.phone || '—'}</div>
-        <div><strong>Interested in:</strong> ${lead.enquiryType || '—'}</div>
-        <div><strong>Preferred:</strong> ${lead.tourDate || '—'} ${lead.tourTime || ''}</div>
-      </div>
-      <p style="font-size:12px;color:#888;margin-top:20px">Added to your Leads pipeline. Confirm a time with them to lock in the inspection.</p>
-    </div>
-  </div></body></html>`
+  const html = brandFrame(
+    bH2('New tour request 🗓️') +
+    bTable([
+      ['Name', `${lead.name || '—'}${lead.businessName ? ` (${lead.businessName})` : ''}`],
+      ['Email', lead.email || '—'],
+      ['Phone', lead.phone || '—'],
+      ['Interested in', lead.enquiryType || '—'],
+      ['Preferred', `${lead.tourDate || '—'} ${lead.tourTime || ''}`],
+    ]) +
+    bSmall('Added to your Leads pipeline. Confirm a time with them to lock in the inspection.'),
+    { footerLabel: 'Book a Tour' }
+  )
   await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `Tour request — ${lead.name || lead.email}`, html })
 }
 

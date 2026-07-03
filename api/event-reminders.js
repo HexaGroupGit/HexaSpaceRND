@@ -7,6 +7,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
+import { brandFrame, bH1, bP, bSmall, bKicker, OLIVE } from './_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SANITY = 'https://w4zxsbqi.api.sanity.io/v2021-06-07/data/query/production'
@@ -41,26 +42,19 @@ function reminderHtml(reg, ev, links, settings) {
   const company = settings?.company?.name || 'HexaHub'
   const when = new Date(ev.date).toLocaleString('en-AU', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', hour12: true })
   const loc = [ev.location, ev.locationAddress].filter(Boolean).join('<br>')
-  const cal = (label, url) => `<a href="${url}" style="color:#2a3065;text-decoration:none;font-weight:600">${label}</a>`
-  return `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1a1a1a;background:#f5f5f5;margin:0;padding:0">
-  <div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden">
-    <div style="background:#000;padding:18px 28px"><span style="color:#fff;font-weight:bold;letter-spacing:2px">${company.toUpperCase()}</span></div>
-    <div style="padding:28px">
-      <h2 style="margin:0 0 6px;font-size:20px;line-height:1.3">Your event <span style="color:#2a3065">${ev.title}</span> is coming up soon!</h2>
-      <p style="color:#777;font-size:13px;margin:0 0 20px">${when}<br>Organised by ${company}</p>
-      <hr style="border:none;border-top:1px solid #eee;margin:0 0 20px">
-      <p style="font-weight:bold;font-size:15px;margin:0 0 4px">Questions about this event?</p>
-      <p style="font-size:14px;margin:0 0 20px"><a href="mailto:${settings?.emails?.replyTo || 'info@hexahub.com.au'}" style="color:#2a3065">Contact the organiser</a></p>
-      <hr style="border:none;border-top:1px solid #eee;margin:0 0 20px">
-      <p style="font-weight:bold;font-size:15px;margin:0 0 10px">About this event</p>
-      <p style="font-size:14px;color:#555;margin:0 0 4px">🗓 ${when}</p>
-      ${loc ? `<p style="font-size:14px;color:#555;margin:0 0 16px">📍 ${loc}</p>` : ''}
-      <p style="font-size:14px;margin:0">Add to my calendar:<br>
-        ${cal('Google', links.google)} &nbsp;·&nbsp; ${cal('Outlook', links.outlook)} &nbsp;·&nbsp; ${cal('iCal', links.ical)} &nbsp;·&nbsp; ${cal('Yahoo', links.yahoo)}
-      </p>
-      <p style="font-size:12px;color:#aaa;margin-top:24px">See you there${reg.name ? `, ${reg.name}` : ''}.</p>
-    </div>
-  </div></body></html>`
+  const cal = (label, url) => `<a href="${url}" style="color:${OLIVE};text-decoration:none;font-weight:600">${label}</a>`
+  return brandFrame(
+    bKicker('Event Reminder') +
+    bH1(`Your event <span style="color:${OLIVE}">${ev.title}</span> is coming up soon!`) +
+    bP(`${when}<br>Organised by ${company}`) +
+    bP(`<strong>Questions about this event?</strong><br><a href="mailto:${settings?.emails?.replyTo || 'info@hexahub.com.au'}" style="color:${OLIVE}">Contact the organiser</a>`) +
+    bP('<strong>About this event</strong>') +
+    bP(`🗓 ${when}`) +
+    (loc ? bP(`📍 ${loc}`) : '') +
+    bP(`Add to my calendar:<br>${cal('Google', links.google)} &nbsp;·&nbsp; ${cal('Outlook', links.outlook)} &nbsp;·&nbsp; ${cal('iCal', links.ical)} &nbsp;·&nbsp; ${cal('Yahoo', links.yahoo)}`) +
+    bSmall(`See you there${reg.name ? `, ${reg.name}` : ''}.`),
+    { footerLabel: 'Events' }
+  )
 }
 
 export default async function handler(req, res) {
