@@ -86,6 +86,7 @@ export default function LeadDetail({ lead, store, onClose }) {
   const [validityDays, setValidityDays] = useState(14)
   const [sendingProposal, setSendingProposal] = useState(false)
   const [downloadingProposal, setDownloadingProposal] = useState(false)
+  const [compressPdf, setCompressPdf] = useState(false)
   const [proposalResult, setProposalResult] = useState('')
   const togglePick = (o) => setPicked((p) => ({
     ...p,
@@ -98,7 +99,7 @@ export default function LeadDetail({ lead, store, onClose }) {
 
   // Map a picked office into the shape the branded PDF builder expects.
   const toOffice = (o) => ({ unit: o.space.unitNumber, floor: o.space.floor, pax: o.space.pax, price: o.price, note: o.note })
-  const proposalArgs = (sel) => ({ offices: sel.map(toOffice), coverMsg: proposalMsg.trim(), validityDays, lead, settings, dateStr: format(new Date(), 'd MMMM yyyy') })
+  const proposalArgs = (sel) => ({ offices: sel.map(toOffice), coverMsg: proposalMsg.trim(), validityDays, lead, settings, dateStr: format(new Date(), 'd MMMM yyyy'), compress: compressPdf })
 
   async function downloadProposal() {
     const sel = selectedList()
@@ -286,6 +287,10 @@ export default function LeadDetail({ lead, store, onClose }) {
               <div className="bg-card border border-border rounded-xl shadow-sm p-4 space-y-3">
                 <label className="block"><span className="block text-xs text-muted-foreground mb-1">Cover message (optional — appears on the PDF)</span><textarea rows={3} value={proposalMsg} onChange={(e) => setProposalMsg(e.target.value)} className={`${input} resize-none`} /></label>
                 <label className="block w-32"><span className="block text-xs text-muted-foreground mb-1">Valid for (days)</span><input type="number" value={validityDays} onChange={(e) => setValidityDays(Number(e.target.value) || 14)} className={input} /></label>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                  <input type="checkbox" checked={compressPdf} onChange={(e) => setCompressPdf(e.target.checked)} className="h-3.5 w-3.5 rounded border-gray-300" />
+                  Compress PDF — smaller file, best for emailing
+                </label>
                 <div className="flex items-center gap-3 pt-1">
                   <button onClick={downloadProposal} disabled={downloadingProposal} className="flex items-center gap-1.5 border border-input text-foreground px-3 py-2 rounded-md text-sm hover:bg-muted/50 disabled:opacity-40">{downloadingProposal ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />} Preview PDF</button>
                   <button onClick={sendProposal} disabled={sendingProposal || !lead.email} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">{sendingProposal ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send proposal</button>
