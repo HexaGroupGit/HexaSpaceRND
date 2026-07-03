@@ -153,7 +153,7 @@ function offerCard(o) {
     </div>
     <ul class="bullets" style="margin-top:12px;">
       <li>Fully furnished private suite</li>
-      <li>Sit-stand desks &amp; ergonomic chairs</li>
+      <li>Ergonomic desks &amp; chairs</li>
       <li>Lockable storage</li>
       ${o.pax ? `<li>${esc(o.pax)} Hexa memberships included</li>` : ''}
       <li>24/7 secure access</li>
@@ -307,8 +307,8 @@ function communityPage() {
 function closingPage(ctx) {
   return `<div class="page" style="background:#1b1b18;">
     <div class="pad" style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;">
-      <div class="display" style="color:#fff;font-size:84px;">Hexa Space</div>
-      <div class="eyebrow" style="color:#cfd69a;margin-top:14px;letter-spacing:.4em;">六合空间 · Box Hill</div>
+      <div class="display" style="color:#fff;font-size:84px;line-height:1.16;padding-bottom:6px;">Hexa Space</div>
+      <div class="eyebrow" style="color:#cfd69a;margin-top:22px;letter-spacing:.4em;">六合空间 · Box Hill</div>
       <div style="width:2in;height:1px;background:#3a3a34;margin:34px 0;"></div>
       <p class="body" style="color:#d7d5cf;font-size:12px;line-height:2;">
         ${esc(ctx.sender)}${ctx.title ? ` · ${esc(ctx.title)}` : ''}<br>
@@ -325,8 +325,10 @@ function closingPage(ctx) {
 // quality); false → full-resolution print quality.
 export async function buildProposalPdf({ offices = [], coverMsg = '', validityDays = 14, lead = {}, settings = {}, dateStr = '', compress = false }) {
   injectStyles()
-  const scale = compress ? 1.4 : 2
-  const jpegQ = compress ? 0.6 : 0.9
+  // Full quality is already only ~2.5–3 MB (modest source photos), so "compress"
+  // is a gentle optimisation, not a heavy one — keeps the brochure crisp.
+  const scale = compress ? 1.7 : 2
+  const jpegQ = compress ? 0.8 : 0.9
   const c = settings?.company || {}, e = settings?.emails || {}
   const ctx = {
     client: lead.name || '', business: lead.businessName || '', dateStr,

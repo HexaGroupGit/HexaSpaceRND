@@ -112,10 +112,10 @@ export default function FloorPlan({ spaces, leases, tenants, onNewContract }) {
           <div className="border-2 border-gray-400 rounded-md overflow-hidden bg-neutral-200">
             <div className="bg-gray-900 text-white px-4 py-2.5 flex items-center justify-between">
               <div>
-                <span className="font-bold text-sm">Found Huntingdale</span>
+                <span className="font-bold text-sm">Hexa Space</span>
                 <span className="text-gray-400 text-xs ml-3">Warehouse & Office Units</span>
               </div>
-              <span className="text-gray-400 text-xs">17-31 Franklyn Street, Huntingdale VIC 3166</span>
+              <span className="text-gray-400 text-xs">17-31 Franklyn Street, Box Hill VIC 3128</span>
             </div>
 
             {warehouseSpaces.length === 0 ? (
@@ -179,7 +179,7 @@ export default function FloorPlan({ spaces, leases, tenants, onNewContract }) {
                 <span className="font-bold text-sm">Storage Units</span>
                 <span className="text-gray-400 text-xs ml-3">18 Logistic Court</span>
               </div>
-              <span className="text-gray-400 text-xs">Huntingdale VIC 3166</span>
+              <span className="text-gray-400 text-xs">Box Hill VIC 3128</span>
             </div>
 
             {storageSpaces.length === 0 ? (

@@ -108,7 +108,7 @@ export default function PriceListImport({ store, onClose }) {
           {stage === 'upload' && (
             <div className="text-center py-10">
               <FileText size={32} className="mx-auto text-muted-foreground mb-3" />
-              <p className="text-sm text-muted-foreground mb-1">Upload the weekly Found Huntingdale lease price list (PDF).</p>
+              <p className="text-sm text-muted-foreground mb-1">Upload the weekly Hexa Space lease price list (PDF).</p>
               <p className="text-xs text-muted-foreground mb-5">Claude reads it and shows you exactly what will change before anything is saved.</p>
               <label className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 cursor-pointer">
                 {loading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />} {loading ? 'Reading…' : 'Choose PDF'}

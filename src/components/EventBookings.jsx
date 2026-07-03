@@ -13,7 +13,7 @@ import { generateAgreementPdf } from '../lib/generateAgreementPdf.js'
 const EVENT = {
   name: 'Found Underground',
   date: '2026-06-07',
-  venue: 'The Hub, 18 Logistic Court, Huntingdale VIC 3166',
+  venue: 'The Hub, 18 Logistic Court, Box Hill VIC 3128',
   bumpInTime: '11:00',
   startTime: '15:00',
   finishTime: '21:00',
@@ -1017,7 +1017,7 @@ function SendAllModal({ bookings, onClose }) {
   const [enabled, setEnabled] = useState(defaultEnabled)
   const [subject, setSubject] = useState(`Found Underground — Sunday 7 June 2026`)
   const [body, setBody] = useState(
-    `Hi everyone,\n\nThank you for being part of the Found Underground on Sunday 7 June 2026.\n\nThe event runs from 3:00 PM – 9:00 PM at 18 Logistic Court, Huntingdale. Bump-in is from 11:00 AM.\n\nPlease don't hesitate to reach out if you have any questions.\n\nSee you there!\n\nThe Hexa Space Team`
+    `Hi everyone,\n\nThank you for being part of the Found Underground on Sunday 7 June 2026.\n\nThe event runs from 3:00 PM – 9:00 PM at 18 Logistic Court, Box Hill. Bump-in is from 11:00 AM.\n\nPlease don't hesitate to reach out if you have any questions.\n\nSee you there!\n\nThe Hexa Space Team`
   )
   const [copied, setCopied] = useState(false)
 

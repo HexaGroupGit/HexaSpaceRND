@@ -161,7 +161,7 @@ export default function SitePlanViewer() {
       </div>
 
       <p className="text-xs text-muted-foreground mt-2">
-        Found Huntingdale Siteplan · 17-31 Franklyn Street, Huntingdale VIC 3166
+        Hexa Space Siteplan · 17-31 Franklyn Street, Box Hill VIC 3128
       </p>
     </div>
   )

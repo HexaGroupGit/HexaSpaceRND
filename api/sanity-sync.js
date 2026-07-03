@@ -69,7 +69,7 @@ function operationalFields(space) {
     annualPrice: typeof space.monthlyRate === 'number' ? space.monthlyRate * 12 : undefined,
     sizeSquareMetres: parseSize(space.size),
     parkingSpaces: typeof space.cars === 'number' ? space.cars : undefined,
-    streetAddress: space.address ? `${space.address}, Huntingdale VIC 3166` : undefined,
+    streetAddress: space.address ? `${space.address}, Box Hill VIC 3128` : undefined,
     attributes: space.attributes || undefined,
     // Enriched listing fields (filled via the Listing editor in the Marketing tab)
     block: space.block || undefined,

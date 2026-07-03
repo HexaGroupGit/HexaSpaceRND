@@ -1,5 +1,5 @@
 // Vercel serverless function — POST /api/parse-pricelist
-// Reads a Found Huntingdale lease price-list PDF with Claude and returns the
+// Reads a Hexa Space lease price-list PDF with Claude and returns the
 // units as structured JSON for reconciliation against RND spaces.
 // Requires env var: ANTHROPIC_API_KEY.
 //
@@ -11,7 +11,7 @@ const MODEL = 'claude-opus-4-8'
 
 export const config = { maxDuration: 60, api: { bodyParser: { sizeLimit: '12mb' } } }
 
-const PROMPT = `This is a commercial lease price list for "Found Huntingdale" (Huntingdale, Melbourne). It has TWO sections: "Warehouses - Leasing Pricelist" and "Storage Spaces - Leasing Pricelist".
+const PROMPT = `This is a commercial lease price list for "Hexa Space" (Box Hill, Melbourne). It has TWO sections: "Warehouses - Leasing Pricelist" and "Storage Spaces - Leasing Pricelist".
 
 Extract EVERY unit row from BOTH sections. For each unit return:
 - unitNumber: the "Lot" code exactly as shown (e.g. "O5", "O15", "61W"). STORAGE units have no Lot code — for those, use the street-address identifier shown (e.g. "25/18 Logistic Ct") as the unitNumber.

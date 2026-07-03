@@ -449,7 +449,7 @@ export default function Leases() {
                     )}
                     <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                       <span className="text-muted-foreground">📍</span>
-                      Found Huntingdale
+                      Hexa Space
                     </div>
                   </td>
 

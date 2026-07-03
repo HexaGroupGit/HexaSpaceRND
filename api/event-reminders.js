@@ -88,7 +88,7 @@ export default async function handler(req, res) {
           ev = (await r.json()).result
         } catch { /* ignore */ }
       }
-      if (!ev) ev = { title: 'Sample Event', date: new Date(Date.now() + 86400000).toISOString(), location: 'The Hub, Found Huntingdale', locationAddress: '18 Logistic Court, Huntingdale VIC 3166', summary: 'Preview of the reminder email.' }
+      if (!ev) ev = { title: 'Sample Event', date: new Date(Date.now() + 86400000).toISOString(), location: 'The Hub, Hexa Space', locationAddress: '18 Logistic Court, Box Hill VIC 3128', summary: 'Preview of the reminder email.' }
       const links = calendarLinks(ev, baseUrl)
       const fromName = settings?.emails?.fromName || settings?.company?.name || 'HexaHub'
       const fromEmail = settings?.emails?.fromEmail || 'noreply@hexahub.com.au'

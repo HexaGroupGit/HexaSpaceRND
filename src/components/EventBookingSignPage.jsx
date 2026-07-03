@@ -1118,7 +1118,7 @@ function Header() {
       </div>
       <div className="text-right hidden sm:block">
         <div className="text-sm font-medium text-white">Lonsdale 369 Pop-up</div>
-        <div className="text-xs text-gray-400">Sunday 7 June 2026 · 17 Logistic Court, Huntingdale</div>
+        <div className="text-xs text-gray-400">Sunday 7 June 2026 · 17 Logistic Court, Box Hill</div>
       </div>
     </div>
   )

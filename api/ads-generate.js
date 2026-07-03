@@ -25,10 +25,10 @@ const GUARDRAILS = `Apply these paid-media best practices:
 - Google: never recommend Broad Match without Smart Bidding (tCPA/tROAS). Group tight, intent-matched keyword themes. Always assume conversion tracking is required.
 - Meta: prioritise creative diversity (provide multiple distinct angles), advantage+ audiences where sensible, and assume Pixel + Conversions API tracking.
 - Use Smart Bidding / value-based bidding by default; flag if a target CPA looks unrealistic (e.g. proposed CPA would exceed 3x a sensible benchmark).
-- Be specific and locally relevant (Huntingdale / south-east Melbourne, industrial leasing).`
+- Be specific and locally relevant (Box Hill / south-east Melbourne, industrial leasing).`
 
 function brandLine(company = {}) {
-  return `${company.name || 'HexaHub'} (${company.website || 'hexahub.com.au'}) — industrial business hub in Huntingdale, Melbourne. Tagline "build locally, scale sustainably". Leases warehouses, storage, offices and pop-up bays.`
+  return `${company.name || 'HexaHub'} (${company.website || 'hexahub.com.au'}) — industrial business hub in Box Hill, Melbourne. Tagline "build locally, scale sustainably". Leases warehouses, storage, offices and pop-up bays.`
 }
 
 function unitLine(space) {
@@ -148,7 +148,7 @@ Keep it practical and specific to this space.`
 
     if (action === 'keywords') {
       const system = `You are a senior paid-search strategist doing keyword research for Google Ads. ${GUARDRAILS}
-Group keywords into tight, intent-matched ad-group themes. Suggest a sensible match type per group (phrase/exact for high intent; avoid broad unless smart bidding). Include local long-tail queries (Huntingdale / south-east Melbourne), negative-keyword ideas to exclude irrelevant traffic, and angles competitors likely bid on. Do NOT invent search-volume numbers. Return JSON matching the schema.`
+Group keywords into tight, intent-matched ad-group themes. Suggest a sensible match type per group (phrase/exact for high intent; avoid broad unless smart bidding). Include local long-tail queries (Box Hill / south-east Melbourne), negative-keyword ideas to exclude irrelevant traffic, and angles competitors likely bid on. Do NOT invent search-volume numbers. Return JSON matching the schema.`
       const user = `Research Google Ads keywords for this space.
 ${ctx}`
       const message = await client.messages.create({

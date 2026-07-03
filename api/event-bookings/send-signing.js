@@ -12,7 +12,7 @@ const EVENT = {
   name: 'Found Underground',
   date: 'Sunday 7 June 2026',
   hours: '3:00 PM – 9:00 PM',
-  venue: 'The Hub, 18 Logistic Court, Huntingdale VIC 3166',
+  venue: 'The Hub, 18 Logistic Court, Box Hill VIC 3128',
 }
 
 function frame(bodyHtml) {

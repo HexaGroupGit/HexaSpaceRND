@@ -19,7 +19,7 @@ const MODEL = 'claude-opus-4-8'
 function brandBlock(company = {}) {
   const name = company.name || 'HexaHub'
   const website = company.website || 'hexahub.com.au'
-  return `Brand: ${name} (${website}) — an industrial business hub in Huntingdale, Melbourne, Australia.
+  return `Brand: ${name} (${website}) — an industrial business hub in Box Hill, Melbourne, Australia.
 Tagline: "build locally, scale sustainably". We lease warehouse units, storage, offices and pop-up/retail bays to growing businesses.
 Voice: clean, professional, grounded, Australian. No hype, no emoji spam, no exclamation overload.`
 }
@@ -75,7 +75,7 @@ Lead with the strongest benefit. Number each variation. ${extra}`.trim(),
   // seo
   return {
     system,
-    user: `Produce SEO assets for the listing page for this space, optimised for local search (e.g. "warehouse for lease Huntingdale").
+    user: `Produce SEO assets for the listing page for this space, optimised for local search (e.g. "warehouse for lease Box Hill").
 ${unit}
 ${toneLine}
 Provide: 1) an SEO page title (~60 chars), 2) a meta description (~155 chars), 3) 8–12 target keywords (mix of head and long-tail, local), 4) 3 H2 heading suggestions, 5) a 60–90 word optimised intro paragraph.
