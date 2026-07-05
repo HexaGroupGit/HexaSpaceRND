@@ -5,6 +5,10 @@
   ],
   "crons": [
     {
+      "path": "/api/xero/sync",
+      "schedule": "0 */6 * * *"
+    },
+    {
       "path": "/api/reconcile",
       "schedule": "30 20 * * *"
     },

@@ -900,6 +900,7 @@ function XeroConnectionTab({ settings, updateSettings }) {
   const [err, setErr] = useState(null)
   const [syncForm, setSyncForm] = useState({
     syncEnabled: xs.syncEnabled === true,
+    pullEnabled: xs.pullEnabled === true,
     syncFrom: xs.syncFrom ?? '2026-09-01',
   })
   const [saved, setSaved] = useState(false)
@@ -1014,6 +1015,14 @@ function XeroConnectionTab({ settings, updateSettings }) {
           <Toggle checked={syncForm.syncEnabled} onChange={(v) => setSyncForm((p) => ({ ...p, syncEnabled: v }))} />
         </div>
       </FormRow>
+      <FormRow
+        label="Pull payments only (before go-live)"
+        description="Lets payment status flow BACK from Xero ahead of the push go-live: invoices reconciled in Xero are marked paid here automatically (checked every 6 hours). Only affects invoices that are already linked to Xero — it never pushes anything."
+      >
+        <div className="flex justify-end">
+          <Toggle checked={syncForm.pullEnabled} onChange={(v) => setSyncForm((p) => ({ ...p, pullEnabled: v }))} />
+        </div>
+      </FormRow>
       <FormRow label="Sync from" description="Only invoices with a billing period starting on/after this date are ever pushed. Keeps migrated history out of Xero.">
         <TextInput type="date" value={syncForm.syncFrom} onChange={(v) => setSyncForm((p) => ({ ...p, syncFrom: v }))} />
       </FormRow>
@@ -1041,8 +1050,8 @@ function XeroConnectionTab({ settings, updateSettings }) {
             </button>
             <button
               onClick={() => run('pull')}
-              disabled={!!busy || !syncOn}
-              title={syncOn ? '' : 'Turn on "Enable Xero sync" and save first'}
+              disabled={!!busy || (!syncOn && xs.pullEnabled !== true)}
+              title={syncOn || xs.pullEnabled === true ? '' : 'Turn on "Enable Xero sync" or "Pull payments only" and save first'}
               className="px-4 py-2 border border-input text-sm rounded-md font-medium hover:bg-muted disabled:opacity-50"
             >
               {busy === 'pull' ? 'Pulling…' : 'Pull payments from Xero'}

@@ -102,21 +102,35 @@ async function ensureContact(supabase, tenant, dryRun) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  // GET = the scheduled auto-pull cron (marks platform invoices paid when
+  // they've been reconciled in Xero); POST = the Settings UI actions.
+  const isCron = req.method === 'GET'
+  if (req.method !== 'POST' && !isCron) return res.status(405).json({ error: 'Method not allowed' })
 
-  const { action = 'push', dryRun = false } = req.body ?? {}
+  const { action = 'push', dryRun = false } = isCron ? { action: 'pull', dryRun: false } : (req.body ?? {})
 
   try {
     const supabase = getSupabase()
     const conn = await loadConnection(supabase)
-    if (!conn?.refreshToken) return res.status(400).json({ error: 'Xero is not connected.' })
+    if (!conn?.refreshToken) {
+      // The cron must not register as a failure while Xero simply isn't connected.
+      if (isCron) return res.status(200).json({ skipped: 'Xero is not connected.' })
+      return res.status(400).json({ error: 'Xero is not connected.' })
+    }
 
     const { data: settRow } = await supabase.from('settings').select('data').eq('id', 'global').single()
     const settings = settRow?.data ?? {}
     const syncEnabled = settings.xero?.syncEnabled === true
+    // Pull (payment status flowing BACK from Xero) can be enabled on its own,
+    // ahead of the push go-live — it only ever marks platform invoices paid.
+    const pullEnabled = syncEnabled || settings.xero?.pullEnabled === true
     const syncFrom = settings.xero?.syncFrom || '2026-09-01'
 
-    if (!dryRun && !syncEnabled) {
+    if (!dryRun && action === 'pull' && !pullEnabled) {
+      const msg = 'Xero pull is switched OFF in Settings — enable "Xero sync" or "Pull payments only" first.'
+      return res.status(isCron ? 200 : 403).json(isCron ? { skipped: msg } : { error: msg })
+    }
+    if (!dryRun && action !== 'pull' && !syncEnabled) {
       return res.status(403).json({
         error: `Xero sync is switched OFF in Settings (planned go-live ${syncFrom}). Run a dry run to preview, or enable sync first.`,
       })
