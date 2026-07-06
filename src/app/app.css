@@ -35,6 +35,17 @@
   z-index: 40;
 }
 
+/* Floating cart bar — sits just above the tab bar. */
+.app-cartbar {
+  position: fixed;
+  bottom: calc(62px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 2.5rem);
+  max-width: calc(430px - 2.5rem);
+  z-index: 39;
+}
+
 /* Eclat-style arched card top. */
 .app-arch { border-radius: 190px 190px 14px 14px; }
 

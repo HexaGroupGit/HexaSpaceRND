@@ -81,6 +81,21 @@ export default async function handler(req, res) {
         return res.status(200).json({ received: true })
       }
 
+      // Food orders (member app): mark placed + email the bakery.
+      const foodOrderId = session.metadata?.foodOrderId
+      if (foodOrderId && session.payment_status === 'paid') {
+        const supabase = createClient(SUPABASE_URL, serviceKey, { auth: { persistSession: false } })
+        const { markFoodOrderPlaced } = await import('../_food.js')
+        const { data: row } = await supabase.from('food_orders').select('data').eq('id', foodOrderId).single()
+        if (row?.data) {
+          await markFoodOrderPlaced(supabase, row.data, {
+            reference: session.payment_intent ?? session.id,
+            method: 'stripe_checkout',
+          })
+        }
+        return res.status(200).json({ received: true })
+      }
+
       const invoiceId = session.metadata?.invoiceId
       if (invoiceId && session.payment_status === 'paid') {
         const supabase = createClient(SUPABASE_URL, serviceKey, { auth: { persistSession: false } })
