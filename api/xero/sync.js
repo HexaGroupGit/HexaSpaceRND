@@ -157,12 +157,17 @@ export default async function handler(req, res) {
           const inv = batch.find((i) => i.xeroInvoiceId === xi.InvoiceID)
           if (!inv) continue
           if (xi.Status === 'PAID') {
+            // Several platform invoices can share one combined Xero invoice
+            // (migrated office+parking) — record each invoice's OWN total,
+            // not the combined AmountPaid.
+            const shared = candidates.filter((c) => c.xeroInvoiceId === xi.InvoiceID).length > 1
+            const ownTotal = Math.round(invoiceTotal(inv) * (inv.vatEnabled !== false ? 1.1 : 1) * 100) / 100
             if (!dryRun) {
               inv.payments = [
                 ...(inv.payments ?? []),
                 {
-                  id: `pay_xero_${xi.InvoiceID.slice(0, 8)}`,
-                  amount: xi.AmountPaid,
+                  id: `pay_xero_${xi.InvoiceID.slice(0, 8)}_${inv.id.slice(-4)}`,
+                  amount: shared ? ownTotal : xi.AmountPaid,
                   date: parseXeroDate(xi.FullyPaidOnDate) ?? new Date().toISOString().split('T')[0],
                   method: 'xero',
                   reference: 'Synced from Xero',
@@ -171,7 +176,7 @@ export default async function handler(req, res) {
               inv.status = 'paid'
               await saveRow(supabase, 'invoices', inv.id, inv)
             }
-            paidMarked.push({ number: inv.number, amount: xi.AmountPaid })
+            paidMarked.push({ number: inv.number, amount: shared ? ownTotal : xi.AmountPaid })
           } else if (xi.Status === 'VOIDED' || xi.Status === 'DELETED') {
             voidedInXero.push({ number: inv.number }) // reported, never auto-voided here
           } else if (Number(xi.AmountPaid) > 0) {
