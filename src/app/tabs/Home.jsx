@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import {
-  Mailbox, Printer, Croissant, ArrowRight, ArrowUpRight, Lock, Receipt, CalendarClock,
+  Mailbox, Printer, Croissant, ArrowRight, ArrowUpRight, KeyRound, Receipt, CalendarClock,
 } from 'lucide-react'
 import { useApp } from '../context.js'
 import { Screen, Label, Display, Rule, Card, Chip, fmt, to12, money, bookingName } from '../ui.jsx'
@@ -70,25 +70,24 @@ export default function Home() {
         </button>
       )}
 
-      {/* Door access — Salto not live yet; the slot exists, styled as a PIN chip */}
+      {/* Door access — Salto mobile key; the slot exists ahead of go-live */}
       <div className="bg-charcoal text-paper p-6">
         <div className="flex items-center justify-between">
           <Label className="text-paper/50">Door access</Label>
           <Chip tone="green">Coming soon</Chip>
         </div>
-        <div className="flex items-center gap-3 mt-6">
-          <Lock size={18} strokeWidth={1.4} className="text-paper/40" />
-          <div className="flex gap-2.5">
-            {[0, 1, 2, 3].map((i) => (
-              <span key={i} className="h-11 w-9 border border-paper/20 bg-paper/5 flex items-center justify-center">
-                <span className="h-1.5 w-1.5 rounded-full bg-paper/30" />
-              </span>
-            ))}
+        <div className="flex items-center gap-4 mt-6">
+          <span className="h-12 w-12 shrink-0 border border-paper/20 bg-paper/5 flex items-center justify-center">
+            <KeyRound size={18} strokeWidth={1.4} className="text-paper/70" />
+          </span>
+          <div>
+            <p className="font-heading uppercase tracking-nav text-[11px] text-paper">Mobile key</p>
+            <p className="hx-prose text-[12px] text-paper/50 mt-0.5">Unlock the door from your phone</p>
           </div>
         </div>
         <p className="hx-prose text-[12px] text-paper/50 mt-5">
-          Your mobile key and door PIN will live here once smart access goes live. Until then, your
-          access pass works around the clock.
+          Smart access is on its way — your key will live here. Until then, your access pass works
+          around the clock.
         </p>
       </div>
 
