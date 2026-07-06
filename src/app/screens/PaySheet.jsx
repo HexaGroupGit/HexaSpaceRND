@@ -6,7 +6,7 @@ import { invoiceTotal } from '../lib/invoiceTotal.js'
 // Pay a single invoice: charge the saved card on file (off-session, same
 // endpoint the admin uses) or open Stripe Checkout. Checkout returns to the
 // app via returnTo (handled by api/stripe/checkout.js).
-export default function PaySheet({ invoice, company, onClose, onPaid }) {
+export default function PaySheet({ invoice, company, onClose, onPaid, returnTo = '/app' }) {
   const [busy, setBusy] = useState(null) // 'card' | 'checkout'
   const [error, setError] = useState('')
   const hasCard = !!company?.stripePaymentMethodId
@@ -32,7 +32,7 @@ export default function PaySheet({ invoice, company, onClose, onPaid }) {
     try {
       const r = await fetch('/api/stripe/checkout', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId: invoice.id, returnTo: '/app' }),
+        body: JSON.stringify({ invoiceId: invoice.id, returnTo }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d.error ?? 'Online payment is unavailable right now.')
