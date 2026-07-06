@@ -9,6 +9,8 @@
 
 import { getSupabase, loadConnection, saveConnection, xeroFetch, parseXeroDate } from './_client.js'
 import { selectAllRows } from '../_db.js'
+import { sendResendEmail } from '../_email.js'
+import { brandFrame, bKicker, bH1, bP, bSmall } from '../_brand.js'
 
 // ── account mapping (mirrors src/components/spaces/shared.jsx) ──────────────
 const DEFAULT_XERO_ACCOUNTS = {
@@ -148,7 +150,7 @@ export default async function handler(req, res) {
       // Overdue counts too — an unpaid invoice flips to 'overdue' after its
       // due date, and those are exactly the ones that get paid late.
       const candidates = invoices.filter((i) => i.xeroInvoiceId && ['pending', 'overdue'].includes(i.status))
-      const paidMarked = [], partial = [], voidedInXero = []
+      const paidMarked = [], partial = [], voidedInXero = [], receipts = []
 
       for (const batch of chunk(candidates, 40)) {
         const ids = batch.map((i) => i.xeroInvoiceId).join(',')
@@ -178,6 +180,7 @@ export default async function handler(req, res) {
               ]
               inv.status = 'paid'
               await saveRow(supabase, 'invoices', inv.id, inv)
+              receipts.push({ inv, amount: shared ? ownTotal : xi.AmountPaid })
             }
             paidMarked.push({ number: inv.number, amount: shared ? ownTotal : xi.AmountPaid })
           } else if (xi.Status === 'VOIDED' || xi.Status === 'DELETED') {
@@ -188,8 +191,29 @@ export default async function handler(req, res) {
         }
       }
 
+      // Payment receipt to each tenant's billing contact (goes through the
+      // central email guard — safe mode redirects until deliberately lifted).
+      const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
+      const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'
+      for (const { inv, amount } of receipts) {
+        const tenant = tenants.find((t) => t.id === inv.tenantId)
+        if (!tenant?.email) continue
+        const inner =
+          bKicker('Payment Receipt') +
+          bH1(`$${Number(amount).toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD`) +
+          bP(`Hi ${tenant.contactName || tenant.businessName},`) +
+          bP(`We've received your payment for invoice <strong>${inv.number}</strong>. Thank you — no further action is needed.`) +
+          bSmall(`This is an automated receipt from ${fromName}. Questions about your account? Just reply to this email.`)
+        await sendResendEmail({
+          from: `${fromName} <${fromEmail}>`,
+          to: tenant.email,
+          subject: `Payment receipt — ${inv.number} (${fromName})`,
+          html: brandFrame(inner, { footerLabel: 'Accounts' }),
+        }).catch(() => {})
+      }
+
       if (!dryRun) await saveConnection(supabase, { ...conn, lastPull: new Date().toISOString() })
-      return res.status(200).json({ action, dryRun, checked: candidates.length, paidMarked, partial, voidedInXero })
+      return res.status(200).json({ action, dryRun, checked: candidates.length, paidMarked, receipted: receipts.length, partial, voidedInXero })
     }
 
     // ── PUSH: send unsynced invoices to Xero ─────────────────────────────────
