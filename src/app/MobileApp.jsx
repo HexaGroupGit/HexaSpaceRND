@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import './app.css'
 import { AppCtx } from './context.js'
 import { useMemberData } from './lib/useMemberData.js'
+import { isNative, applyNativeChrome, onAppResume } from './lib/native.js'
 import AppLogin from './AppLogin.jsx'
 import TabBar from './AppShell.jsx'
 import Home from './tabs/Home.jsx'
@@ -35,10 +36,18 @@ export default function MobileApp() {
   const { data, loading, refresh, patch } = useMemberData(email)
 
   useEffect(() => {
+    applyNativeChrome()
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session ?? null))
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s ?? null))
     return () => subscription.unsubscribe()
   }, [])
+
+  // Coming back from a Stripe custom tab (native) or another browser tab:
+  // re-pull data so paid invoices / placed orders reflect the webhook's writes.
+  useEffect(() => {
+    if (!email) return
+    return onAppResume(() => refresh())
+  }, [email]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function signOut() {
     await supabase.auth.signOut()
@@ -85,8 +94,9 @@ export default function MobileApp() {
     )
   }
 
+  // Native serves the bundle at the webview root; the web serves it at /app.
   return (
-    <BrowserRouter basename="/app">
+    <BrowserRouter basename={isNative() ? '/' : '/app'}>
       <div className="app-frame">{body}</div>
     </BrowserRouter>
   )

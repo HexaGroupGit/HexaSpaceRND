@@ -2,8 +2,10 @@
 // Sends an email to the admin when a portal member sends a message.
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH2, bP, bBtn, bPanel, INK, OLIVE } from '../_brand.js'
+import { applyCors } from '../_cors.js'
 
 export default async function handler(req, res) {
+  if (applyCors(req, res)) return
   if (req.method !== 'POST') return res.status(405).end()
 
   const resendKey = process.env.RESEND_API_KEY

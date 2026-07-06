@@ -3,6 +3,7 @@ import { CreditCard, Plus } from 'lucide-react'
 import { useApp } from '../context.js'
 import { Screen, BackHeader, Label, Card, Chip, Rule, EmptyNote, StatusBadge, fmt, money } from '../ui.jsx'
 import { invoiceTotal, unpaidInvoices } from '../lib/invoiceTotal.js'
+import { apiUrl, openPayment } from '../lib/native.js'
 import PaySheet from './PaySheet.jsx'
 
 // Billing & invoices — pay outstanding invoices (saved card / Checkout),
@@ -31,13 +32,14 @@ export default function Billing() {
   async function startCardSetup() {
     setBusyCard(true)
     try {
-      const r = await fetch('/api/stripe/setup', {
+      const r = await fetch(apiUrl('/api/stripe/setup'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenantId: company.id, returnTo: '/app/more/billing' }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d.error ?? 'Could not start card setup.')
-      window.location.href = d.url
+      await openPayment(d.url)
+      setBusyCard(false)
     } catch (e) {
       alert(e.message)
       setBusyCard(false)

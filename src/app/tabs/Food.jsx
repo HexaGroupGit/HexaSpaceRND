@@ -3,6 +3,7 @@ import { Minus, Plus, CreditCard, ExternalLink, Check, RefreshCw } from 'lucide-
 import { useApp } from '../context.js'
 import { Screen, Label, Display, Rule, Chip, Sheet, BigButton, EmptyNote, money, fmt } from '../ui.jsx'
 import { createFoodOrder, loadMenu, loadMyOrders, foodTotal } from '../lib/foodActions.js'
+import { apiUrl, openPayment, onAppResume } from '../lib/native.js'
 
 const CATEGORY_ORDER = ['Breads', 'Pastries', 'Coffee', 'Drinks']
 
@@ -31,6 +32,8 @@ export default function Food() {
   useEffect(() => {
     loadMenu().then(setMenu).catch(() => setMenu([]))
     refreshOrders()
+    // Returning from a Stripe custom tab / other tab → pick up the new order.
+    return onAppResume(refreshOrders)
   }, [company?.id])
 
   function refreshOrders() {
@@ -225,7 +228,7 @@ function CheckoutSheet({ cartItems, suite, member, company, onAdjust, onClose, o
     try {
       const order = await createFoodOrder({ items: cartItems, note, deliverTo, member, company })
       if (method === 'card') {
-        const r = await fetch('/api/food/charge', {
+        const r = await fetch(apiUrl('/api/food/charge'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderId: order.id }),
         })
@@ -234,13 +237,14 @@ function CheckoutSheet({ cartItems, suite, member, company, onAdjust, onClose, o
         onPlaced(d.order ?? { ...order, status: 'placed' })
         setPlaced(d.order ?? order)
       } else {
-        const r = await fetch('/api/food/checkout', {
+        const r = await fetch(apiUrl('/api/food/checkout'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderId: order.id }),
         })
         const d = await r.json().catch(() => ({}))
         if (!r.ok) throw new Error(d.error ?? 'Online payment is unavailable right now.')
-        window.location.href = d.url
+        await openPayment(d.url)
+        setBusy(null)
       }
     } catch (e) {
       setError(e.message)

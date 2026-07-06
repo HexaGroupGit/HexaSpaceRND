@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CreditCard, ExternalLink } from 'lucide-react'
 import { Sheet, BigButton, Rule, fmt, money } from '../ui.jsx'
 import { invoiceTotal } from '../lib/invoiceTotal.js'
+import { apiUrl, openPayment } from '../lib/native.js'
 
 // Pay a single invoice: charge the saved card on file (off-session, same
 // endpoint the admin uses) or open Stripe Checkout. Checkout returns to the
@@ -14,7 +15,7 @@ export default function PaySheet({ invoice, company, onClose, onPaid, returnTo =
   async function payWithSavedCard() {
     setBusy('card'); setError('')
     try {
-      const r = await fetch('/api/stripe/charge', {
+      const r = await fetch(apiUrl('/api/stripe/charge'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invoiceId: invoice.id }),
       })
@@ -30,13 +31,14 @@ export default function PaySheet({ invoice, company, onClose, onPaid, returnTo =
   async function payWithCheckout() {
     setBusy('checkout'); setError('')
     try {
-      const r = await fetch('/api/stripe/checkout', {
+      const r = await fetch(apiUrl('/api/stripe/checkout'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invoiceId: invoice.id, returnTo }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d.error ?? 'Online payment is unavailable right now.')
-      window.location.href = d.url
+      await openPayment(d.url)
+      setBusy(null)
     } catch (e) {
       setError(e.message)
       setBusy(null)

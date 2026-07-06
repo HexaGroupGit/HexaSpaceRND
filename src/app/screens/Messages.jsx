@@ -4,6 +4,7 @@ import { Send } from 'lucide-react'
 import { supabase } from '../../lib/supabase.js'
 import { useApp } from '../context.js'
 import { BackHeader } from '../ui.jsx'
+import { apiUrl } from '../lib/native.js'
 
 // Concierge thread — same portal_messages table + admin notification hook as
 // the portal, in a phone chat layout (composer pinned above the tab bar).
@@ -49,7 +50,7 @@ export default function Messages() {
     }
     setMessages((prev) => [...prev, msg])
     await supabase.from('portal_messages').insert({ id: msg.id, data: msg })
-    fetch('/api/portal/notify-message', {
+    fetch(apiUrl('/api/portal/notify-message'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tenantName: tenant.businessName, tenantEmail: tenant.email, message: content }),
     }).catch(() => {})

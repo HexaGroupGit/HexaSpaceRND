@@ -4,10 +4,12 @@
 // Same hard gate as invoice checkout: settings.stripe.paymentsEnabled.
 import { createClient } from '@supabase/supabase-js'
 import { foodOrderTotal } from '../_food.js'
+import { applyCors } from '../_cors.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
 export default async function handler(req, res) {
+  if (applyCors(req, res)) return
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const stripeKey = process.env.STRIPE_SECRET_KEY

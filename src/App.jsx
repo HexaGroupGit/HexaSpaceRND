@@ -65,12 +65,15 @@ function RootAuth() {
 
 // Member mobile app — phone-only experience at /app (lazy: its chunk + CSS
 // only load when the route is hit, so portal/admin bundles are unaffected).
+// Inside the Capacitor shell (Android/iOS) the member app IS the app, whatever
+// the path — window.Capacitor avoids pulling the plugin into the web bundle.
 const MobileApp = lazy(() => import('./app/MobileApp.jsx'))
+const IS_NATIVE = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.()
 
 export default function App() {
   const path = window.location.pathname
 
-  if (path === '/app' || path.startsWith('/app/')) {
+  if (IS_NATIVE || path === '/app' || path.startsWith('/app/')) {
     return <Suspense fallback={null}><MobileApp /></Suspense>
   }
 

@@ -7,6 +7,7 @@
 // Amounts are charged inc. GST, matching the invoice PDF/email total.
 
 import { createClient } from '@supabase/supabase-js'
+import { applyCors } from '../_cors.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -22,6 +23,7 @@ function totalsIncGst(invoice) {
 }
 
 export default async function handler(req, res) {
+  if (applyCors(req, res)) return
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const stripeKey = process.env.STRIPE_SECRET_KEY
