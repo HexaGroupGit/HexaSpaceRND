@@ -51,15 +51,20 @@ export default async function handler(req, res) {
   const companyName = (id) => tenants.find((t) => t.id === id)?.businessName || ''
 
   // Active = has an email and not explicitly offboarded. (portalAccess === false is
-  // set when a membership ends — see MobileApp gate.)
+  // set when a membership ends — see MobileApp gate.) Exclude seed/demo rows whose
+  // companyId is demo_co* — these are sample data, must never reach PaperCut.
+  const isSeed = (m) => /^demo_co/i.test(m.companyId || '') || /(^|\.)demo@|@example\./i.test(m.email || '')
+  const seen = new Set()
   const roster = members
-    .filter((m) => m?.email && m.portalAccess !== false)
+    .filter((m) => m?.email && m.portalAccess !== false && !isSeed(m))
     .map((m) => ({
       email: String(m.email).toLowerCase(),
       fullName: m.name || m.email,
       companyId: m.companyId || '',
       companyName: companyName(m.companyId),
     }))
+    // Dedupe by email — the members table can list the same person more than once.
+    .filter((m) => (seen.has(m.email) ? false : (seen.add(m.email), true)))
 
   const usedPins = pinRows.map((r) => String(r.pin)).filter(Boolean)
 
