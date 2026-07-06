@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Printer, CalendarClock, Receipt, Wifi, KeyRound, Coffee } from 'lucide-react'
+import { supabase } from '../lib/supabase.js'
 import { Page, PageHeader, Card, Eyebrow } from './ui.jsx'
 
 const GUIDES = [
@@ -33,6 +35,7 @@ export default function PortalGuides() {
         </div>
         <div>
           <h3 className="hx-display text-2xl">PaperCut printing</h3>
+          <PrintPin />
           <ol className="mt-5 space-y-3">
             {[
               'Connect to the “Hexa Space” Wi-Fi network.',
@@ -52,5 +55,34 @@ export default function PortalGuides() {
         </div>
       </Card>
     </Page>
+  )
+}
+
+// Shows the signed-in member's OWN print PIN. The pin is fetched from the
+// JWT-verified, owner-scoped endpoint — never from the bulk member data (which is
+// readable by every member). Renders nothing until/unless a pin comes back.
+function PrintPin() {
+  const [pin, setPin] = useState(null)
+  useEffect(() => {
+    let alive = true
+    supabase.auth.getSession().then(({ data }) => {
+      const token = data?.session?.access_token
+      if (!token) return
+      fetch('/api/portal/print-pin', { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (alive && d?.pin) setPin(d.pin) })
+        .catch(() => {})
+    })
+    return () => { alive = false }
+  }, [])
+  if (!pin) return null
+  return (
+    <div className="mt-4 bg-charcoal text-paper px-5 py-4 flex items-center justify-between gap-4">
+      <div>
+        <span className="block font-heading uppercase tracking-label text-[11px] text-paper/50">Your print PIN</span>
+        <span className="block hx-prose text-[12px] text-paper/50 mt-1">Enter at the printer keypad if you don't have your pass.</span>
+      </div>
+      <span className="font-mono text-2xl tracking-[0.25em] text-paper">{pin}</span>
+    </div>
   )
 }
