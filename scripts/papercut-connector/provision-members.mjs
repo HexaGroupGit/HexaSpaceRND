@@ -1,17 +1,18 @@
 // PaperCut MF ← Hexa: provision members (the OfficeRnD model).
 //
-// Ensures each active Hexa member has a PaperCut user: company → group, member →
-// user, generated PIN identity. NO password is copied — members auth at the device
-// with their PIN. See docs/papercut-integration.md.
+// Ensures each active Hexa member has a PaperCut user AND a printer login number
+// (the Primary Card/Identity number, `primary-card-number` — what members type at
+// the copier). NO password is copied from Hexa. See docs/papercut-integration.md.
 //
-// MATCH BY EMAIL (important): PaperCut enforces unique emails, and existing users
-// (synced from OfficeRnD/AD) are keyed by a NON-email username. So we first build an
-// email→username map from PaperCut, then:
-//   - email already in PaperCut → UPDATE that existing user in place (group, name),
-//     keep its username + PIN. (Never create a duplicate — that's what broke before.)
-//   - email not in PaperCut → CREATE a new internal user (username = email, gen PIN).
-// Because we read the full email map first, the DRY RUN is now accurate — it foresees
-// create-vs-update correctly instead of only checking the username.
+// LOGIN NUMBER RULES (as requested):
+//   - member already HAS a primary-card-number  → keep it (never overwrite).
+//   - member has none / is newly created        → generate a unique number + set it.
+// After this runs, sync-pins.mjs reads primary-card-number → member_pins → the number
+// shows on the member's app + portal.
+//
+// MATCH BY EMAIL: existing users (OfficeRnD/AD) are keyed by non-email usernames and
+// PaperCut enforces unique emails, so we build an email→username map first and update
+// in place — never creating duplicates. This also makes the dry run accurate.
 //
 // RUNS ON THE LAN (localhost). Env: PAPERCUT_AUTH_TOKEN, PAPERCUT_SERVER
 // (default http://localhost:9191), HEXA_ROSTER_URL, PAPERCUT_SYNC_TOKEN.
@@ -31,24 +32,23 @@ function call(client, method, params) {
   })
 }
 
-function newPin(used) {
-  for (let i = 0; i < 50; i++) {
-    const pin = String(Math.floor(100000 + Math.random() * 900000))
-    if (!used.has(pin)) { used.add(pin); return pin }
-  }
-  throw new Error('Could not allocate a unique PIN after 50 tries')
+// Unique login number, avoiding all numbers already in use. 4 digits to match the
+// existing style (e.g. 5927); widen to 6 if the 4-digit space is exhausted.
+function newCard(used) {
+  for (let i = 0; i < 300; i++) { const c = String(Math.floor(1000 + Math.random() * 9000)); if (!used.has(c)) { used.add(c); return c } }
+  for (let i = 0; i < 300; i++) { const c = String(Math.floor(100000 + Math.random() * 900000)); if (!used.has(c)) { used.add(c); return c } }
+  throw new Error('Could not allocate a unique card number')
 }
 
 async function main() {
   if (!AUTH) throw new Error('PAPERCUT_AUTH_TOKEN not set.')
   if (!SYNC_TOKEN) throw new Error('PAPERCUT_SYNC_TOKEN not set (needed to fetch the Hexa roster).')
 
-  // 1. Roster from Hexa (already deduped + demo-filtered server-side).
+  // 1. Roster from Hexa (deduped + demo-filtered server-side).
   const rosterRes = await fetch(ROSTER_URL, { headers: { Authorization: `Bearer ${SYNC_TOKEN}` } })
   const roster = await rosterRes.json()
   if (!rosterRes.ok) throw new Error(`roster fetch failed (${rosterRes.status}): ${JSON.stringify(roster)}`)
   const members = roster.members ?? []
-  const used = new Set((roster.usedPins ?? []).map(String))
   console.log(`Roster: ${members.length} active Hexa members. ${APPLY ? 'APPLY mode' : 'DRY RUN (set PAPERCUT_PROVISION_APPLY=1 to write)'}.`)
 
   // 2. Connect.
@@ -57,9 +57,9 @@ async function main() {
   const opts = { host: url.hostname, port: Number(url.port) || (isHttps ? 9192 : 9191), path: '/rpc/api/xmlrpc' }
   const client = isHttps ? xmlrpc.createSecureClient(opts) : xmlrpc.createClient(opts)
 
-  // 3. Build email → username map from ALL existing PaperCut users. This is what
-  // makes match-by-email (and an accurate dry run) possible.
-  console.log('Indexing existing PaperCut users by email…')
+  // 3. Index existing users by email, and collect used card numbers (so generated
+  // ones never collide, and so we can preserve numbers members already have).
+  console.log('Indexing existing PaperCut users (email + card number)…')
   const allUsers = []
   for (let off = 0; ; off += 1000) {
     const batch = await call(client, 'api.listUserAccounts', [off, 1000])
@@ -67,14 +67,23 @@ async function main() {
     if (batch.length < 1000) break
   }
   const emailToUser = new Map()
+  const emailToCard = new Map()
+  const usedCards = new Set()
   for (const uname of allUsers) {
-    const em = await call(client, 'api.getUserProperty', [uname, 'email']).catch(() => '')
-    if (em && String(em).length) emailToUser.set(String(em).toLowerCase(), uname)
+    const [em, card] = await Promise.all([
+      call(client, 'api.getUserProperty', [uname, 'email']).catch(() => ''),
+      call(client, 'api.getUserProperty', [uname, 'primary-card-number']).catch(() => ''),
+    ])
+    if (em && String(em).length) {
+      emailToUser.set(String(em).toLowerCase(), uname)
+      if (card && String(card).length) emailToCard.set(String(em).toLowerCase(), String(card))
+    }
+    if (card && String(card).length) usedCards.add(String(card))
   }
-  console.log(`Indexed ${allUsers.length} PaperCut users, ${emailToUser.size} with an email.`)
+  console.log(`Indexed ${allUsers.length} users; ${emailToCard.size} already have a card number.`)
 
   // 4. Reconcile.
-  const toCreate = [], toUpdate = [], errors = []
+  const created = [], assignedCard = [], keptCard = [], errors = []
   const groupsSeen = new Set()
 
   for (const m of members) {
@@ -87,30 +96,37 @@ async function main() {
       }
 
       if (existingUser) {
-        // Update the EXISTING user in place — keep its username + PIN.
+        // Update in place. Keep their username + PIN.
         if (APPLY) {
           await call(client, 'api.setUserProperty', [existingUser, 'full-name', m.fullName]).catch(() => {})
           if (m.companyName) await call(client, 'api.addUserToGroup', [existingUser, m.companyName]).catch(() => {})
         }
-        toUpdate.push({ email: m.email, username: existingUser, group: m.companyName || null })
+        if (emailToCard.has(m.email)) {
+          keptCard.push(m.email) // already has a number → leave it
+        } else {
+          const card = newCard(usedCards) // no number yet → assign one
+          if (APPLY) await call(client, 'api.setUserProperty', [existingUser, 'primary-card-number', card])
+          assignedCard.push(m.email)
+        }
       } else {
-        const pin = newPin(used)
+        // Create a new internal user WITH a generated card (6th arg = cardId).
+        const card = newCard(usedCards)
         if (APPLY) {
           const pw = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
-          await call(client, 'api.addNewInternalUser', [m.email, pw, m.fullName, m.email, '', pin])
+          await call(client, 'api.addNewInternalUser', [m.email, pw, m.fullName, m.email, card, ''])
           if (m.companyName) await call(client, 'api.addUserToGroup', [m.email, m.companyName]).catch(() => {})
         }
-        toCreate.push({ email: m.email, group: m.companyName || null }) // pin not logged
+        created.push(m.email)
       }
     } catch (err) {
       errors.push({ email: m.email, reason: err.message })
     }
   }
 
-  console.log(`\nWould ${APPLY ? '' : '(dry-run) '}CREATE: ${toCreate.length}, UPDATE existing: ${toUpdate.length}, Errors: ${errors.length}`)
+  console.log(`\n${APPLY ? '' : '(dry-run) '}CREATE new: ${created.length}, ASSIGN card to existing: ${assignedCard.length}, KEEP existing card: ${keptCard.length}, Errors: ${errors.length}`)
   if (errors.length) console.log('Errors:', JSON.stringify(errors.slice(0, 20), null, 2))
-  if (!APPLY) console.log('\nDRY RUN — nothing written. This forecast is accurate (email-matched). Re-run with PAPERCUT_PROVISION_APPLY=1 to apply, then run sync-pins.mjs.')
-  else console.log('\nApplied. Now run: node --env-file=.env sync-pins.mjs')
+  if (!APPLY) console.log('\nDRY RUN — nothing written. Re-run with PAPERCUT_PROVISION_APPLY=1 to apply, then run sync-pins.mjs.')
+  else console.log('\nApplied. Now run: node --env-file=.env sync-pins.mjs  (pulls card numbers into Hexa for display)')
 }
 
 main().catch((err) => { console.error('PaperCut provisioning failed:', err.message); process.exit(1) })

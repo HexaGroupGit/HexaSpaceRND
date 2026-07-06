@@ -43,21 +43,18 @@ async function main() {
 
   const pins = []
   for (const u of users) {
-    // Your server exposes the PIN as `pin`; the documented property is `card-pin`.
-    // Read `pin` first, fall back to `card-pin` so this works across MF versions.
-    const [email, pinA] = await Promise.all([
+    // The member's printer login on THIS MF version is the Primary Card/Identity
+    // number (`primary-card-number`). `pin`/`card-pin` are NOT valid properties here
+    // (the API rejects the names), which is why earlier runs read 0.
+    const [email, card] = await Promise.all([
       call(client, 'api.getUserProperty', [u, 'email']).catch(() => ''),
-      call(client, 'api.getUserProperty', [u, 'pin']).catch(() => ''),
+      call(client, 'api.getUserProperty', [u, 'primary-card-number']).catch(() => ''),
     ])
-    let pin = pinA
-    if (!pin || String(pin).length === 0) {
-      pin = await call(client, 'api.getUserProperty', [u, 'card-pin']).catch(() => '')
-    }
-    if (pin != null && String(pin).length > 0) pins.push({ email: email || u, pin: String(pin) })
+    if (card != null && String(card).length > 0) pins.push({ email: email || u, pin: String(card) })
   }
 
-  // Count only — NEVER print a pin.
-  console.log(`PaperCut PINs: ${users.length} users scanned, ${pins.length} have a PIN.`)
+  // Count only — NEVER print a number.
+  console.log(`PaperCut: ${users.length} users scanned, ${pins.length} have a card/login number.`)
 
   if (DRY_RUN) { console.log('DRY RUN — nothing sent.'); return }
   if (!SYNC_TOKEN) throw new Error('PAPERCUT_SYNC_TOKEN not set. Use PAPERCUT_DRY_RUN=1 to preview counts.')

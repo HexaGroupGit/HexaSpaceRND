@@ -169,14 +169,21 @@ not password mirroring.
   `api.isUserExists` → if absent `api.addNewInternalUser(user, pw, fullName, email, '', pin)`
   (random pw never used for login), else refresh `full-name`/`email`; `api.addNewGroup` +
   `api.addUserToGroup` for the company. **Existing users' PINs are never overwritten.**
-- **PIN read-back for display:** run [sync-pins.mjs](../scripts/papercut-connector/sync-pins.mjs)
-  after provisioning. Reads `pin` (this server) with `card-pin` fallback → member_pins → shown
-  in app/portal ([[3b]]).
+- **Login number read-back for display:** run [sync-pins.mjs](../scripts/papercut-connector/sync-pins.mjs)
+  after provisioning. Reads **`primary-card-number`** → member_pins → shown in app/portal ([[3b]]).
+
+**IMPORTANT — the "PIN" is the Primary Card/Identity number (`primary-card-number`).** On this
+MF version the properties `pin` and `card-pin` are **not valid** (the API rejects the names),
+which silently returned 0 in early runs. The number members type at the copier is
+`primary-card-number` (e.g. `5927`). Provisioning **keeps** any existing number and **generates
++ sets** one (unique, 4-digit) for members who have none — created users get it via
+`addNewInternalUser`'s 6th arg (cardId), existing users via `setUserProperty(user,
+'primary-card-number', n)`.
 
 Confirmed API signatures (PaperCut reference proxy): `addNewInternalUser(auth, username,
 password, fullName, email, cardId, pin)`, `isUserExists(auth, username)`, `setUserProperty
 (auth, username, prop, value)`, `addUserToGroup(auth, username, group)`, `addNewGroup(auth,
-group)`. Settable PIN property is `card-pin`; this server reads it back as `pin`.
+group)`.
 
 ### Full end-to-end flow (target state)
 1. Member invited to Hexa portal → sets password (Supabase). ✅ exists
