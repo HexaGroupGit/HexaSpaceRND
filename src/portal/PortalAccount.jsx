@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Lock, Plus, FileText, X, Coins } from 'lucide-react'
+import { Lock, Plus, FileText, X, Coins, Printer } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
+import { usePrintPin } from './usePrintPin.js'
 import { Page, PageHeader, Card, SubTabs, Segmented, StatusBadge, Empty, Eyebrow, Field, Monogram, fmt, to12, bookingName } from './ui.jsx'
 
 // ── Profile ──────────────────────────────────────────────────────────────────
@@ -52,7 +53,31 @@ function ProfileTab({ company, member }) {
         </Card>
       </div>
 
+      <PrintingCard />
+
       <ChangePassword />
+    </div>
+  )
+}
+
+// Member's print PIN (PaperCut Primary Card/Identity number). Only their own,
+// via the owner-scoped endpoint. Renders nothing until/unless a PIN comes back.
+function PrintingCard() {
+  const pin = usePrintPin()
+  if (!pin) return null
+  return (
+    <div>
+      <Eyebrow className="mb-4">Printing</Eyebrow>
+      <Card className="p-7 flex items-center justify-between gap-5">
+        <div className="flex items-center gap-4">
+          <span className="h-11 w-11 shrink-0 bg-charcoal text-paper flex items-center justify-center"><Printer size={18} strokeWidth={1.4} /></span>
+          <div>
+            <div className="font-heading uppercase tracking-nav text-[11px] text-ink">Your print PIN</div>
+            <div className="hx-prose text-[12px] mt-0.5">Type at any printer keypad to release your jobs, or tap your access pass.</div>
+          </div>
+        </div>
+        <span className="font-mono text-3xl tracking-[0.25em] text-ink shrink-0">{pin}</span>
+      </Card>
     </div>
   )
 }

@@ -1,15 +1,14 @@
-import { useEffect, useState } from 'react'
 import { Printer as PrinterIcon, Wifi } from 'lucide-react'
 import { useApp } from '../context.js'
-import { apiUrl } from '../lib/native.js'
+import { usePrintPin } from '../lib/usePrintPin.js'
 import { Screen, BackHeader, Label, Card } from '../ui.jsx'
 
 // Printer setup — mirrors the portal guide (PaperCut) plus the member's own
 // print account details, phone-sized.
 export default function Printer() {
-  const { data, session } = useApp()
+  const { data } = useApp()
   const email = data.member?.email || data.company?.email || ''
-  const pin = usePrintPin(session?.access_token)
+  const pin = usePrintPin()
 
   return (
     <Screen>
@@ -20,15 +19,25 @@ export default function Printer() {
           <PrinterIcon size={16} strokeWidth={1.4} className="text-paper/40" />
         </div>
         <p className="font-display font-extralight text-2xl mt-4">PaperCut · Hexa-Secure</p>
+
+        {/* Print PIN — prominent, since members type it at the copier keypad */}
+        {pin && (
+          <div className="mt-5 border border-paper/20 bg-paper/5 px-4 py-3.5 flex items-end justify-between">
+            <div>
+              <span className="block font-heading uppercase tracking-label text-[10px] text-paper/50">Your print PIN</span>
+              <span className="block hx-prose text-[11px] text-paper/40 mt-1">Type at the keypad, or tap your pass</span>
+            </div>
+            <span className="font-mono text-3xl tracking-[0.3em] text-hexa-green leading-none">{pin}</span>
+          </div>
+        )}
+
         <div className="border-t border-paper/15 my-4" />
         <div className="space-y-2">
           <KV k="Sign-in" v={email || 'your member email'} />
-          {pin && <KV k="Your PIN" v={pin} mono />}
           <KV k="Portal" v="print.hexaspace.com.au" />
           <KV k="Queue" v="Hexa-Secure" />
           <KV k="Release" v="Tap your access pass at any printer" />
         </div>
-        {pin && <p className="hx-prose text-[11px] text-paper/40 mt-3">Enter this PIN at the printer keypad if you don't have your access pass.</p>}
       </div>
 
       <Label className="mt-9 mb-3">Set up in four steps</Label>
@@ -53,28 +62,11 @@ export default function Printer() {
   )
 }
 
-function KV({ k, v, mono }) {
+function KV({ k, v }) {
   return (
     <div className="flex justify-between gap-4">
       <span className="hx-prose text-[12px] text-paper/50">{k}</span>
-      <span className={`text-[13px] text-paper text-right break-all ${mono ? 'font-mono tracking-[0.2em]' : 'font-body'}`}>{v}</span>
+      <span className="font-body text-[13px] text-paper text-right break-all">{v}</span>
     </div>
   )
-}
-
-// Fetches the member's OWN print PIN from the JWT-verified endpoint. The pin is
-// never in the bulk member data (that's world-readable to all members) — it comes
-// only from this authenticated, owner-scoped call.
-function usePrintPin(accessToken) {
-  const [pin, setPin] = useState(null)
-  useEffect(() => {
-    if (!accessToken) return
-    let alive = true
-    fetch(apiUrl('/api/portal/print-pin'), { headers: { Authorization: `Bearer ${accessToken}` } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive && d?.pin) setPin(d.pin) })
-      .catch(() => {})
-    return () => { alive = false }
-  }, [accessToken])
-  return pin
 }

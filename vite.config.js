@@ -13,4 +13,16 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  // Dev only: the serverless /api/* functions live on Vercel, not the Vite dev
+  // server. Proxy them to production so /app and /portal work locally (PIN fetch,
+  // Stripe, food, messages, etc.). No effect on the built/deployed site.
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://portal.hexaspace.com.au',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
+  },
 })

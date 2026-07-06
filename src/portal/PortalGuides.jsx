@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
 import { Printer, CalendarClock, Receipt, Wifi, KeyRound, Coffee } from 'lucide-react'
-import { supabase } from '../lib/supabase.js'
+import { usePrintPin } from './usePrintPin.js'
 import { Page, PageHeader, Card, Eyebrow } from './ui.jsx'
 
 const GUIDES = [
@@ -62,19 +61,7 @@ export default function PortalGuides() {
 // JWT-verified, owner-scoped endpoint — never from the bulk member data (which is
 // readable by every member). Renders nothing until/unless a pin comes back.
 function PrintPin() {
-  const [pin, setPin] = useState(null)
-  useEffect(() => {
-    let alive = true
-    supabase.auth.getSession().then(({ data }) => {
-      const token = data?.session?.access_token
-      if (!token) return
-      fetch('/api/portal/print-pin', { headers: { Authorization: `Bearer ${token}` } })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => { if (alive && d?.pin) setPin(d.pin) })
-        .catch(() => {})
-    })
-    return () => { alive = false }
-  }, [])
+  const pin = usePrintPin()
   if (!pin) return null
   return (
     <div className="mt-4 bg-charcoal text-paper px-5 py-4 flex items-center justify-between gap-4">

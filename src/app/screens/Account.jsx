@@ -1,5 +1,6 @@
 import { LogOut } from 'lucide-react'
 import { useApp } from '../context.js'
+import { usePrintPin } from '../lib/usePrintPin.js'
 import { Screen, BackHeader, Label, Card, Chip, fmt } from '../ui.jsx'
 import { creditBalance, CREDIT_VALUE } from '../lib/bookingActions.js'
 
@@ -10,6 +11,7 @@ export default function Account() {
   const { company, member, leases } = data
   const activeLease = (leases ?? []).find((l) => l.status === 'active')
   const credits = creditBalance(company)
+  const pin = usePrintPin()
 
   return (
     <Screen>
@@ -41,6 +43,17 @@ export default function Account() {
         {activeLease && <Field label="Term" value={`${fmt(activeLease.startDate)} – ${fmt(activeLease.endDate)}`} />}
         <Field label="Booking allowance" value={`${credits} credits remaining · A$${CREDIT_VALUE} each`} />
       </Card>
+
+      {pin && (
+        <>
+          <Label className="mb-3 mt-8">Printing</Label>
+          <Card className="p-5 space-y-4">
+            <Field label="Print PIN" value={<span className="font-mono tracking-[0.2em] text-[15px]">{pin}</span>} />
+            <Field label="Queue" value="Hexa-Secure" />
+            <p className="hx-prose text-[11px]">Type your PIN at any printer keypad to release your jobs, or tap your access pass.</p>
+          </Card>
+        </>
+      )}
 
       <p className="hx-prose text-[12px] mt-6">
         Something out of date? Message the team from More → Messages, or email{' '}
