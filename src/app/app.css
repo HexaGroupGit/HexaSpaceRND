@@ -1,0 +1,64 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Hexa Space member app — phone-first chrome (loaded only with the /app chunk).
+   Same brand tokens as the portal (index.css @theme): bone/ink/charcoal/
+   hexa-green, Big Daily Short display, Rework Micro headings, GT America body.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Phone column — full-bleed on phones, a framed 430px column on desktop. */
+.app-frame {
+  max-width: 430px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  background: var(--color-bone);
+  position: relative;
+}
+@media (min-width: 431px) {
+  body:has(.app-frame) { background: var(--color-stone); }
+  .app-frame { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 24px 60px rgba(0, 0, 0, 0.12); }
+}
+
+.app-safe-top { padding-top: env(safe-area-inset-top); }
+
+/* Bottom tab bar — fixed to the phone column, blurred paper, hairline top. */
+.app-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 430px;
+  background: color-mix(in srgb, var(--color-paper) 90%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 40;
+}
+
+/* Eclat-style arched card top. */
+.app-arch { border-radius: 190px 190px 14px 14px; }
+
+/* Horizontal scrollers without visible scrollbars. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Bottom sheet */
+.app-sheet-backdrop {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.app-sheet {
+  width: 100%; max-width: 430px;
+  background: var(--color-paper);
+  border-radius: 18px 18px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  max-height: 88dvh;
+  overflow-y: auto;
+  animation: app-sheet-up 0.35s var(--ease-lux) both;
+}
+@keyframes app-sheet-up {
+  from { transform: translateY(40px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .app-sheet { animation: none; } }

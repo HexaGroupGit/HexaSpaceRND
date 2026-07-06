@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import PortalLogin from './portal/PortalLogin.jsx'
 import SignPage from './components/SignPage.jsx'
 import EventBookingSignPage from './components/EventBookingSignPage.jsx'
@@ -63,8 +63,16 @@ function RootAuth() {
   return <PortalApp />
 }
 
+// Member mobile app — phone-only experience at /app (lazy: its chunk + CSS
+// only load when the route is hit, so portal/admin bundles are unaffected).
+const MobileApp = lazy(() => import('./app/MobileApp.jsx'))
+
 export default function App() {
   const path = window.location.pathname
+
+  if (path === '/app' || path.startsWith('/app/')) {
+    return <Suspense fallback={null}><MobileApp /></Suspense>
+  }
 
   // Public pages — no auth needed.
   if (path.startsWith('/book-function')) return <FunctionBookPage />

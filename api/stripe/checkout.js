@@ -1,5 +1,6 @@
 // POST /api/stripe/checkout — creates a Stripe Checkout session for a pending
-// invoice and returns { url }. Body: { invoiceId }
+// invoice and returns { url }. Body: { invoiceId, returnTo? } — returnTo is the
+// path Stripe bounces back to (default /billing; the member app passes /app).
 //
 // HARD GATE: returns 403 unless Settings → Integrations → Stripe has
 // "Enable online payments" turned ON (settings.stripe.paymentsEnabled).
@@ -27,8 +28,10 @@ export default async function handler(req, res) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!stripeKey || !serviceKey) return res.status(500).json({ error: 'Stripe not configured.' })
 
-  const { invoiceId } = req.body ?? {}
+  const { invoiceId, returnTo } = req.body ?? {}
   if (!invoiceId) return res.status(400).json({ error: 'invoiceId is required.' })
+  // Same-site path only — reject anything that could redirect off-domain.
+  const backPath = typeof returnTo === 'string' && /^\/[a-zA-Z0-9\-_/]*$/.test(returnTo) ? returnTo : '/billing'
 
   try {
     const supabase = createClient(SUPABASE_URL, serviceKey, { auth: { persistSession: false } })
@@ -64,8 +67,8 @@ export default async function handler(req, res) {
       'metadata[invoiceId]': invoice.id,
       'metadata[invoiceNumber]': invoice.number ?? '',
       'payment_intent_data[metadata][invoiceId]': invoice.id,
-      success_url: `${base}/billing?paid=${encodeURIComponent(invoice.number ?? '1')}`,
-      cancel_url: `${base}/billing`,
+      success_url: `${base}${backPath}?paid=${encodeURIComponent(invoice.number ?? '1')}`,
+      cancel_url: `${base}${backPath}`,
     })
     if (tenant?.email) params.set('customer_email', tenant.email)
 
