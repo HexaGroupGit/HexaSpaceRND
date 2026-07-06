@@ -43,10 +43,16 @@ async function main() {
 
   const pins = []
   for (const u of users) {
-    const [email, pin] = await Promise.all([
+    // Your server exposes the PIN as `pin`; the documented property is `card-pin`.
+    // Read `pin` first, fall back to `card-pin` so this works across MF versions.
+    const [email, pinA] = await Promise.all([
       call(client, 'api.getUserProperty', [u, 'email']).catch(() => ''),
       call(client, 'api.getUserProperty', [u, 'pin']).catch(() => ''),
     ])
+    let pin = pinA
+    if (!pin || String(pin).length === 0) {
+      pin = await call(client, 'api.getUserProperty', [u, 'card-pin']).catch(() => '')
+    }
     if (pin != null && String(pin).length > 0) pins.push({ email: email || u, pin: String(pin) })
   }
 

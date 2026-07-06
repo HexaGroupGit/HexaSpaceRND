@@ -153,6 +153,41 @@ portal. A PIN is a credential, so this is built owner-only:
 > public anon key can read all business tables from any browser. Out of scope for PaperCut,
 > but worth a dedicated security pass.
 
+## 3c. Member provisioning — OfficeRnD model (built 6 Jul 2026)
+
+Chosen approach (matches how OfficeRnD's PaperCut integration works): an on-prem tool
+provisions **Hexa members → PaperCut users**, companies → **groups**, with a generated
+**PIN** as the printer identity. **No password is copied** from Hexa/Supabase — members
+authenticate at the device with their PIN. Unified experience comes from auto-provisioning,
+not password mirroring.
+
+- **Roster:** `GET /api/papercut/members` (sync-token auth) returns active members
+  `{ email, fullName, companyId, companyName }` + `usedPins` (so the provisioner avoids PIN
+  collisions). Active = has email and `portalAccess !== false`.
+- **Provisioner:** [scripts/papercut-connector/provision-members.mjs](../scripts/papercut-connector/provision-members.mjs).
+  **DRY-RUN by default; writes only with `PAPERCUT_PROVISION_APPLY=1`.** For each member:
+  `api.isUserExists` → if absent `api.addNewInternalUser(user, pw, fullName, email, '', pin)`
+  (random pw never used for login), else refresh `full-name`/`email`; `api.addNewGroup` +
+  `api.addUserToGroup` for the company. **Existing users' PINs are never overwritten.**
+- **PIN read-back for display:** run [sync-pins.mjs](../scripts/papercut-connector/sync-pins.mjs)
+  after provisioning. Reads `pin` (this server) with `card-pin` fallback → member_pins → shown
+  in app/portal ([[3b]]).
+
+Confirmed API signatures (PaperCut reference proxy): `addNewInternalUser(auth, username,
+password, fullName, email, cardId, pin)`, `isUserExists(auth, username)`, `setUserProperty
+(auth, username, prop, value)`, `addUserToGroup(auth, username, group)`, `addNewGroup(auth,
+group)`. Settable PIN property is `card-pin`; this server reads it back as `pin`.
+
+### Full end-to-end flow (target state)
+1. Member invited to Hexa portal → sets password (Supabase). ✅ exists
+2–4. Nightly/on-demand `provision-members.mjs` creates their PaperCut user + group + PIN. 🔨 built, needs live run
+5. Member installs PaperCut client. ✅ guide
+6. Auth at printer = **PIN** (not Supabase password). ✅ via provisioning
+7. PIN shown in app + portal. ✅ built
+8. Print → hold/release at device via PIN. ✅ native PaperCut config
+9. Month-end: negative balance → fee → invoice. ✅ built
+10. Balance resets; show live balance + payable on portal. 🟡 live-balance display still to build
+
 ## 4. Open questions (resolve before coding)
 
 1. **Which PaperCut product + version?** MF/NG (on-prem, XML-RPC) vs Hive/Pocket (cloud).
