@@ -4,6 +4,7 @@ import { format, parseISO, differenceInDays } from 'date-fns'
 import { ArrowLeft, Send, RefreshCw, Ban, FileMinus, FileDown, Plus, MessageSquare, ToggleLeft, ToggleRight, Trash2, Pencil, X } from 'lucide-react'
 import { sendEmail, invoiceEmailHtml, resolveEmailTemplate, brandShell, bKicker, bH1, bP, bSmall } from '../lib/sendEmail.js'
 import { logAudit } from '../lib/audit.js'
+import { billingEmailFor } from '../lib/credits.js'
 import { locationLabel, lineDescription } from '../lib/billing.js'
 import { jsPDF } from 'jspdf'
 
@@ -36,6 +37,7 @@ export default function InvoiceDetail({
   lease,
   space,
   settings,
+  members = [],
   onBack,
   onUpdate,
   onVoid,
@@ -193,7 +195,7 @@ export default function InvoiceDetail({
 
   // ── Handlers ───────────────────────────────────────────────────────────
   async function handleSend() {
-    const email = tenant?.email
+    const email = billingEmailFor(tenant, members)
     if (!email) {
       alert('No email address on file for this tenant.')
       return
@@ -223,7 +225,7 @@ export default function InvoiceDetail({
   }
 
   async function handleSendReminder() {
-    const email = tenant?.email
+    const email = billingEmailFor(tenant, members)
     if (!email) { alert('No email address on file for this tenant.'); return }
     if (!window.confirm(`Send overdue payment reminder to ${email}?`)) return
     try {
@@ -252,7 +254,7 @@ export default function InvoiceDetail({
   }
 
   async function handleSendReceipt(payment) {
-    const email = tenant?.email
+    const email = billingEmailFor(tenant, members)
     if (!email) { alert('No email address on file for this tenant.'); return }
     const companyName = settings?.company?.name ?? 'Hexa Space'
     const sub = (invoice.lineItems ?? []).reduce((s, l) => s + Math.round(l.unitPrice * l.qty * (1 - (l.discountPct ?? 0) / 100) * 100) / 100, 0)
@@ -677,7 +679,7 @@ export default function InvoiceDetail({
                       <div>{format(parseISO(pay.date), 'dd/MM/yyyy')}</div>
                       <div>{pay.method}</div>
                     </div>
-                    {tenant?.email && (
+                    {billingEmailFor(tenant, members) && (
                       <button
                         onClick={() => handleSendReceipt(pay)}
                         className="text-xs border border-input rounded px-2 py-1 text-muted-foreground hover:bg-muted/50 hover:text-foreground"

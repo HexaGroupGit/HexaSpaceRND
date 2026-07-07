@@ -5,7 +5,7 @@
 // then emails each tenant their invoice.
 
 import { createClient } from '@supabase/supabase-js'
-import { sendResendEmail } from './_email.js'
+import { sendResendEmail, billingEmailFor } from './_email.js'
 import { brandFrame, bKicker, bH1, bH2, bSmall, bBtn, bPanel, bTable, SANS, INK, MUTE } from './_brand.js'
 import { buildMonthlyInvoiceForLease, lineItemsSubtotal } from '../src/lib/billingEngine.js'
 import { selectAllRows } from './_db.js'
@@ -80,16 +80,18 @@ export default async function handler(req, res) {
   })
 
   // Load everything in parallel (paginated — see api/_db.js; never bare selects)
-  const [lRows, tRows, iRows, sRes, spRows] = await Promise.all([
+  const [lRows, tRows, iRows, sRes, spRows, mRows] = await Promise.all([
     selectAllRows(supabase, 'leases'),
     selectAllRows(supabase, 'tenants'),
     selectAllRows(supabase, 'invoices'),
     supabase.from('settings').select('data').eq('id', 'global').single(),
     selectAllRows(supabase, 'spaces'),
+    selectAllRows(supabase, 'members'),
   ])
 
   const leases   = lRows.map(r => r.data).filter(l => l.status === 'active')
   const tenants  = tRows.map(r => r.data)
+  const membersAll = mRows.map(r => r.data)
   const invoices = iRows.map(r => r.data)
   const settings = sRes.data?.data ?? {}
   const spaces   = spRows.map(r => r.data)
@@ -157,8 +159,9 @@ export default async function handler(req, res) {
     }
     if (saveErr) { errors.push({ tenant: tenant.businessName, reason: saveErr.message }); continue }
 
-    // Send invoice email
-    if (tenant.email && resendKey) {
+    // Send invoice email — company email, else the billing person's.
+    const invoiceEmailTo = billingEmailFor(tenant, membersAll)
+    if (invoiceEmailTo && resendKey) {
       const subtotal = lineItemsSubtotal(invoice.lineItems)
       const gst      = invoice.vatEnabled !== false ? subtotal * taxRate : 0
       const total    = subtotal + gst
@@ -166,7 +169,7 @@ export default async function handler(req, res) {
 
       await sendResendEmail({
         from: 'Hexa Space <info@hexaspace.com.au>',
-        to: [tenant.email],
+        to: [invoiceEmailTo],
         subject: `Invoice ${invoiceNum} — ${monthLabel(periodStart)}`,
         html,
       }).catch(() => {})

@@ -26,7 +26,7 @@ import {
   resolveBondRefundCopy, bondRefundEmailHtml,
   provisionSaltoAccess, revokeSaltoAccess,
 } from '../lib/onboarding.js'
-import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, bookingFeeName } from '../lib/credits.js'
+import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, bookingFeeName, billingEmailFor } from '../lib/credits.js'
 import { isRentFreeMonth } from '../lib/paymentSchedule.js'
 
 // All spaces a lease occupies (primary + any bundled items, e.g. parking).
@@ -1810,13 +1810,14 @@ export function useStore() {
     updateInvoice(invoiceId, { approvalStatus: 'approved', approvedAt: new Date().toISOString() })
     logAudit('approve', 'invoice', invoiceId, inv.number ?? invoiceId, 'Bond refund approved')
     const tenant = tenantsRef.current.find((t) => t.id === inv.tenantId)
-    if (!tenant?.email) return
+    const refundEmail = billingEmailFor(tenant, membersRef.current)
+    if (!refundEmail) return
     const amount = Math.abs((inv.lineItems ?? []).reduce((s, l) => s + (l.unitPrice * l.qty), 0))
     const space = spacesRef.current.find((s) => s.id === leasesRef.current.find((l) => l.id === inv.leaseId)?.spaceId)
     const settings = settingsRef.current
     const { subject } = resolveBondRefundCopy({ invoice: inv, tenant, space, settings, amount })
     sendEmail({
-      to: tenant.email, subject,
+      to: refundEmail, subject,
       html: bondRefundEmailHtml({ invoice: inv, tenant, space, settings, amount }),
       settings, tenantId: tenant.id, emailType: 'bond_refund',
     }).catch((e) => console.error('Bond refund email failed:', e))

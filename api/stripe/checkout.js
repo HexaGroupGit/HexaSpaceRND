@@ -74,7 +74,14 @@ export default async function handler(req, res) {
       success_url: `${base}${backPath}?paid=${encodeURIComponent(invoice.number ?? '1')}`,
       cancel_url: `${base}${backPath}`,
     })
-    if (tenant?.email) params.set('customer_email', tenant.email)
+    // Receipt email for Stripe Checkout: company email, else billing person.
+    let payerEmail = tenant?.email
+    if (!payerEmail && tenant?.id) {
+      const { data: mRows } = await supabase.from('members').select('data').eq('data->>companyId', tenant.id)
+      const mine = (mRows ?? []).map((r) => r.data).filter((m) => m?.email)
+      payerEmail = (mine.find((m) => m.billingPerson) ?? mine.find((m) => m.contactPerson) ?? mine[0])?.email
+    }
+    if (payerEmail) params.set('customer_email', payerEmail)
 
     const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',

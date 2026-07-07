@@ -65,3 +65,13 @@ export function bookingFeeName({ roomName, rate, date, startTime, endTime, usedC
 }
 
 export const round2 = (n) => Math.round(Number(n || 0) * 100) / 100
+
+// Where to email a company: its own email, else the member flagged Billing
+// Person, else the Contact Person, else any member with an email. Used by
+// EVERY company-facing send (invoices, reminders, mail alerts, renewals) so
+// email-less companies still reach a human. Server twin: api/_email.js.
+export function billingEmailFor(tenant, members = []) {
+  if (tenant?.email) return tenant.email
+  const mine = (members ?? []).filter((m) => m.companyId === tenant?.id && m.email)
+  return (mine.find((m) => m.billingPerson) ?? mine.find((m) => m.contactPerson) ?? mine[0])?.email || ''
+}

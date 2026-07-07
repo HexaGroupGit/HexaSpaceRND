@@ -3,11 +3,12 @@ import { useOutletContext } from 'react-router-dom'
 import { differenceInDays, parseISO, format, addYears, addMonths, isValid } from 'date-fns'
 import { FileText, RefreshCw, Mail, X } from 'lucide-react'
 import { sendEmail, brandShell, bKicker, bH1, bP, bSmall } from '../lib/sendEmail.js'
+import { billingEmailFor } from '../lib/credits.js'
 import { sendLeaseForSigning, shouldAutoSendForSigning } from '../lib/esign.js'
 import ContractForm from './ContractForm.jsx'
 
 export default function Renewals() {
-  const { leases, tenants, spaces, settings, addLease, updateLease, templates, discounts } = useOutletContext()
+  const { leases, tenants, spaces, settings, addLease, updateLease, templates, discounts, members = [] } = useOutletContext()
   const [sending, setSending] = useState(null) // leaseId being sent
   const [renewLease, setRenewLease] = useState(null) // lease to renew (opens ContractForm)
   const today = new Date()
@@ -61,14 +62,15 @@ export default function Renewals() {
   async function handleSendRenewalEmail(lease) {
     const tenant = tenants.find((t) => t.id === lease.tenantId)
     const space = spaces.find((s) => s.id === lease.spaceId)
-    if (!tenant?.email) { alert('No email on file for this tenant.'); return }
+    const email = billingEmailFor(tenant, members)
+    if (!email) { alert('No email on file for this company or its billing person.'); return }
     setSending(lease.id)
     try {
       const companyName = settings?.company?.name ?? 'Hexa Space'
       const contractNum = lease.contractNumber ?? `CON-${lease.id.slice(-3).toUpperCase()}`
       const expiryDate = parse(lease.endDate) ? format(parse(lease.endDate), 'dd MMM yyyy') : 'the end of your term'
       await sendEmail({
-        to: tenant.email,
+        to: email,
         subject: `Renewal notice — ${contractNum} expires ${expiryDate}`,
         tenantId: tenant.id, emailType: 'renewal',
         html: brandShell(
@@ -83,7 +85,7 @@ export default function Renewals() {
         ),
         settings,
       })
-      alert(`Renewal email sent to ${tenant.email}`)
+      alert(`Renewal email sent to ${email}`)
     } catch (err) {
       alert(`Failed to send: ${err.message}`)
     } finally {
@@ -124,7 +126,7 @@ export default function Renewals() {
     return (
       <tr className="border-b border-border last:border-0 hover:bg-muted/50">
         <td className="px-4 py-3 font-medium text-foreground">{tenant?.businessName ?? '—'}</td>
-        <td className="px-4 py-3 text-muted-foreground">{tenant?.email ?? '—'}</td>
+        <td className="px-4 py-3 text-muted-foreground">{billingEmailFor(tenant, members) || '—'}</td>
         <td className="px-4 py-3 text-muted-foreground">{tenant?.phone ?? '—'}</td>
         <td className="px-4 py-3 text-muted-foreground">{space?.unitNumber ?? '—'}</td>
         <td className="px-4 py-3 text-muted-foreground">{fmt(lease.endDate)}</td>

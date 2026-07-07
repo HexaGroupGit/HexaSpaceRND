@@ -78,3 +78,12 @@ export async function sendResendEmail(payload = {}) {
     return { ok: false, error: String(err) }
   }
 }
+
+// Where to email a company: its own email, else the member flagged Billing
+// Person, else the Contact Person, else any member with an email. Client
+// twin: src/lib/credits.js billingEmailFor.
+export function billingEmailFor(tenant, members = []) {
+  if (tenant?.email) return tenant.email
+  const mine = (members ?? []).filter((m) => m.companyId === tenant?.id && m.email)
+  return (mine.find((m) => m.billingPerson) ?? mine.find((m) => m.contactPerson) ?? mine[0])?.email || ''
+}

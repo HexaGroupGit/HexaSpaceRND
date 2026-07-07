@@ -5,6 +5,7 @@ import { Plus, X, Check, Mailbox, Package, RefreshCw, Trash2 } from 'lucide-reac
 import { supabase } from '../lib/supabase.js'
 import { sendEmail, brandShell, bKicker, bH1, bP, bSmall, bBtn, PORTAL_URL } from '../lib/sendEmail.js'
 import { logAudit } from '../lib/audit.js'
+import { billingEmailFor } from '../lib/credits.js'
 
 // Mail & Deliveries register: reception logs an item addressed to a company OR
 // a specific member; the addressee is emailed straight away ("collect from
@@ -70,7 +71,9 @@ export default function MailRegister() {
       const member = kind === 'm' ? members.find((m) => m.id === id) : null
       const tenant = tenants.find((t) => t.id === (member ? member.companyId : id))
       const addresseeName = member?.name || tenant?.businessName || ''
-      const email = member?.email || tenant?.email || ''
+      // Company-addressed items fall back to the billing person's email when
+      // the company record has none.
+      const email = member?.email || billingEmailFor(tenant, members)
       const first = (member?.name || tenant?.contactName || '').split(' ')[0]
 
       const item = {

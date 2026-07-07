@@ -3,7 +3,7 @@
 // Schedule set in vercel.json
 
 import { createClient } from '@supabase/supabase-js'
-import { sendResendEmail } from './_email.js'
+import { sendResendEmail, billingEmailFor } from './_email.js'
 import { brandFrame, bKicker, bH1, bP, bSmall, bTable } from './_brand.js'
 import { selectAllRows } from './_db.js'
 import { stripeConfigured, chargeInvoiceOffSession } from './_stripe.js'
@@ -29,14 +29,16 @@ export default async function handler(req, res) {
 
   try {
     // 1. Load all pending/overdue invoices and tenants (paginated — 1000-row cap)
-    const [invRows, tenantRows, { data: settRows }] = await Promise.all([
+    const [invRows, tenantRows, memberRows, { data: settRows }] = await Promise.all([
       selectAllRows(supabase, 'invoices', 'id, data'),
       selectAllRows(supabase, 'tenants', 'id, data'),
+      selectAllRows(supabase, 'members', 'id, data'),
       supabase.from('settings').select('data').eq('id', 'global'),
     ])
 
     const invoices = (invRows ?? []).map((r) => ({ id: r.id, ...r.data }))
     const tenants = (tenantRows ?? []).map((r) => ({ id: r.id, ...r.data }))
+    const members = (memberRows ?? []).map((r) => ({ id: r.id, ...r.data }))
     const settings = settRows?.[0]?.data ?? {}
 
     const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
@@ -93,7 +95,8 @@ export default async function handler(req, res) {
       // Receipt email per charged tenant.
       if (resendKey) {
         for (const c of charged) {
-          if (!c.tenant.email) continue
+          const receiptEmail = billingEmailFor(c.tenant, members)
+          if (!receiptEmail) continue
           const inner =
             bKicker('Payment Receipt') +
             bH1(`$${c.amount.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD`) +
@@ -102,7 +105,7 @@ export default async function handler(req, res) {
             bSmall(`This is an automated receipt from ${fromName}. Questions? Just reply to this email.`)
           await sendResendEmail({
             from: `${fromName} <${fromEmail}>`,
-            to: c.tenant.email,
+            to: receiptEmail,
             subject: `Payment receipt — ${c.inv.number} (${fromName})`,
             html: brandFrame(inner, { footerLabel: 'Accounts' }),
           }).catch(() => {})
@@ -124,7 +127,8 @@ export default async function handler(req, res) {
     let reminded = 0
     for (const [tenantId, invs] of Object.entries(byTenant)) {
       const tenant = tenants.find((t) => t.id === tenantId)
-      if (!tenant?.email) continue
+      const reminderEmail = billingEmailFor(tenant, members)
+      if (!reminderEmail) continue
 
       const invoiceRows = invs.map((inv) => {
         const sub = (inv.lineItems ?? []).reduce((s, l) => {
@@ -147,7 +151,7 @@ export default async function handler(req, res) {
 
       await sendResendEmail({
         from: `${fromName} <${fromEmail}>`,
-        to: tenant.email,
+        to: reminderEmail,
         subject: `Payment reminder — ${invs.length} overdue invoice${invs.length > 1 ? 's' : ''} from ${fromName}`,
         html,
       })

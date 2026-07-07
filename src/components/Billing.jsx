@@ -36,7 +36,7 @@ export default function Billing() {
   const {
     invoices, addInvoice, updateInvoice, voidInvoice, deleteInvoice, addPaymentToInvoice, addCommentToInvoice, approveBondRefund,
     discounts, addDiscount, updateDiscount, deleteDiscount,
-    tenants, leases, spaces, settings, currentUserRole,
+    tenants, leases, spaces, settings, currentUserRole, members = [],
   } = useOutletContext()
 
   // Bond-refund credit notes awaiting an admin's approval before the tenant is notified.
@@ -277,6 +277,7 @@ export default function Billing() {
         lease={lease}
         space={space}
         settings={settings}
+        members={members}
         onBack={() => setSelectedInvoice(null)}
         onUpdate={handleInvoiceUpdate}
         onVoid={voidInvoice}
