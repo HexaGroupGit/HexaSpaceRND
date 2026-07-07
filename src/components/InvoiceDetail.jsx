@@ -415,13 +415,13 @@ export default function InvoiceDetail({
                 Detach
               </button>
             )}
-            <button
-              onClick={() => onUpdate(invoice.id, { xeroSync: !invoice.xeroSync })}
-              className="flex items-center gap-1.5 text-xs border border-input rounded px-3 py-1.5 hover:bg-muted/50 text-foreground"
+            <span
+              title={invoice.xeroInvoiceId ? 'Linked to Xero — payment status pulls back automatically' : 'Not in Xero yet — syncs when the Xero push runs'}
+              className={`flex items-center gap-1.5 text-xs border border-input rounded px-3 py-1.5 ${invoice.xeroInvoiceId ? 'text-blue-700' : 'text-muted-foreground'}`}
             >
-              {invoice.xeroSync ? <ToggleRight size={14} className="text-blue-600" /> : <ToggleLeft size={14} />}
-              Sync
-            </button>
+              {invoice.xeroInvoiceId ? <ToggleRight size={14} className="text-blue-600" /> : <ToggleLeft size={14} />}
+              {invoice.xeroInvoiceId ? 'Synced to Xero' : 'Not synced'}
+            </span>
             {invoice.status === 'overdue' && (
               <button onClick={handleSendReminder}
                 className="flex items-center gap-1.5 text-xs border border-red-300 rounded px-3 py-1.5 hover:bg-red-50 text-red-700 font-medium">
@@ -504,18 +504,24 @@ export default function InvoiceDetail({
               </div>
             </div>
 
-            {/* Xero sync status */}
+            {/* Xero sync status — read-only: xeroInvoiceId/xeroSync are stamped
+                by the Xero push (or the migration linker), never toggled by hand */}
             <div className="bg-card border border-border rounded-xl shadow-sm p-4 text-sm">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-foreground">Enable Sync</span>
-                <button
-                  onClick={() => onUpdate(invoice.id, { xeroSync: !invoice.xeroSync })}
-                  className={`text-xs px-2 py-0.5 rounded ${invoice.xeroSync ? 'bg-blue-100 text-blue-700' : 'bg-muted text-muted-foreground'}`}
-                >
-                  {invoice.xeroSync ? 'On' : 'Off'}
-                </button>
+                <span className="text-xs font-semibold text-foreground">Xero</span>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${invoice.xeroInvoiceId ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
+                  {invoice.xeroInvoiceId ? 'Synced' : 'Not synced'}
+                </span>
               </div>
-              <p className="text-xs text-muted-foreground">Xero integration coming soon.</p>
+              {invoice.xeroInvoiceId ? (
+                <p className="text-xs text-muted-foreground">
+                  Linked to Xero{invoice.xeroSyncedAt ? ` on ${format(parseISO(invoice.xeroSyncedAt), 'dd MMM yyyy')}` : ''} — payment status flows back automatically via the 6-hourly pull.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Not in Xero yet — it syncs when the Xero push runs (Settings → Integrations → Xero).
+                </p>
+              )}
             </div>
           </div>
 
