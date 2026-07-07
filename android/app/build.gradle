@@ -12,10 +12,10 @@ android {
     namespace = "au.com.hexaspace.member"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "au.com.hexaspace.member"
+        applicationId "www.hexaspace.com.au"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        versionCode 3
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
