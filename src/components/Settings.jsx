@@ -576,6 +576,103 @@ function EmailsSection({ settings, updateSettings }) {
       </FormRow>
 
       <SaveButton onClick={save} saved={saved} />
+
+      <PortalMigrationInvites safeMode={form.safeMode !== false} safeRecipient={form.safeRecipient || 'eric@hexaspace.com.au'} />
+    </div>
+  )
+}
+
+// ── Portal migration bulk invite ──────────────────────────────────────────────
+// Sends the "we're moving to a new portal" announcement + password-setup link
+// to every active member and active-company contact, in batches.
+function PortalMigrationInvites({ safeMode, safeRecipient }) {
+  const [preview, setPreview] = useState(null)
+  const [running, setRunning] = useState(false)
+  const [progress, setProgress] = useState(null) // { sent, failed, remaining }
+  const [error, setError] = useState(null)
+
+  async function call(body) {
+    const { authHeaders } = await import('../lib/apiFetch.js')
+    const r = await fetch('/api/portal/bulk-invite', {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify(body),
+    })
+    const data = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(data.error ?? 'Request failed')
+    return data
+  }
+
+  async function loadPreview() {
+    setError(null)
+    try { setPreview(await call({ dryRun: true })) } catch (e) { setError(e.message) }
+  }
+
+  async function sendAll() {
+    if (!window.confirm(safeMode
+      ? `Safe mode is ON — all invites will redirect to ${safeRecipient}. Run the send as a test?`
+      : 'Safe mode is OFF — this emails a password-setup invite to EVERY active member and company contact. Send now?')) return
+    setRunning(true); setError(null)
+    let sent = 0, failed = 0, remaining = Infinity
+    try {
+      while (remaining > 0) {
+        const r = await call({ limit: 20 })
+        sent += r.sent.length
+        failed += r.failed.length
+        remaining = r.remaining
+        setProgress({ sent, failed, remaining })
+        if (r.sent.length === 0 && r.failed.length > 0) break // avoid a failure loop
+      }
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setRunning(false)
+      loadPreview()
+    }
+  }
+
+  return (
+    <div className="mt-8 rounded-lg border border-border bg-card p-4">
+      <div className="text-sm font-semibold text-foreground">Portal migration invites</div>
+      <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+        Emails the "we're moving to a new member portal" announcement with a personal password-setup
+        link to every active member and active-company contact. Already-invited people are skipped,
+        so it's safe to run again after adding members.
+      </p>
+      {safeMode && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 mb-3">
+          Safe mode is ON — running this now is a rehearsal: every invite goes to {safeRecipient}.
+        </p>
+      )}
+      <div className="flex items-center gap-3">
+        <button onClick={loadPreview} className="px-3 py-1.5 text-xs border border-input rounded-md font-medium hover:bg-muted/50">
+          Preview recipients
+        </button>
+        <button
+          onClick={sendAll}
+          disabled={running || (preview && preview.toSend === 0)}
+          className="px-4 py-1.5 text-xs bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 disabled:opacity-50"
+        >
+          {running ? 'Sending…' : 'Send invites to all active members'}
+        </button>
+      </div>
+      {preview && (
+        <div className="mt-3 text-xs text-muted-foreground">
+          {preview.totalRecipients} recipients total · {preview.alreadyInvited} already invited · <strong className="text-foreground">{preview.toSend} to send</strong>
+          {preview.sample?.length > 0 && (
+            <div className="mt-1.5 space-y-0.5">
+              {preview.sample.map((s) => <div key={s.email}>{s.email} — {s.company}</div>)}
+              {preview.toSend > preview.sample.length && <div>…and {preview.toSend - preview.sample.length} more</div>}
+            </div>
+          )}
+        </div>
+      )}
+      {progress && (
+        <div className="mt-3 text-xs font-medium text-foreground">
+          Sent {progress.sent}{progress.failed ? ` · ${progress.failed} failed` : ''} · {progress.remaining} remaining
+        </div>
+      )}
+      {error && <div className="mt-3 text-xs text-red-600">{error}</div>}
     </div>
   )
 }

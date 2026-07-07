@@ -8,7 +8,9 @@ import { brandFrame, bKicker, bH2, bP, bBtn, bSmall, OLIVE } from './_brand.js'
 const SUPABASE_URL = process.env.SUPABASE_URL
 
 // Returns { ok: true, email } or { ok: false, error }.
-export async function invitePortalUser({ email, redirectTo, subject, heading, intro, ctaLabel }) {
+// greeting/extraHtml/footerLabel are optional overrides used by the portal
+// migration bulk-invite; defaults preserve the original invite exactly.
+export async function invitePortalUser({ email, redirectTo, subject, heading, greeting, intro, extraHtml, ctaLabel, footerLabel }) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const resendKey = process.env.RESEND_API_KEY
   if (!serviceKey) return { ok: false, error: 'SUPABASE_SERVICE_ROLE_KEY not configured.' }
@@ -47,11 +49,12 @@ export async function invitePortalUser({ email, redirectTo, subject, heading, in
     html: brandFrame(
       bKicker('Member Portal') +
       bH2(HEADING) +
-      bP('Welcome to Hexa Space.') +
+      bP(greeting || 'Welcome to Hexa Space.') +
       bP(INTRO) +
+      (extraHtml || '') +
       bBtn(CTA, linkData.properties.action_link) +
       bSmall(`This link expires in 24 hours.<br><br>Questions? Contact us at <a href="mailto:info@hexaspace.com.au" style="color:${OLIVE};text-decoration:none">info@hexaspace.com.au</a>`),
-      { footerLabel: 'Team Access' }
+      { footerLabel: footerLabel || 'Team Access' }
     ),
   })
   if (!r.ok) return { ok: false, error: 'Email send failed' }
