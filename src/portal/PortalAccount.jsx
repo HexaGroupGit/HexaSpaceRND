@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Lock, Plus, FileText, X, Coins, Printer } from 'lucide-react'
+import { Lock, Plus, FileText, X, Coins, Printer, KeyRound } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { authHeaders } from '../lib/apiFetch.js'
 import { usePrintPin } from './usePrintPin.js'
+import { DEPOSIT_STATUS, depositState } from '../lib/fobs.js'
 import { Page, PageHeader, Card, SubTabs, Segmented, StatusBadge, Empty, Eyebrow, Field, Monogram, fmt, to12, bookingName } from './ui.jsx'
 
 // ── Profile ──────────────────────────────────────────────────────────────────
@@ -54,9 +55,94 @@ function ProfileTab({ company, member }) {
         </Card>
       </div>
 
+      <FobsCard member={member} company={company} />
+
       <PrintingCard />
 
       <ChangePassword />
+    </div>
+  )
+}
+
+// The member's after-hours access devices + a self-serve request. RLS scopes
+// reads/inserts to the member's own company.
+function FobsCard({ member, company }) {
+  const [rows, setRows] = useState([])
+  const [pending, setPending] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [type, setType] = useState('fob')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+
+  async function load() {
+    const [a, r] = await Promise.all([
+      supabase.from('fob_assignments').select('data'),
+      supabase.from('fob_requests').select('data'),
+    ])
+    setRows((a.data ?? []).map((x) => x.data).filter((x) => x && !x.returnedAt && (member ? x.memberId === member.id : x.companyId === company?.id)))
+    setPending((r.data ?? []).map((x) => x.data).filter((x) => x && x.status === 'pending' && (member ? x.memberId === member.id : true)))
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [member?.id, company?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function request() {
+    if (!company?.id) return
+    setBusy(true); setMsg(null)
+    const rec = {
+      id: `freq_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      memberId: member?.id ?? null, memberName: member?.name ?? company?.contactName ?? '',
+      companyId: company.id, companyName: company.businessName ?? '',
+      type, note: note.trim(), status: 'pending', createdAt: new Date().toISOString(),
+    }
+    const { error } = await supabase.from('fob_requests').upsert({ id: rec.id, data: rec, updated_at: new Date().toISOString() })
+    setBusy(false)
+    if (error) setMsg({ type: 'error', text: error.message })
+    else { setMsg({ type: 'success', text: 'Request sent — our team will be in touch to arrange your device and deposit.' }); setNote(''); load() }
+  }
+
+  return (
+    <div>
+      <Eyebrow className="mb-4">Access &amp; Fobs</Eyebrow>
+      <Card className="p-7 space-y-5">
+        {loading ? <p className="hx-prose text-[13px]">Loading…</p>
+          : rows.length === 0 ? <p className="hx-prose text-[13px]">You don't have any access devices on hand yet.</p>
+          : (
+            <div className="space-y-2.5">
+              {rows.map((a) => {
+                const ds = DEPOSIT_STATUS[depositState(a)] ?? {}
+                return (
+                  <div key={a.id} className="flex items-center justify-between gap-3 border border-ink/10 px-3.5 py-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <KeyRound size={15} className="text-hexa-green" />
+                      <span className="font-mono text-[13px] text-ink">{a.serial}</span>
+                      <span className="hx-prose text-[12px] capitalize">{a.type}</span>
+                    </div>
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${ds.cls || 'bg-gray-100 text-gray-600'}`}>{ds.label || 'Deposit'}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+        {pending.length > 0 && (
+          <p className="hx-prose text-[12px] text-amber-700">{pending.length} request{pending.length > 1 ? 's' : ''} awaiting our team.</p>
+        )}
+
+        <div className="border-t border-ink/10 pt-4">
+          <label className="hx-eyebrow block mb-2">Request a device</label>
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <select value={type} onChange={(e) => setType(e.target.value)} className="hx-input sm:w-40">
+              <option value="fob">Fob — $100 deposit</option>
+              <option value="remote">Remote — $200 deposit</option>
+            </select>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" className="hx-input flex-1" />
+            <button onClick={request} disabled={busy} className="hx-btn disabled:opacity-50 whitespace-nowrap">{busy ? 'Sending…' : 'Request'}</button>
+          </div>
+          <p className="hx-prose text-[11px] mt-2">A refundable deposit is invoiced when the device is issued, and refunded when it's returned.</p>
+          {msg && <div className={`mt-2 text-[13px] px-3 py-2 border ${msg.type === 'success' ? 'text-hexa-green bg-hexa-green/5 border-hexa-green/30' : 'text-red-700 bg-red-50 border-red-200'}`}>{msg.text}</div>}
+        </div>
+      </Card>
     </div>
   )
 }

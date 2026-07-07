@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { authHeaders } from '../lib/apiFetch.js'
-import { ArrowLeft, Pencil, Check } from 'lucide-react'
+import { ArrowLeft, Pencil, Check, KeyRound } from 'lucide-react'
+import { supabase } from '../lib/supabase.js'
 import { displayStatus, accessRoles, memberHasActiveMembership } from './Members.jsx'
+import { FOB_STATUS, DEPOSIT_STATUS, depositState, money } from '../lib/fobs.js'
 
 const TABS = ['Overview', 'Memberships', 'Bookings', 'Day Passes', 'Credits', 'One-off Fees', 'Invoices', 'Comments']
 
@@ -114,6 +116,8 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
             </button>
           </div>
 
+          <MemberFobsCard memberId={member.id} invoices={invoices} />
+
           <div className="bg-card border border-border rounded-xl shadow-sm p-4">
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Integrations</div>
             <Row label="Door Access"><span className="text-muted-foreground">Salto — not linked</span></Row>
@@ -180,6 +184,46 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
           </div>
         </aside>
       </div>
+    </div>
+  )
+}
+
+// Devices this member currently holds (fobs / remotes), read straight from the
+// fob tracker. Admin-only view, so it reads all assignments and filters by member.
+function MemberFobsCard({ memberId, invoices }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    let live = true
+    supabase.from('fob_assignments').select('data').eq('data->>memberId', memberId).then(({ data }) => {
+      if (!live) return
+      setRows((data ?? []).map((r) => r.data).filter((a) => a && !a.returnedAt))
+      setLoading(false)
+    })
+    return () => { live = false }
+  }, [memberId])
+
+  return (
+    <div className="bg-card border border-border rounded-xl shadow-sm p-4">
+      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-1.5"><KeyRound size={12} /> Fobs & Remotes</div>
+      {loading ? <p className="text-xs text-muted-foreground">Loading…</p>
+        : rows.length === 0 ? <p className="text-xs text-muted-foreground">No devices on hand.</p>
+        : (
+          <div className="space-y-2">
+            {rows.map((a) => {
+              const ds = DEPOSIT_STATUS[depositState(a, invoices)] ?? {}
+              return (
+                <div key={a.id} className="flex items-center justify-between gap-2 text-xs">
+                  <div>
+                    <span className="font-mono text-foreground">{a.serial}</span>
+                    <span className="text-muted-foreground capitalize ml-1.5">{a.type}</span>
+                  </div>
+                  <span className={`px-1.5 py-0.5 rounded font-semibold ${ds.cls || 'bg-gray-100 text-gray-600'}`}>{ds.label || 'Deposit'}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
     </div>
   )
 }
