@@ -182,7 +182,24 @@ export async function confirmDepositPaid({ store, booking, findFunctionSpace }) 
   }
   const updated = await persistFn({ ...b, stage: 'confirmed', confirmedAt: nowIso(), depositPaid: true, quote: q, tenantId, companyId: tenantId, calendarBookingIds, calendarBookingId: calendarBookingIds[0] ?? null })
   fetch('/api/function-bookings/notify', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ booking: updated, mode: 'confirmed' }) }).catch(() => {})
+  // After-hours / weekend sessions need building management to unlock the
+  // front door + lift (±30-min buffer) — the endpoint no-ops for business-hours
+  // bookings and is idempotent, so fire it on every confirm.
+  fetch('/api/function-bookings/access-request', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ id: updated.id }) }).catch(() => {})
   return updated
+}
+
+// Manual (re)send of the building unlock request — used from the admin hub
+// when the email needs to go again (e.g. the times changed after confirm).
+export async function requestBuildingAccess({ booking, force = false }) {
+  const r = await fetch('/api/function-bookings/access-request', {
+    method: 'POST', headers: await authHeaders(),
+    body: JSON.stringify({ id: booking.id, force }),
+  })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(d.error ?? 'Request failed.')
+  const { data } = await supabase.from('function_bookings').select('data').eq('id', booking.id)
+  return { result: d, booking: data?.[0]?.data || booking }
 }
 
 // ── Decline ──────────────────────────────────────────────────────────────────

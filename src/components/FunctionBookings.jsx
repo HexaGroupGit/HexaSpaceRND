@@ -11,7 +11,7 @@ import {
   bookingSessions, sessionsLabel, seriesDateClashes, seriesCalendarClashes,
 } from '../lib/functionBooking.js'
 import { findFunctionSpace } from '../portal/functionSpace.js'
-import { approveFunctionBooking, confirmDepositPaid, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit } from '../lib/functionActions.js'
+import { approveFunctionBooking, confirmDepositPaid, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit, requestBuildingAccess } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 const nowIso = () => new Date().toISOString()
@@ -451,6 +451,17 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
           {b.stage === 'confirmed' && (
             <>
               <div className="bg-green-50 border border-green-100 rounded-md px-3 py-2.5 text-xs text-green-800">Confirmed — venue secured and on the calendar (±30-min buffer). Balance due 14 days before the event.</div>
+              {b.accessRequestSentAt ? (
+                <div className="bg-indigo-50 border border-indigo-100 rounded-md px-3 py-2.5 text-xs text-indigo-800">
+                  Building unlock requested {format(new Date(b.accessRequestSentAt), 'dd MMM · h:mm a')} (front door + lift{b.accessRequestWindows?.length ? `: ${b.accessRequestWindows.map((w) => `${w.date.slice(8, 10)}/${w.date.slice(5, 7)} ${w.from}–${w.to}`).join(', ')}` : ''}).
+                  <button onClick={() => actions.buildingAccess(b, true)} disabled={busy} className="block mt-1.5 underline disabled:opacity-50">Resend request</button>
+                </div>
+              ) : (
+                <button onClick={() => actions.buildingAccess(b, false)} disabled={busy}
+                  className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40">
+                  <Send size={14} /> {busy ? 'Sending…' : 'Request building unlock (after-hours)'}
+                </button>
+              )}
               {passed && <button onClick={() => actions.complete(b)} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50"><Check size={14} /> Mark event completed</button>}
             </>
           )}
@@ -535,6 +546,17 @@ export default function FunctionBookings() {
     async decline(b) {
       if (!confirm('Decline this booking? Any calendar hold will be released.')) return
       apply(await declineFunctionBooking({ store, booking: b }))
+    },
+    // Building unlock request for after-hours/weekend sessions (Maxa + PFM).
+    async buildingAccess(b, force) {
+      setBusy(true)
+      try {
+        const { result, booking } = await requestBuildingAccess({ booking: b, force })
+        apply(booking)
+        if (result.needed === false) alert('All sessions fall within staffed hours (Mon–Fri 9–5) — no unlock needed.')
+      } catch (e) {
+        alert(e.message)
+      } finally { setBusy(false) }
     },
     // Negotiated pricing: save the overrides, and — when the deposit invoice is
     // out but unpaid — void + re-raise it at the new amount and email the client.
