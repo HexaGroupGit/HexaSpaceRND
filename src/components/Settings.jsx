@@ -833,6 +833,25 @@ function BillingRulesSection({ settings, updateSettings }) {
       <FormRow label="Tax (GST)" description="Apply GST to all invoices by default">
         <Toggle checked={form.taxEnabled ?? true} onChange={set('taxEnabled')} />
       </FormRow>
+      <FormRow
+        label="Suspend door access when overdue"
+        description="After the grace period below, every member of a company with overdue invoices has their Salto access blocked (licence clause 7(d)). Reminder emails warn them first; access auto-restores on payment. Requires the Salto block/unblock zaps."
+      >
+        <Toggle checked={form.blockOverdueAccess === true} onChange={set('blockOverdueAccess')} />
+      </FormRow>
+      <FormRow label="Access suspension grace period" description="Days past the invoice due date before door access is suspended">
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={3}
+            max={60}
+            value={form.blockGraceDays ?? 14}
+            onChange={(e) => setForm((p) => ({ ...p, blockGraceDays: Math.min(60, Math.max(3, Number(e.target.value))) }))}
+            className="w-20 border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+          />
+          <span className="text-xs text-muted-foreground">days after due date</span>
+        </div>
+      </FormRow>
       <FormRow label="Tax Rate (%)" description="GST rate applied to taxable line items">
         <div className="flex items-center gap-2">
           <input

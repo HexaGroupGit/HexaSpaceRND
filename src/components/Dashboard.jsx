@@ -145,6 +145,24 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Door access suspended for overdue accounts (clause 7(d) enforcement) */}
+      {tenants.some((t) => t.saltoBlockedAt) && (
+        <div className="mb-6 rounded-xl border border-red-300 bg-red-50 p-5">
+          <h2 className="text-sm font-semibold text-red-800 mb-2">
+            Door access suspended — {tenants.filter((t) => t.saltoBlockedAt).length} compan{tenants.filter((t) => t.saltoBlockedAt).length !== 1 ? 'ies' : 'y'} with overdue invoices
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {tenants.filter((t) => t.saltoBlockedAt).map((t) => (
+              <span key={t.id} className="inline-flex items-center gap-1.5 bg-card border border-red-200 rounded-md px-3 py-1.5 text-xs">
+                <span className="font-medium text-foreground">{t.businessName}</span>
+                <span className="text-muted-foreground">since {t.saltoBlockedAt}</span>
+              </span>
+            ))}
+          </div>
+          <p className="text-xs text-red-700 mt-2">Access restores automatically when their overdue balance clears. Suspension and restoration emails are sent to each company.</p>
+        </div>
+      )}
+
       {/* KPI row 1 */}
       <div className="grid grid-cols-2 gap-4 mb-4 lg:grid-cols-4">
         <KPICard icon={Building2} label="Occupancy" value={`${occupancyRate}%`}

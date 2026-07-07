@@ -113,8 +113,84 @@ export default async function handler(req, res) {
       }
     }
 
+    // 3c. Door-access enforcement (licence clause 7(d)): a company with any
+    // invoice overdue past the grace period gets every member's Salto access
+    // BLOCKED via the Zapier hook, with a suspension notice emailed; access is
+    // restored (and notified) automatically once no overdue invoices remain.
+    // OFF unless Settings → Billing Rules → "Suspend door access" is enabled.
+    const blocked = [], unblocked = []
+    const enforceOn = settings?.billingRules?.blockOverdueAccess === true
+    const blockGraceDays = Number(settings?.billingRules?.blockGraceDays ?? 14)
+    const blockHook = process.env.SALTO_BLOCK_WEBHOOK
+    const unblockHook = process.env.SALTO_UNBLOCK_WEBHOOK
+    if (enforceOn && blockHook && unblockHook) {
+      const blockCutoff = (() => { const d = new Date(`${todayStr}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - blockGraceDays); return d.toISOString().split('T')[0] })()
+      const overdueByTenant = {}
+      for (const inv of allOverdue) (overdueByTenant[inv.tenantId] ??= []).push(inv)
+
+      const hookPost = (url, payload) => fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      }).catch(() => {})
+
+      for (const tenant of tenants) {
+        const over = overdueByTenant[tenant.id] ?? []
+        const pastGrace = over.some((i) => i.dueDate <= blockCutoff)
+        const coMembers = members.filter((m) => m.companyId === tenant.id && m.email)
+
+        if (pastGrace && !tenant.saltoBlockedAt) {
+          for (const m of coMembers) {
+            await hookPost(blockHook, { action: 'block_user', email: m.email, memberName: m.name ?? '', company: tenant.businessName ?? '', reason: 'overdue_invoices', source: 'hexaspace-platform' })
+          }
+          await supabase.from('tenants').update({ data: { ...tenant, saltoBlockedAt: todayStr } }).eq('id', tenant.id)
+          tenant.saltoBlockedAt = todayStr
+          blocked.push(tenant.businessName ?? tenant.id)
+          const to = billingEmailFor(tenant, members)
+          if (resendKey && to) {
+            const inner =
+              bKicker('Account Notice') +
+              bH1('Door access suspended') +
+              bP(`Hi ${tenant.contactName ?? tenant.businessName},`) +
+              bP(`As your account has invoices more than ${blockGraceDays} days overdue, door access for your team has been suspended, in line with clause 7(d) of your licence agreement. Access is restored automatically as soon as the outstanding balance is paid — a $100 re-activation fee may apply.`) +
+              bP('You can view and pay your invoices any time in the member portal.') +
+              bSmall(`Questions or need a hand sorting this out? Just reply to this email.`)
+            await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `Door access suspended — overdue account (${fromName})`, html: brandFrame(inner, { footerLabel: 'Accounts' }) }).catch(() => {})
+          }
+        } else if (over.length === 0 && tenant.saltoBlockedAt) {
+          for (const m of coMembers) {
+            await hookPost(unblockHook, { action: 'unblock_user', email: m.email, memberName: m.name ?? '', company: tenant.businessName ?? '', source: 'hexaspace-platform' })
+          }
+          const cleared = { ...tenant }
+          delete cleared.saltoBlockedAt
+          await supabase.from('tenants').update({ data: cleared }).eq('id', tenant.id)
+          unblocked.push(tenant.businessName ?? tenant.id)
+          const to = billingEmailFor(tenant, members)
+          if (resendKey && to) {
+            const inner =
+              bKicker('Account Notice') +
+              bH1('Door access restored') +
+              bP(`Hi ${tenant.contactName ?? tenant.businessName},`) +
+              bP('Thank you — your outstanding balance has been cleared and door access for your team has been restored.') +
+              bSmall(`Automated notice from ${fromName}.`)
+            await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `Door access restored (${fromName})`, html: brandFrame(inner, { footerLabel: 'Accounts' }) }).catch(() => {})
+          }
+        }
+      }
+
+      // Admin heads-up whenever enforcement acted.
+      if (resendKey && (blocked.length || unblocked.length)) {
+        const notif = settings?.emails?.notificationEmail || 'info@hexaspace.com.au'
+        const inner =
+          bKicker('Access Enforcement') +
+          bH1(`${blocked.length} suspended · ${unblocked.length} restored`) +
+          (blocked.length ? bP(`<strong>Suspended:</strong> ${blocked.join(', ')}`) : '') +
+          (unblocked.length ? bP(`<strong>Restored:</strong> ${unblocked.join(', ')}`) : '') +
+          bSmall('Daily overdue cron — door-access enforcement (clause 7(d)).')
+        await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: notif, subject: `Door access: ${blocked.length} suspended, ${unblocked.length} restored`, html: brandFrame(inner, { footerLabel: 'Operations' }) }).catch(() => {})
+      }
+    }
+
     if (!resendKey || allOverdue.length === 0) {
-      return res.status(200).json({ marked: nowOverdue.length, reminded: 0, charged: charged.length, chargeFailed })
+      return res.status(200).json({ marked: nowOverdue.length, reminded: 0, charged: charged.length, chargeFailed, blocked, unblocked })
     }
 
     // 4. Send reminder emails (one per tenant, listing all overdue invoices)
@@ -145,6 +221,9 @@ export default async function handler(req, res) {
         bP(`Hi ${tenant.contactName ?? tenant.businessName},`) +
         bP('The following invoice(s) are overdue. Please arrange payment at your earliest convenience.') +
         bTable(invoiceRows) +
+        (settings?.billingRules?.blockOverdueAccess === true
+          ? bP(`<strong>Please note:</strong> if payment isn't received within ${Number(settings?.billingRules?.blockGraceDays ?? 14)} days of the due date, door access for your team will be suspended until the balance is cleared, per clause 7(d) of your licence agreement (a $100 re-activation fee may apply).`)
+          : '') +
         bP('Please contact us if you have any questions regarding your account.') +
         bSmall(`This is an automated reminder from ${fromName}.`)
       const html = brandFrame(inner, { footerLabel: 'Accounts' })
@@ -158,7 +237,7 @@ export default async function handler(req, res) {
       reminded++
     }
 
-    return res.status(200).json({ marked: nowOverdue.length, reminded, charged: charged.length, chargeFailed })
+    return res.status(200).json({ marked: nowOverdue.length, reminded, charged: charged.length, chargeFailed, blocked, unblocked })
   } catch (err) {
     console.error('Overdue reminders error:', err)
     return res.status(500).json({ error: err.message })
