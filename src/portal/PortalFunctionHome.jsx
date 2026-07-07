@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowRight, CalendarCheck, PartyPopper, Receipt, MessageSquare, User } from 'lucide-react'
+import { ArrowRight, CalendarCheck, PartyPopper, Receipt, MessageSquare, CalendarClock } from 'lucide-react'
 import { Page, Card, Eyebrow, StatusBadge, fmt, money } from './ui.jsx'
 import { STAGES, bookingSessions, sessionsLabel } from '../lib/functionBooking.js'
 
@@ -152,10 +152,10 @@ export default function PortalFunctionHome({ data }) {
           <Eyebrow className="mb-4">Quick links</Eyebrow>
           <div className="grid grid-cols-2 gap-px bg-ink/10">
             {[
+              { to: '/meeting-rooms', label: 'Book a meeting room', icon: CalendarClock },
               { to: '/function-space', label: 'Book the venue', icon: PartyPopper },
               { to: '/billing', label: 'Billing', icon: Receipt },
               { to: '/messages', label: 'Message us', icon: MessageSquare },
-              { to: '/account', label: 'Account', icon: User },
             ].map((q) => (
               <Link key={q.to} to={q.to} className="hx-card p-6 hover:bg-bone transition-colors">
                 <q.icon size={16} strokeWidth={1.4} className="text-hexa-green" />

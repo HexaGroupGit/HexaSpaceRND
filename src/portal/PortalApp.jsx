@@ -266,6 +266,7 @@ export default function PortalApp() {
           {restricted ? (
             <>
               <Route path="/"              element={<PortalFunctionHome data={data} />} />
+              <Route path="/meeting-rooms" element={<PortalRooms spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} />} />
               <Route path="/function-space" element={<PortalFunction spaces={data.spaces} member={data.member} company={data.company} />} />
               <Route path="/billing"       element={<PortalBilling data={data} />} />
               <Route path="/account"       element={<PortalAccount data={data} />} />
