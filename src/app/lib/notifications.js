@@ -22,8 +22,16 @@ export function buildNotifications(data) {
   // Only flag registered events happening within 14 days so far-off ones don't
   // sit as a permanent badge.
   const soonEvents = (data?.eventReminders ?? []).filter((e) => daysUntil(e.date) <= 14)
+  const dm = data?.dmUnread ?? 0
 
   const items = []
+  if (dm > 0) {
+    items.push({
+      key: 'dm', to: '/more/members', tone: 'green', group: 'Messages',
+      label: dm === 1 ? 'New message from a member' : `${dm} new member messages`,
+      sub: 'Community',
+    })
+  }
   if (mail.length) {
     items.push({
       key: 'mail', to: '/mail', tone: 'green', group: 'Mail',
@@ -59,6 +67,7 @@ export function buildNotifications(data) {
     orders: orders.length,
     invoices: unpaid.length,
     events: soonEvents.length,
-    count: mail.length + orders.length + unpaid.length + soonEvents.length,
+    messages: dm,
+    count: mail.length + orders.length + unpaid.length + soonEvents.length + dm,
   }
 }

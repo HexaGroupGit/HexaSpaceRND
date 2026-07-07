@@ -1,13 +1,29 @@
-import { useState, useMemo } from 'react'
-import { Search } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Search, MessageCircle, ChevronRight } from 'lucide-react'
 import { useApp } from '../context.js'
 import { Screen, BackHeader, Label, EmptyNote } from '../ui.jsx'
+import { loadMyConversations } from '../lib/memberMessages.js'
 
-// Members directory — the Hexa Space community, grouped by company.
+const initials = (name) => (name || '?').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')
+
+// Members directory + member-to-member messaging. Browse the community grouped
+// by company; tap a member to open a private 1:1 chat.
 export default function Members() {
   const { data } = useApp()
-  const { members, companies } = data
+  const { members, companies, member } = data
+  const nav = useNavigate()
   const [q, setQ] = useState('')
+  const [convos, setConvos] = useState([])
+
+  useEffect(() => {
+    if (!member?.email) return
+    let alive = true
+    const load = () => loadMyConversations(member.email).then((c) => { if (alive) setConvos(c) }).catch(() => {})
+    load()
+    const t = setInterval(load, 6000)
+    return () => { alive = false; clearInterval(t) }
+  }, [member?.email])
 
   const groups = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -27,12 +43,41 @@ export default function Members() {
       })
   }, [members, companies, q])
 
+  const canMessage = (p) => p.id !== member?.id && p.email && p.allowMessages !== false
+
   return (
     <Screen>
       <BackHeader title="Members" fallback="/more" />
       <p className="font-display font-extralight text-[28px] leading-tight text-ink mt-2 mb-6">
         The Hexa Space<br />community.
       </p>
+
+      {/* Your chats */}
+      {convos.length > 0 && !q && (
+        <div className="mb-8">
+          <Label className="mb-2">Your chats</Label>
+          <div className="divide-y divide-ink/5 border-y border-ink/10">
+            {convos.map((c) => (
+              <button key={c.convoId} onClick={() => nav(`/dm/${c.other.id}`)}
+                className="w-full flex items-center gap-4 py-3.5 text-left active:opacity-60">
+                <span className="h-10 w-10 shrink-0 bg-stone text-ink/50 font-heading tracking-label text-[11px] flex items-center justify-center">
+                  {initials(c.other.name)}
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block font-body text-[14px] text-ink truncate">{c.other.name || c.other.email}</span>
+                  <span className="block hx-prose text-[12px] truncate">{c.last?.content || ''}</span>
+                </span>
+                {c.unread > 0 && (
+                  <span className="min-w-[18px] h-[18px] px-1 bg-hexa-green text-paper text-[10px] font-heading flex items-center justify-center rounded-full shrink-0">
+                    {c.unread}
+                  </span>
+                )}
+                <ChevronRight size={15} className="text-portal-muted shrink-0" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <label className="flex items-center gap-3 border border-ink/15 bg-paper px-4 min-h-[48px] mb-8">
         <Search size={15} className="text-portal-muted shrink-0" />
@@ -47,17 +92,26 @@ export default function Members() {
           <section key={company.id} className="mb-7">
             <Label className="mb-2">{company.businessName}</Label>
             <div className="divide-y divide-ink/5 border-y border-ink/10">
-              {people.map((p) => (
-                <div key={p.id} className="flex items-center gap-4 py-3.5">
-                  <span className="h-10 w-10 shrink-0 bg-stone text-ink/50 font-heading tracking-label text-[11px] flex items-center justify-center">
-                    {(p.name || '?').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block font-body text-[14px] text-ink truncate">{p.name}</span>
-                    {p.email && <span className="block hx-prose text-[12px] truncate">{p.email}</span>}
-                  </span>
-                </div>
-              ))}
+              {people.map((p) => {
+                const isSelf = p.id === member?.id
+                const messageable = canMessage(p)
+                const Row = messageable ? 'button' : 'div'
+                return (
+                  <Row key={p.id} {...(messageable ? { onClick: () => nav(`/dm/${p.id}`) } : {})}
+                    className={`w-full flex items-center gap-4 py-3.5 text-left ${messageable ? 'active:opacity-60' : ''}`}>
+                    <span className="h-10 w-10 shrink-0 bg-stone text-ink/50 font-heading tracking-label text-[11px] flex items-center justify-center">
+                      {initials(p.name)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-body text-[14px] text-ink truncate">
+                        {p.name}{isSelf && <span className="text-portal-muted"> · You</span>}
+                      </span>
+                      {p.email && <span className="block hx-prose text-[12px] truncate">{p.email}</span>}
+                    </span>
+                    {messageable && <MessageCircle size={16} className="text-portal-muted shrink-0" />}
+                  </Row>
+                )
+              })}
             </div>
           </section>
         ))

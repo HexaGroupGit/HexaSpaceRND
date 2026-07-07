@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../../lib/supabase.js'
+import { unreadDmCount } from './memberMessages.js'
 
 // Loads the member's world for the mobile app. Mirrors PortalApp.jsx fetchData
 // (which stays untouched — the app is a separate experience): same tables, same
@@ -59,9 +60,13 @@ export function useMemberData(email) {
         .filter((s) => !ownIds.has(s.id))
         .map((s) => ({ id: s.id, resourceId: s.resource_id, date: s.date, startTime: s.start_time, endTime: s.end_time, status: s.status }))
 
+      // Unread member-to-member DMs (participant-scoped; 0 if the table isn't set
+      // up yet). Drives the notification bell + Members badge.
+      const dmUnread = member ? await unreadDmCount(lc) : 0
+
       setData({
         company, member, members, companies, spaces, fees, settings,
-        leases, invoices, mailItems,
+        leases, invoices, mailItems, dmUnread,
         bookings: ownBookings,
         allBookings: [...ownBookings, ...slots], // own (detailed) + others (masked)
       })

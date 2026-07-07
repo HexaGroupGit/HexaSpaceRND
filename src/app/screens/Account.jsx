@@ -1,17 +1,29 @@
 import { LogOut } from 'lucide-react'
 import { useApp } from '../context.js'
+import { supabase } from '../../lib/supabase.js'
 import { usePrintPin } from '../lib/usePrintPin.js'
 import { Screen, BackHeader, Label, Card, Chip, fmt } from '../ui.jsx'
 import { creditBalance, CREDIT_VALUE } from '../lib/bookingActions.js'
 
-// Account — who you are, your company, your allowance. Read-only; changes go
-// through the team (or the web portal).
+// Account — who you are, your company, your allowance. Mostly read-only; changes
+// go through the team, except the community messaging preference below.
 export default function Account() {
-  const { data, signOut } = useApp()
+  const { data, signOut, patch } = useApp()
   const { company, member, leases } = data
   const activeLease = (leases ?? []).find((l) => l.status === 'active')
   const credits = creditBalance(company)
   const pin = usePrintPin()
+
+  const allowMessages = member?.allowMessages !== false
+  async function toggleMessages() {
+    if (!member?.id) return
+    const next = !allowMessages
+    patch((prev) => ({ ...prev, member: { ...prev.member, allowMessages: next } }))
+    const updated = { ...member, allowMessages: next }
+    await supabase.from('members').upsert({ id: member.id, data: updated }).then(({ error }) => {
+      if (error) patch((prev) => ({ ...prev, member: { ...prev.member, allowMessages } })) // revert on failure
+    })
+  }
 
   return (
     <Screen>
@@ -54,6 +66,21 @@ export default function Account() {
           </Card>
         </>
       )}
+
+      <Label className="mb-3 mt-8">Community</Label>
+      <Card className="p-5">
+        <button type="button" onClick={toggleMessages} className="w-full flex items-center gap-4 text-left active:opacity-70">
+          <span className="flex-1 min-w-0">
+            <span className="block font-body text-[14px] text-ink">Allow members to message me</span>
+            <span className="block hx-prose text-[12px] mt-0.5">
+              Other Hexa Space members can start a private chat with you in the app.
+            </span>
+          </span>
+          <span className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${allowMessages ? 'bg-hexa-green' : 'bg-ink/20'}`}>
+            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-paper transition-all ${allowMessages ? 'left-[18px]' : 'left-0.5'}`} />
+          </span>
+        </button>
+      </Card>
 
       <p className="hx-prose text-[12px] mt-6">
         Something out of date? Message the team from More → Messages, or email{' '}

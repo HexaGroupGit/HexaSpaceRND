@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { jsPDF } from 'jspdf'
 import { Minus, Plus, Send, Download, CheckCircle2 } from 'lucide-react'
 import { logAudit } from '../lib/audit.js'
+import { authHeaders } from '../lib/apiFetch.js'
 
 // Fob Order — orders new FOBs/REMOTEs from the building manager. Fills out
 // MAXA's official order form (828 Whitehorse Rd — Panorama Box Hill) as a PDF
@@ -115,7 +116,7 @@ export default function FobOrderTab({ settings }) {
         <p>Please send through your payment details and we'll arrange payment right away.</p>
         <p>Kind regards,<br/>${f.name}<br/>Hexa Space · 402/830 Whitehorse Road, Box Hill${f.phone ? ` · ${f.phone}` : ''}</p>`
       const r = await fetch('/api/send-email', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({
           to: TO, cc: CC,
           from: 'Hexa Space <info@hexaspace.com.au>',
