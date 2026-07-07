@@ -53,4 +53,15 @@ export function creditsForCost(cost) {
   return Math.round((Number(cost || 0) / CREDIT_VALUE) * 100) / 100
 }
 
+// Invoice-facing name for a booking charge. When credits part-covered it, the
+// "(over allowance)" tag explains the partial amount; when the company had no
+// credits at all, it's just a plain room charge: room, rate, date & time.
+export function bookingFeeName({ roomName, rate, date, startTime, endTime, usedCredits }) {
+  const dmy = date ? String(date).split('-').reverse().join('/') : ''
+  const when = [dmy, startTime && endTime ? `${startTime}–${endTime}` : startTime || ''].filter(Boolean).join(' ')
+  const base = `Meeting room — ${roomName || ''}`.trim()
+  if (Number(usedCredits) > 0) return `${base} · ${when} (over allowance)`
+  return `${base} · $${Number(rate) || 0}/hr · ${when}`
+}
+
 export const round2 = (n) => Math.round(Number(n || 0) * 100) / 100

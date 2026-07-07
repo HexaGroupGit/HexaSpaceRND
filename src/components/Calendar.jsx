@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, X, Users, Clock } from 'lucide-react'
 import { format, addDays } from 'date-fns'
+import { bookingFeeName } from '../lib/credits.js'
 
 const DAY_START = 9
 const DAY_END = 17
@@ -73,7 +74,7 @@ export default function Calendar() {
           if (shortfall > 0) {
             feeAmount = round2(shortfall * CREDIT_VALUE)
             const fee = addFee?.({
-              name: `Meeting room — ${room?.unitNumber ?? ''} · ${next.date} (over allowance)`,
+              name: bookingFeeName({ roomName: room?.unitNumber, rate: room?.hourlyRate, date: next.date, startTime: next.startTime, endTime: next.endTime, usedCredits: creditsUsed }),
               type: 'Booking Fee', memberId: next.memberId ?? null, companyId,
               date: next.date || new Date().toISOString().split('T')[0],
               price: feeAmount, status: 'Not Paid',

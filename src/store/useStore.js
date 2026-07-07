@@ -26,7 +26,7 @@ import {
   resolveBondRefundCopy, bondRefundEmailHtml,
   provisionSaltoAccess, revokeSaltoAccess,
 } from '../lib/onboarding.js'
-import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2 } from '../lib/credits.js'
+import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, bookingFeeName } from '../lib/credits.js'
 import { isRentFreeMonth } from '../lib/paymentSchedule.js'
 
 // All spaces a lease occupies (primary + any bundled items, e.g. parking).
@@ -1021,7 +1021,7 @@ export function useStore() {
                 tf.forEach((f) => {
                   feeLines.push({
                     id: `li_fee_${f.id}`,
-                    description: `${f.name}${f.date ? ` (${f.date})` : ''}`,
+                    description: `${f.name}${f.date && f.type !== 'Booking Fee' ? ` (${f.date})` : ''}`,
                     revenueAccount: 'Meeting Room & Booking Fees',
                     unitPrice: Number(f.price) || 0, qty: 1, discountPct: 0,
                   })
@@ -1301,7 +1301,7 @@ export function useStore() {
         updateTenant(item.companyId, { creditsRemaining: round2(available - used), creditsPeriod: mk })
         if (shortfall > 0) {
           const fee = addFee({
-            name: `Meeting room — ${room?.unitNumber ?? ''} · ${item.date} (over allowance)`,
+            name: bookingFeeName({ roomName: room?.unitNumber, rate: room?.hourlyRate, date: item.date, startTime: item.startTime, endTime: item.endTime, usedCredits: used }),
             type: 'Booking Fee', memberId: item.memberId ?? null, companyId: item.companyId,
             date: item.date || new Date().toISOString().split('T')[0],
             price: round2(shortfall * CREDIT_VALUE), status: 'Not Paid',

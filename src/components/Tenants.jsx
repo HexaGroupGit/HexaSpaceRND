@@ -88,6 +88,7 @@ export default function Tenants() {
           onBack={() => setSelectedTenant(null)}
           onEdit={() => openEdit(selectedTenant)}
           onSelectContract={(lease) => navigate('/leases', { state: { openLeaseId: lease.id } })}
+          onSelectInvoice={(inv) => navigate('/billing', { state: { openInvoiceId: inv.id } })}
           onAddInvoice={(data) => addInvoice({ ...data, tenantId: selectedTenant.id })}
         />
         <CompanyModal open={showForm} editId={editId} form={form} setForm={setForm} onClose={() => setShowForm(false)} onSubmit={handleSubmit} />

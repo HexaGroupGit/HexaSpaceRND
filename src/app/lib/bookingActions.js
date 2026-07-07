@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase.js'
+import { bookingFeeName } from '../../lib/credits.js'
 
 // Booking writes for the app — mirrors the portal's PortalCalendar confirm()
 // exactly (same bookings/fees/tenants writes, same credit model) so the two
@@ -74,7 +75,10 @@ export async function createBooking({ room, date, startTime, endTime, title, mem
   if (shortfall > 0 && company?.id) {
     const feeId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     fee = {
-      id: feeId, name: `Meeting room — ${room.unitNumber ?? ''} (over allowance)`,
+      id: feeId,
+      name: bookingFeeName({
+        roomName: room.unitNumber, rate, date, startTime, endTime, usedCredits: used,
+      }),
       type: 'Booking Fee', memberId: member?.id ?? null, companyId: company.id,
       date: new Date().toISOString().split('T')[0],
       price: Math.round(shortfall * CREDIT_VALUE * 100) / 100,

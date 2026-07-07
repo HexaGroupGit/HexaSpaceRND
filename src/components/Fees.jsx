@@ -42,7 +42,7 @@ export default function Fees() {
       payments: [], comments: [],
       lineItems: [{
         id: `li_fee_${f.id}`,
-        description: `${f.name}${f.date ? ` (${f.date})` : ''}`,
+        description: `${f.name}${f.date && f.type !== 'Booking Fee' ? ` (${f.date})` : ''}`,
         revenueAccount: 'Meeting Room & Booking Fees',
         unitPrice: Number(f.price) || 0, qty: 1, discountPct: 0,
       }],

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight, X, Repeat, Check } from 'lucide-react'
 import { format, addDays, addMonths } from 'date-fns'
 import { supabase } from '../lib/supabase.js'
+import { bookingFeeName } from '../lib/credits.js'
 import { Card } from './ui.jsx'
 
 // Mirrors the admin Calendar so the portal reads/writes the SAME bookings table.
@@ -187,7 +188,12 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, o
       const feeId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
       const room = resources.find((r) => r.id === f.resourceId)
       const fee = {
-        id: feeId, name: `Meeting room — ${room?.unitNumber ?? ''} (over allowance)`,
+        id: feeId,
+        name: bookingFeeName({
+          roomName: room?.unitNumber, rate: room?.hourlyRate ?? room?.rate,
+          date: created[0]?.date, startTime: f.startTime, endTime: f.endTime,
+          usedCredits: created.reduce((s, b) => s + (b.creditsUsed || 0), 0),
+        }),
         type: 'Booking Fee', memberId: member?.id ?? null, companyId: company.id,
         date: new Date().toISOString().split('T')[0],
         price: Math.round(shortfallCredits * CREDIT_VALUE * 100) / 100,

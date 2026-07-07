@@ -22,9 +22,13 @@ export async function sendEmail({ to, subject, html, settings, attachments, tena
     ...(attachments?.length ? { attachments } : {}),
   }
 
+  // /api/send-email is admin-gated — attach the caller's JWT. Lazy import so
+  // this module stays importable from Node scripts (apiFetch pulls in the
+  // browser supabase client).
+  const { authHeaders } = await import('./apiFetch.js')
   const res = await fetch('/api/send-email', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify(body),
   })
 

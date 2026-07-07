@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { authHeaders } from '../lib/apiFetch.js'
 import { format, parseISO, differenceInDays } from 'date-fns'
-import { ArrowLeft, Send, RefreshCw, Ban, FileMinus, FileDown, Plus, MessageSquare, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react'
+import { ArrowLeft, Send, RefreshCw, Ban, FileMinus, FileDown, Plus, MessageSquare, ToggleLeft, ToggleRight, Trash2, Pencil, X } from 'lucide-react'
 import { sendEmail, invoiceEmailHtml, resolveEmailTemplate, brandShell, bKicker, bH1, bP, bSmall } from '../lib/sendEmail.js'
 import { logAudit } from '../lib/audit.js'
 import { locationLabel, lineDescription } from '../lib/billing.js'
@@ -49,6 +49,7 @@ export default function InvoiceDetail({
   const [commentText, setCommentText] = useState('')
   const [showDetach, setShowDetach] = useState(false)
   const [detachSelected, setDetachSelected] = useState([])
+  const [showEdit, setShowEdit] = useState(false)
 
   const taxRatePct = settings?.billingRules?.taxRate ?? 10
   const taxRate = taxRatePct / 100
@@ -428,6 +429,12 @@ export default function InvoiceDetail({
                 <Send size={13} /> Send Reminder
               </button>
             )}
+            {invoice.status !== 'voided' && invoice.status !== 'paid' && (
+              <button onClick={() => setShowEdit(true)}
+                className="flex items-center gap-1.5 text-xs border border-input rounded px-3 py-1.5 hover:bg-muted/50 text-foreground font-medium">
+                <Pencil size={13} /> Edit
+              </button>
+            )}
             <button onClick={handleSend}
               className="flex items-center gap-1.5 text-xs border border-blue-300 rounded px-3 py-1.5 hover:bg-blue-50 text-blue-700 font-medium">
               <Send size={13} /> Send
@@ -787,6 +794,96 @@ export default function InvoiceDetail({
         </div>
       </div>
     )}
+    {showEdit && (
+      <EditInvoiceModal
+        invoice={invoice}
+        taxRate={taxRate}
+        onClose={() => setShowEdit(false)}
+        onSave={(patch) => { onUpdate?.(invoice.id, patch); setShowEdit(false) }}
+      />
+    )}
     </>
+  )
+}
+
+// ── Edit Invoice — number/reference, dates, and full line-item editing ───────
+function EditInvoiceModal({ invoice, taxRate, onClose, onSave }) {
+  const [f, setF] = useState({
+    number: invoice.number ?? '',
+    reference: invoice.reference ?? '',
+    issueDate: invoice.issueDate ?? '',
+    dueDate: invoice.dueDate ?? '',
+    lineItems: (invoice.lineItems ?? []).map((l) => ({ ...l })),
+  })
+  const up = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
+  const setLine = (i, k, v) => setF((p) => ({ ...p, lineItems: p.lineItems.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)) }))
+  const removeLine = (i) => setF((p) => ({ ...p, lineItems: p.lineItems.filter((_, idx) => idx !== i) }))
+  const addLine = () => setF((p) => ({ ...p, lineItems: [...p.lineItems, { id: `li_${Date.now()}_${p.lineItems.length}`, description: '', revenueAccount: 'Membership Fees', unitPrice: 0, qty: 1, discountPct: 0 }] }))
+
+  const inp = 'w-full border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40'
+  const lab = 'block text-xs font-medium text-muted-foreground mb-1'
+
+  const net = (l) => Math.round(Number(l.unitPrice || 0) * Number(l.qty || 1) * (1 - Number(l.discountPct || 0) / 100) * 100) / 100
+  const subtotal = f.lineItems.reduce((s, l) => s + net(l), 0)
+  const gst = invoice.vatEnabled ? f.lineItems.reduce((s, l) => s + (l.vatExempt ? 0 : net(l)), 0) * taxRate : 0
+  const money = (n) => `$${Number(n).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+  function save() {
+    const cleaned = f.lineItems
+      .filter((l) => (l.description || '').trim())
+      .map((l) => ({ ...l, description: l.description.trim(), unitPrice: Number(l.unitPrice) || 0, qty: Number(l.qty) || 1, discountPct: Number(l.discountPct) || 0 }))
+    if (cleaned.length === 0) { alert('An invoice needs at least one line item.'); return }
+    onSave({ number: f.number.trim(), reference: f.reference.trim(), issueDate: f.issueDate, dueDate: f.dueDate, lineItems: cleaned })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-xl w-full max-w-3xl shadow-2xl max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+          <h2 className="text-base font-semibold text-foreground">Edit Invoice</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
+        </div>
+
+        <div className="px-6 py-5 overflow-y-auto space-y-5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div><label className={lab}>Number</label><input value={f.number} onChange={up('number')} className={inp} /></div>
+            <div><label className={lab}>Reference</label><input value={f.reference} onChange={up('reference')} className={inp} placeholder="Optional" /></div>
+            <div><label className={lab}>Issue date</label><input type="date" value={f.issueDate} onChange={up('issueDate')} className={inp} /></div>
+            <div><label className={lab}>Due date</label><input type="date" value={f.dueDate} onChange={up('dueDate')} className={inp} /></div>
+          </div>
+
+          <div>
+            <div className="grid grid-cols-[1fr_140px_90px_60px_70px_80px_28px] gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 px-0.5">
+              <span>Description</span><span>Revenue account</span><span>Unit price</span><span>Qty</span><span>Disc %</span><span className="text-right">Total</span><span />
+            </div>
+            {f.lineItems.map((l, i) => (
+              <div key={l.id ?? i} className="grid grid-cols-[1fr_140px_90px_60px_70px_80px_28px] gap-2 items-center mb-1.5">
+                <input value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} className={inp} />
+                <input value={l.revenueAccount ?? ''} onChange={(e) => setLine(i, 'revenueAccount', e.target.value)} className={inp} />
+                <input type="number" step="0.01" value={l.unitPrice} onChange={(e) => setLine(i, 'unitPrice', e.target.value)} className={inp} />
+                <input type="number" min="1" value={l.qty} onChange={(e) => setLine(i, 'qty', e.target.value)} className={inp} />
+                <input type="number" min="0" max="100" value={l.discountPct ?? 0} onChange={(e) => setLine(i, 'discountPct', e.target.value)} className={inp} />
+                <span className="text-sm text-right tabular-nums text-foreground">{money(net(l))}</span>
+                <button onClick={() => removeLine(i)} title="Remove line" className="text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>
+              </div>
+            ))}
+            <button onClick={addLine} className="mt-1 text-xs font-medium text-blue-700 hover:underline flex items-center gap-1"><Plus size={13} /> Add line item</button>
+          </div>
+
+          <div className="flex justify-end">
+            <div className="text-sm space-y-1 w-56">
+              <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span className="tabular-nums">{money(subtotal)}</span></div>
+              <div className="flex justify-between text-muted-foreground"><span>GST ({Math.round(taxRate * 100)}%)</span><span className="tabular-nums">{money(gst)}</span></div>
+              <div className="flex justify-between font-bold text-foreground border-t border-border pt-1"><span>Total</span><span className="tabular-nums">{money(subtotal + gst)}</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-foreground border border-input rounded hover:bg-muted/50">Close</button>
+          <button onClick={save} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700">Update</button>
+        </div>
+      </div>
+    </div>
   )
 }

@@ -109,7 +109,7 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
       payments: [], comments: [],
       lineItems: [{
         id: `li_fee_${f.id}`,
-        description: `${f.name}${f.date ? ` (${f.date})` : ''}`,
+        description: `${f.name}${f.date && f.type !== 'Booking Fee' ? ` (${f.date})` : ''}`,
         revenueAccount: 'Meeting Room & Booking Fees',
         unitPrice: Number(f.price) || 0, qty: 1, discountPct: 0,
       }],
@@ -348,56 +348,60 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
             {/* ── Bookings (company + members) ── */}
             <Section title="Bookings">
               {companyBookings.length === 0 ? (
-                <p className="text-sm text-muted-foreground px-1 py-2">No bookings yet.</p>
+                <p className="px-5 py-6 text-sm text-muted-foreground">No bookings yet.</p>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-xs text-muted-foreground uppercase">
-                      <th className="text-left pb-2">Date</th><th className="text-left pb-2">Time</th>
-                      <th className="text-left pb-2">Room</th><th className="text-left pb-2">Booked by</th>
-                      <th className="text-left pb-2">Status</th><th className="text-right pb-2">Credits</th>
+                    <tr>
+                      {['Date', 'Time', 'Room', 'Booked by', 'Status', 'Credits'].map((h, i) => (
+                        <th key={h} className={`${i === 5 ? 'text-right' : 'text-left'} px-5 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide`}>{h}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {companyBookings.slice(0, 12).map((b) => {
                       const past = b.date < new Date().toISOString().split('T')[0]
                       return (
-                        <tr key={b.id} className={`border-t border-border ${past ? 'text-muted-foreground' : 'text-foreground'}`}>
-                          <td className="py-2 whitespace-nowrap">{b.date ? b.date.split('-').reverse().join('/') : '—'}</td>
-                          <td className="py-2 whitespace-nowrap">{b.startTime}{b.endTime ? `–${b.endTime}` : ''}</td>
-                          <td className="py-2">{spaces.find((s) => s.id === b.resourceId)?.unitNumber || b.resourceName || '—'}</td>
-                          <td className="py-2">{members.find((m) => m.id === b.memberId)?.name || (b.createdBy === 'Admin' ? 'Hexa (admin)' : tenant.businessName)}</td>
-                          <td className="py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${b.status === 'Confirmed' ? 'bg-green-50 text-green-700' : b.status === 'Cancelled' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>{b.status || '—'}</span></td>
-                          <td className="py-2 text-right tabular-nums">{b.creditsUsed ?? '—'}</td>
+                        <tr key={b.id} className={`border-b border-border last:border-0 hover:bg-muted/50 ${past ? 'text-muted-foreground' : 'text-foreground'}`}>
+                          <td className="px-5 py-3 whitespace-nowrap">{b.date ? b.date.split('-').reverse().join('/') : '—'}</td>
+                          <td className="px-5 py-3 whitespace-nowrap">{b.startTime}{b.endTime ? `–${b.endTime}` : ''}</td>
+                          <td className="px-5 py-3">{spaces.find((s) => s.id === b.resourceId)?.unitNumber || b.resourceName || '—'}</td>
+                          <td className="px-5 py-3">{members.find((m) => m.id === b.memberId)?.name || (b.createdBy === 'Admin' ? 'Hexa (admin)' : tenant.businessName)}</td>
+                          <td className="px-5 py-3"><Badge label={b.status || '—'} cls={b.status === 'Confirmed' ? 'bg-green-100 text-green-700' : b.status === 'Cancelled' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'} /></td>
+                          <td className="px-5 py-3 text-right tabular-nums">{b.creditsUsed ?? '—'}</td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
               )}
-              {companyBookings.length > 12 && <p className="text-xs text-muted-foreground mt-2">Showing the latest 12 of {companyBookings.length} — see Bookings for the rest.</p>}
+              {companyBookings.length > 12 && <p className="px-5 pb-3 text-xs text-muted-foreground">Showing the latest 12 of {companyBookings.length} — see Bookings for the rest.</p>}
             </Section>
 
             {/* ── Fees & charges (booking overages, one-offs) ── */}
             <Section title="Fees & Charges">
               {companyFees.length === 0 ? (
-                <p className="text-sm text-muted-foreground px-1 py-2">No fees or charges.</p>
+                <p className="px-5 py-6 text-sm text-muted-foreground">No fees or charges.</p>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-xs text-muted-foreground uppercase">
-                      <th className="text-left pb-2">Charge</th><th className="text-left pb-2">Date</th>
-                      <th className="text-left pb-2">Status</th><th className="text-right pb-2">Amount</th><th className="pb-2" />
+                    <tr>
+                      {['Charge', 'Date', 'Status', 'Amount', ''].map((h, i) => (
+                        <th key={i} className={`${i === 3 ? 'text-right' : 'text-left'} px-5 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide`}>{h}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {companyFees.map((f) => (
-                      <tr key={f.id} className="border-t border-border text-foreground">
-                        <td className="py-2 pr-3">{f.name}{f.type ? <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{f.type}</span> : null}</td>
-                        <td className="py-2 whitespace-nowrap">{f.date ? f.date.split('-').reverse().join('/') : '—'}</td>
-                        <td className="py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${f.status === 'Invoiced' ? 'bg-blue-50 text-blue-700' : f.status === 'Paid' ? 'bg-green-50 text-green-700' : f.status === 'Waived' ? 'bg-muted text-muted-foreground' : 'bg-amber-50 text-amber-700'}`}>{f.status}</span></td>
-                        <td className="py-2 text-right tabular-nums">A${(Number(f.price) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</td>
-                        <td className="py-2 text-right whitespace-nowrap">
+                      <tr key={f.id} className="border-b border-border last:border-0 hover:bg-muted/50 text-foreground">
+                        <td className="px-5 py-3">
+                          <div className="font-medium">{f.name}</div>
+                          {f.type && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{f.type}</span>}
+                        </td>
+                        <td className="px-5 py-3 whitespace-nowrap text-muted-foreground">{f.date ? f.date.split('-').reverse().join('/') : '—'}</td>
+                        <td className="px-5 py-3"><Badge label={f.status} cls={f.status === 'Invoiced' ? 'bg-blue-100 text-blue-700' : f.status === 'Paid' ? 'bg-green-100 text-green-700' : f.status === 'Waived' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'} /></td>
+                        <td className="px-5 py-3 text-right tabular-nums font-medium">A${(Number(f.price) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</td>
+                        <td className="px-5 py-3 text-right whitespace-nowrap">
                           {feeBillable(f) && (
                             <button onClick={() => invoiceFee(f)} className="text-xs font-semibold text-green-700 hover:underline">Invoice now</button>
                           )}
@@ -407,7 +411,7 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
                   </tbody>
                 </table>
               )}
-              <p className="text-[11px] text-muted-foreground mt-2">Un-invoiced charges are swept onto the company's next bill-run invoice automatically; Invoice now bills them immediately instead.</p>
+              <p className="px-5 py-3 text-[11px] text-muted-foreground border-t border-border">Un-invoiced charges are swept onto the company's next bill-run invoice automatically; Invoice now bills them immediately instead.</p>
             </Section>
 
             {/* ── Members ── */}

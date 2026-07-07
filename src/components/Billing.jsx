@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useOutletContext, useLocation, useNavigate } from 'react-router-dom'
 import { format, parseISO, startOfMonth, isBefore, addMonths, differenceInDays } from 'date-fns'
 import { Plus, Search, X, Check, Download, Send, Ban } from 'lucide-react'
 import InvoiceDetail from './InvoiceDetail.jsx'
@@ -70,6 +70,18 @@ export default function Billing() {
   const [filterStatus, setFilterStatus] = useState('all')
   const [search, setSearch] = useState('')
   const [selectedInvoice, setSelectedInvoice] = useState(null)
+
+  // Deep-open an invoice when navigated here from a profile
+  // (e.g. company profile → click an invoice row).
+  const location = useLocation()
+  const navigate = useNavigate()
+  useEffect(() => {
+    const id = location.state?.openInvoiceId
+    if (!id) return
+    const inv = invoices.find((i) => i.id === id)
+    if (inv) setSelectedInvoice(inv)
+    navigate('.', { replace: true, state: null }) // consume so back/refresh don't re-open
+  }, [location.state?.openInvoiceId, invoices]) // eslint-disable-line react-hooks/exhaustive-deps
   const [showForm, setShowForm] = useState(false)
   const [selected, setSelected] = useState(new Set()) // bulk selection
   const [bulkWorking, setBulkWorking] = useState(false)
