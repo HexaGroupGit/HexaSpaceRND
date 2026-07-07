@@ -128,6 +128,11 @@ async function findExistingUnitId(unitNumber) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  // Admin-only: patches/deletes public website documents.
+  const { requireAdmin } = await import('./_auth.js')
+  const _a = await requireAdmin(req)
+  if (_a.error) return res.status(_a.status).json({ error: _a.error })
+
   const { action = 'sync', space } = req.body ?? {}
   if (!space?.id) return res.status(400).json({ error: 'Missing space.id' })
 

@@ -66,6 +66,11 @@ function invoiceEmail(invoice, tenant, settings, subtotal, gst, total) {
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end()
 
+  // Cron (Bearer CRON_SECRET) or a verified admin only — this runs the bill run.
+  const { requireCronOrAdmin } = await import('./_auth.js')
+  const _g = await requireCronOrAdmin(req)
+  if (!_g.ok) return res.status(_g.status).json({ error: _g.error })
+
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const resendKey  = process.env.RESEND_API_KEY
   if (!serviceKey) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY not set.' })

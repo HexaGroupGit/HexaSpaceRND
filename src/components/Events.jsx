@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { authHeaders } from '../lib/apiFetch.js'
 import { format, parseISO } from 'date-fns'
 import { supabase } from '../lib/supabase.js'
 import { fetchSanityEvents } from '../lib/sanity.js'
@@ -65,7 +66,7 @@ export default function Events() {
     if (isNew) {
       fetch('/api/portal/notify-event', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify({ event: payload }),
       }).catch(() => {})
     }

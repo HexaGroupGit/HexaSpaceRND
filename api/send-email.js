@@ -9,6 +9,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  // Admin-only: this is the generic "send as Hexa Space" sender. Preventing an
+  // open relay / arbitrary branded email.
+  const { requireAdmin } = await import('./_auth.js')
+  const _a = await requireAdmin(req)
+  if (_a.error) return res.status(_a.status).json({ error: _a.error })
+
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     return res.status(500).json({ error: 'Email service not configured' })

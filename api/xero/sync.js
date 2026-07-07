@@ -109,6 +109,11 @@ export default async function handler(req, res) {
   const isCron = req.method === 'GET'
   if (req.method !== 'POST' && !isCron) return res.status(405).json({ error: 'Method not allowed' })
 
+  // Cron (GET, Bearer CRON_SECRET) or a verified admin (POST from Settings) only.
+  const { requireCronOrAdmin } = await import('../_auth.js')
+  const _g = await requireCronOrAdmin(req)
+  if (!_g.ok) return res.status(_g.status).json({ error: _g.error })
+
   const { action = 'push', dryRun = false } = isCron ? { action: 'pull', dryRun: false } : (req.body ?? {})
 
   try {

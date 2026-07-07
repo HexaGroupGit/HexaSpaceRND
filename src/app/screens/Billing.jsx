@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { authHeaders } from '../../lib/apiFetch.js'
 import { CreditCard, Plus } from 'lucide-react'
 import { useApp } from '../context.js'
 import { Screen, BackHeader, Label, Card, Chip, Rule, EmptyNote, StatusBadge, fmt, money } from '../ui.jsx'
@@ -33,7 +34,7 @@ export default function Billing() {
     setBusyCard(true)
     try {
       const r = await fetch(apiUrl('/api/stripe/setup'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({ tenantId: company.id, returnTo: '/app/more/billing' }),
       })
       const d = await r.json().catch(() => ({}))

@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
+import { authHeaders } from '../../lib/apiFetch.js'
 import { Minus, Plus, CreditCard, ExternalLink, Check, RefreshCw } from 'lucide-react'
 import { useApp } from '../context.js'
 import { Screen, Label, Display, Rule, Chip, Sheet, BigButton, EmptyNote, money, fmt } from '../ui.jsx'
 import { createFoodOrder, loadMenu, loadMyOrders, foodTotal } from '../lib/foodActions.js'
 import { apiUrl, openPayment, onAppResume } from '../lib/native.js'
+import { DRINK_CATEGORIES, isOrderingOpen, ORDER_HOURS_LABEL } from '../../lib/foodMenu.js'
 
-const CATEGORY_ORDER = ['Breads', 'Pastries', 'Coffee', 'Drinks']
+const CATEGORY_ORDER = DRINK_CATEGORIES
 
 const STATUS_LABEL = {
   placed: 'Placed',
@@ -22,6 +24,14 @@ export default function Food() {
   const [orders, setOrders] = useState([])
   const [cart, setCart] = useState({}) // { itemId: qty }
   const [checkoutOpen, setCheckoutOpen] = useState(false)
+
+  // Ordering is only open 9:30am–5:00pm Melbourne time. Re-check on a timer so
+  // the menu closes itself if a member lingers past 5pm.
+  const [ordersOpen, setOrdersOpen] = useState(() => isOrderingOpen())
+  useEffect(() => {
+    const t = setInterval(() => setOrdersOpen(isOrderingOpen()), 30000)
+    return () => clearInterval(t)
+  }, [])
 
   // Stripe Checkout bounces back with ?ordered=<order number>.
   const [justOrdered] = useState(() => new URLSearchParams(window.location.search).get('ordered'))
@@ -77,10 +87,20 @@ export default function Food() {
         <Label>Seoul Bakery · Downstairs</Label>
         <Display className="mt-4">Fresh, to<br />your door.</Display>
         <p className="hx-prose text-[13px] mt-4">
-          Baked downstairs by Seoul Bakery and delivered to your suite. Order before 2pm for
-          same-day delivery.
+          Barista drinks from Seoul Bakery downstairs, delivered to your suite.
+          Ordering is open {ORDER_HOURS_LABEL}, Melbourne time.
         </p>
       </div>
+
+      {!ordersOpen && (
+        <div className="mb-6 border border-ink/15 bg-bone px-4 py-3">
+          <p className="hx-prose text-[13px] text-ink">
+            Ordering is closed right now — Seoul Bakery takes orders{' '}
+            <span className="font-heading uppercase tracking-nav text-[11px]">{ORDER_HOURS_LABEL}</span>, Melbourne time.
+            Have a browse and come back during opening hours.
+          </p>
+        </div>
+      )}
 
       {justOrdered && (
         <div className="mb-5 border border-hexa-green/40 bg-hexa-green/10 px-4 py-3">
@@ -119,7 +139,7 @@ export default function Food() {
             <Rule className="mb-1" />
             <div className="divide-y divide-ink/5">
               {items.map((it) => (
-                <MenuRow key={it.id} item={it} qty={cart[it.id] ?? 0} onAdd={add} />
+                <MenuRow key={it.id} item={it} qty={cart[it.id] ?? 0} onAdd={add} disabled={!ordersOpen} />
               ))}
             </div>
           </section>
@@ -137,7 +157,7 @@ export default function Food() {
       )}
 
       {/* Floating cart bar */}
-      {cartCount > 0 && !checkoutOpen && (
+      {cartCount > 0 && ordersOpen && !checkoutOpen && (
         <button onClick={() => setCheckoutOpen(true)}
           className="app-cartbar bg-ink text-paper min-h-[54px] px-5 flex items-center justify-between active:bg-charcoal">
           <span className="font-heading uppercase tracking-nav text-[11px]">
@@ -162,15 +182,15 @@ export default function Food() {
   )
 }
 
-function MenuRow({ item, qty, onAdd }) {
+function MenuRow({ item, qty, onAdd, disabled }) {
   return (
-    <div className="flex items-center gap-4 py-4">
+    <div className={`flex items-center gap-4 py-4 ${disabled ? 'opacity-60' : ''}`}>
       <div className="flex-1 min-w-0">
         <div className="font-body text-[15px] text-ink">{item.name}</div>
         {item.description && <div className="hx-prose text-[12px] mt-0.5">{item.description}</div>}
       </div>
       <span className="font-display font-extralight text-[17px] text-ink shrink-0">{money(item.price)}</span>
-      {qty === 0 ? (
+      {disabled ? null : qty === 0 ? (
         <button onClick={() => onAdd(item.id, 1)} aria-label={`Add ${item.name}`}
           className="h-10 w-10 shrink-0 border border-ink/20 flex items-center justify-center text-ink active:bg-ink active:text-paper transition-colors">
           <Plus size={15} />
@@ -229,7 +249,7 @@ function CheckoutSheet({ cartItems, suite, member, company, onAdjust, onClose, o
       const order = await createFoodOrder({ items: cartItems, note, deliverTo, member, company })
       if (method === 'card') {
         const r = await fetch(apiUrl('/api/food/charge'), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: await authHeaders(),
           body: JSON.stringify({ orderId: order.id }),
         })
         const d = await r.json().catch(() => ({}))
@@ -238,7 +258,7 @@ function CheckoutSheet({ cartItems, suite, member, company, onAdjust, onClose, o
         setPlaced(d.order ?? order)
       } else {
         const r = await fetch(apiUrl('/api/food/checkout'), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: await authHeaders(),
           body: JSON.stringify({ orderId: order.id }),
         })
         const d = await r.json().catch(() => ({}))

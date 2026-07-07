@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { authHeaders } from '../../lib/apiFetch.js'
 import { CreditCard, ExternalLink } from 'lucide-react'
 import { Sheet, BigButton, Rule, fmt, money } from '../ui.jsx'
 import { invoiceTotal } from '../lib/invoiceTotal.js'
@@ -16,7 +17,7 @@ export default function PaySheet({ invoice, company, onClose, onPaid, returnTo =
     setBusy('card'); setError('')
     try {
       const r = await fetch(apiUrl('/api/stripe/charge'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({ invoiceId: invoice.id }),
       })
       const d = await r.json().catch(() => ({}))
@@ -32,7 +33,7 @@ export default function PaySheet({ invoice, company, onClose, onPaid, returnTo =
     setBusy('checkout'); setError('')
     try {
       const r = await fetch(apiUrl('/api/stripe/checkout'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({ invoiceId: invoice.id, returnTo }),
       })
       const d = await r.json().catch(() => ({}))

@@ -89,6 +89,11 @@ function buildRsa(group, finalUrl) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  // Admin-only: this writes campaigns/budgets to a Google Ads account via Hexa's token.
+  const { requireAdmin } = await import('../_auth.js')
+  const _a = await requireAdmin(req)
+  if (_a.error) return res.status(_a.status).json({ error: _a.error })
+
   const { campaignId, customerId, loginCustomerId, finalUrl, cpc } = req.body ?? {}
   if (!campaignId || !customerId) return res.status(400).json({ error: 'Missing campaignId or customerId' })
   if (!process.env.GOOGLE_ADS_DEVELOPER_TOKEN) return res.status(500).json({ error: 'GOOGLE_ADS_DEVELOPER_TOKEN not configured' })

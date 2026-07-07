@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { authHeaders } from '../lib/apiFetch.js'
 import { Search, Mail, Building2, UserPlus, Check } from 'lucide-react'
 import { Page, PageHeader, Card, SubTabs, Monogram, Empty } from './ui.jsx'
 
@@ -17,7 +18,7 @@ export default function PortalMembers({ members, companies, company }) {
     if (!invite.name.trim() || !invite.email.trim()) { setInviteMsg('Enter a name and email.'); return }
     setInviting(true); setInviteMsg('')
     try {
-      const res = await fetch('/api/portal/add-teammate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyId: company.id, name: invite.name.trim(), email: invite.email.trim() }) })
+      const res = await fetch('/api/portal/add-teammate', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ companyId: company.id, name: invite.name.trim(), email: invite.email.trim() }) })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error || 'Could not invite')
       setInviteMsg(`Invite sent to ${invite.email.trim()} ✓`); setInvite({ name: '', email: '' }); setShowInvite(false)

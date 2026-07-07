@@ -6,10 +6,8 @@
 // "Enable online payments" turned ON (settings.stripe.paymentsEnabled).
 // Amounts are charged inc. GST, matching the invoice PDF/email total.
 
-import { createClient } from '@supabase/supabase-js'
 import { applyCors } from '../_cors.js'
-
-const SUPABASE_URL = process.env.SUPABASE_URL
+import { requireMember, isAdminEmail } from '../_auth.js'
 
 function totalsIncGst(invoice) {
   let taxable = 0, exempt = 0
@@ -27,8 +25,13 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const stripeKey = process.env.STRIPE_SECRET_KEY
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!stripeKey || !serviceKey) return res.status(500).json({ error: 'Stripe not configured.' })
+  if (!stripeKey) return res.status(500).json({ error: 'Stripe not configured.' })
+
+  // Verify the caller owns the invoice (or is an admin).
+  const auth = await requireMember(req)
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
+  const supabase = auth.sb
+  const isAdmin = await isAdminEmail(supabase, auth.user.email)
 
   const { invoiceId, returnTo } = req.body ?? {}
   if (!invoiceId) return res.status(400).json({ error: 'invoiceId is required.' })
@@ -36,8 +39,6 @@ export default async function handler(req, res) {
   const backPath = typeof returnTo === 'string' && /^\/[a-zA-Z0-9\-_/]*$/.test(returnTo) ? returnTo : '/billing'
 
   try {
-    const supabase = createClient(SUPABASE_URL, serviceKey, { auth: { persistSession: false } })
-
     const [{ data: settRow }, { data: invRow }] = await Promise.all([
       supabase.from('settings').select('data').eq('id', 'global').single(),
       supabase.from('invoices').select('data').eq('id', invoiceId).single(),
@@ -49,6 +50,7 @@ export default async function handler(req, res) {
 
     const invoice = invRow?.data
     if (!invoice) return res.status(404).json({ error: 'Invoice not found.' })
+    if (!isAdmin && invoice.tenantId !== auth.companyId) return res.status(403).json({ error: 'Not your invoice.' })
     if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' })
     if (invoice.status === 'voided') return res.status(400).json({ error: 'This invoice has been voided.' })
 

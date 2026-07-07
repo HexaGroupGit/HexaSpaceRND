@@ -15,6 +15,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  // Cron or verified admin only — marks overdue + charges cards on file.
+  const { requireCronOrAdmin } = await import('./_auth.js')
+  const _g = await requireCronOrAdmin(req)
+  if (!_g.ok) return res.status(_g.status).json({ error: _g.error })
+
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const resendKey = process.env.RESEND_API_KEY
   if (!serviceKey) return res.status(500).json({ error: 'Missing SUPABASE_SERVICE_ROLE_KEY' })

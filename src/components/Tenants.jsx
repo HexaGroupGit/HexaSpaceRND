@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { authHeaders } from '../lib/apiFetch.js'
 import { useOutletContext, useNavigate } from 'react-router-dom'
 import { Plus, Pencil, Trash2, X, UserPlus } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
@@ -271,7 +272,7 @@ function BulkPortalInviteButton({ tenants }) {
     const toInvite = statuses.filter((s) => s.status === 'not_invited')
     const invited = [], failed = []
     for (const { tenant } of toInvite) {
-      try { const res = await fetch('/api/auth/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: tenant.email }) }); if (res.ok) invited.push(tenant.businessName); else failed.push(tenant.businessName) }
+      try { const res = await fetch('/api/auth/invite', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ email: tenant.email }) }); if (res.ok) invited.push(tenant.businessName); else failed.push(tenant.businessName) }
       catch { failed.push(tenant.businessName) }
     }
     setResult({ invited, failed, alreadyActive: statuses.filter((s) => s.status === 'active').length, alreadyInvited: statuses.filter((s) => s.status === 'invited').length })

@@ -77,6 +77,11 @@ async function getAccessToken(refreshToken) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  // Admin-only: reads Google Ads metrics for a customerId via Hexa's token.
+  const { requireAdmin } = await import('../_auth.js')
+  const _a = await requireAdmin(req)
+  if (_a.error) return res.status(_a.status).json({ error: _a.error })
+
   const { reportType, customerId, loginCustomerId, dateRange = 'LAST_30_DAYS' } = req.body ?? {}
   const report = REPORTS[reportType]
   if (!report) return res.status(400).json({ error: 'Invalid reportType' })

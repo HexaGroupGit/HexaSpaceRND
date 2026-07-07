@@ -6,6 +6,8 @@
 // onboarding email, and the Salto access-provisioning calls so the store, the
 // contract flow and the portal all agree on one definition of "activated".
 
+import { authHeaders } from './apiFetch.js'
+
 const PORTAL_URL = 'https://portal.hexaspace.com.au'
 
 const SIGNED = ['e_signed', 'manually_signed']
@@ -129,7 +131,7 @@ export function exitVirtualOfficeApplies(lease) {
 export async function provisionSaltoAccess({ member, space, lease }) {
   const res = await fetch('/api/salto/provision', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({
       memberEmail: member?.email ?? null,
       memberName: member?.name ?? null,
@@ -150,7 +152,7 @@ export async function provisionSaltoAccess({ member, space, lease }) {
 export async function revokeSaltoAccess({ member, space }) {
   const res = await fetch('/api/salto/revoke', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({
       memberEmail: member?.email ?? null,
       saltoUserId: member?.saltoUserId ?? null,

@@ -1,3 +1,4 @@
+import { authHeaders } from './apiFetch.js'
 // Client helpers for the Google Ads integration.
 
 export async function googleAdsStatus() {
@@ -18,7 +19,7 @@ export function connectGoogleAds() {
 export async function pushToGoogleAds(body) {
   const res = await fetch('/api/google-ads/push', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify(body),
   })
   const data = await res.json().catch(() => ({}))
@@ -29,7 +30,7 @@ export async function pushToGoogleAds(body) {
 export async function googleAdsReport(body) {
   const res = await fetch('/api/google-ads/report', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify(body),
   })
   const data = await res.json().catch(() => ({}))

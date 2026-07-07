@@ -7,9 +7,14 @@
 
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH1, bP, bSmall, bTable } from '../_brand.js'
+import { requireAdmin } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  // Admin-only: revoking door access is an offboarding action.
+  const auth = await requireAdmin(req)
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
 
   const { memberEmail, memberName, saltoUserId, doorId } = req.body ?? {}
   if (!memberEmail && !saltoUserId) {

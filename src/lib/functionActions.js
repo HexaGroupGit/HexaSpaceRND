@@ -8,6 +8,7 @@
 // raised (awaiting_deposit) → deposit paid → confirmed (balance + calendar) →
 // completed → refunded.
 import { supabase } from './supabase.js'
+import { authHeaders } from './apiFetch.js'
 import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money, bookingSessions, sessionsLabel } from './functionBooking.js'
 import { PORTAL_URL } from './sendEmail.js'
 
@@ -39,7 +40,7 @@ export async function sendBrochure({ booking, settings }) {
   const requestToken = booking.requestToken || randToken()
   const updated = await persistFn({ ...booking, requestToken, brochureSentAt: nowIso(), stage: booking.stage === 'enquiry' ? 'quoted' : booking.stage })
   await fetch('/api/function-bookings/notify', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ booking: updated, mode: 'brochure' }),
   }).catch(() => {})
   return updated
@@ -62,7 +63,7 @@ export async function sendBookingInvite({ store, booking, settings }) {
   }
   const memberMatch = email ? (store.members || []).find((m) => (m.email || '').toLowerCase() === email) : null
   await fetch('/api/auth/invite', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({
       email: booking.email, redirectTo: `${portalBaseUrl(settings)}/function-space`,
       subject: 'Complete your Hexa Space function booking',
@@ -88,7 +89,7 @@ export async function approveFunctionBooking({ store, booking, settings }) {
 
   // Raise the deposit (50% + $300 security), create tenant/member, email deposit.
   await fetch('/api/function-bookings/submit', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ id: cur.id }),
   }).catch(() => {})
 
@@ -120,7 +121,7 @@ export async function reissueDeposit({ store, booking }) {
     i.functionRef === booking.ref && i.invoiceType === 'function_deposit' && !['paid', 'voided'].includes(i.status))
   if (dep) store.voidInvoice(dep.id)
   await fetch('/api/function-bookings/submit', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ id: cur.id }),
   }).catch(() => {})
   const { data } = await supabase.from('function_bookings').select('data').eq('id', cur.id)
@@ -132,7 +133,7 @@ export async function askAmendDate({ booking, settings }) {
   const requestToken = booking.requestToken || randToken()
   const updated = await persistFn({ ...booking, requestToken, amendRequestedAt: nowIso() })
   await fetch('/api/function-bookings/notify', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ booking: updated, mode: 'amend_date' }),
   }).catch(() => {})
   return updated
@@ -180,7 +181,7 @@ export async function confirmDepositPaid({ store, booking, findFunctionSpace }) 
     }).filter(Boolean)
   }
   const updated = await persistFn({ ...b, stage: 'confirmed', confirmedAt: nowIso(), depositPaid: true, quote: q, tenantId, companyId: tenantId, calendarBookingIds, calendarBookingId: calendarBookingIds[0] ?? null })
-  fetch('/api/function-bookings/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ booking: updated, mode: 'confirmed' }) }).catch(() => {})
+  fetch('/api/function-bookings/notify', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ booking: updated, mode: 'confirmed' }) }).catch(() => {})
   return updated
 }
 

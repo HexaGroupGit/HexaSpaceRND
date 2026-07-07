@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { authHeaders } from '../lib/apiFetch.js'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { ArrowLeft, Send, RefreshCw, Ban, FileMinus, FileDown, Plus, MessageSquare, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react'
 import { sendEmail, invoiceEmailHtml, resolveEmailTemplate, brandShell, bKicker, bH1, bP, bSmall } from '../lib/sendEmail.js'
@@ -340,7 +341,7 @@ export default function InvoiceDetail({
     setCharging(true)
     try {
       const r = await fetch('/api/stripe/charge', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({ invoiceId: invoice.id }),
       })
       const d = await r.json().catch(() => ({}))

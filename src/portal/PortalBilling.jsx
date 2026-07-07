@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { authHeaders } from '../lib/apiFetch.js'
 import { jsPDF } from 'jspdf'
 import { Download, CreditCard, Plus } from 'lucide-react'
 import { Page, PageHeader, Card, SubTabs, Segmented, StatusBadge, Empty, Eyebrow, Field, fmt, money } from './ui.jsx'
@@ -88,7 +89,7 @@ function InvoicesTab({ invoices, company }) {
     try {
       const r = await fetch('/api/stripe/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify({ invoiceId: inv.id }),
       })
       const data = await r.json().catch(() => ({}))
@@ -169,7 +170,7 @@ function PaymentTab({ company }) {
     setBusy(true)
     try {
       const r = await fetch('/api/stripe/setup', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({ tenantId: company.id, returnTo: '/billing' }),
       })
       const d = await r.json().catch(() => ({}))

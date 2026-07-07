@@ -4,20 +4,23 @@
 // their company/member, raises the deposit + $300 security invoices, emails the
 // deposit, and moves the booking to 'awaiting_deposit'. Balance + calendar happen
 // later when the deposit is marked paid.
-import { createClient } from '@supabase/supabase-js'
 import { sessionsLabel } from '../../src/lib/functionBooking.js'
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH1, bP, bSmall, bPanel, bTable, SANS, INK } from '../_brand.js'
 import { invoicePdfBase64 } from '../_invoicePdf.js'
+import { requireMember, isAdminEmail } from '../_auth.js'
 
-const SUPABASE_URL = process.env.SUPABASE_URL
 const money = (v) => `$${(Number(v) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!serviceKey) return res.status(500).json({ error: 'Not configured' })
-  const supabase = createClient(SUPABASE_URL, serviceKey, { auth: { persistSession: false } })
+
+  // Verify the caller: admins may finalise any booking; a member only their own
+  // company's (or one tied to their email). This raises real invoices.
+  const auth = await requireMember(req)
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
+  const supabase = auth.sb
+  const isAdmin = await isAdminEmail(supabase, auth.user.email)
 
   const { id } = req.body ?? {}
   if (!id) return res.status(400).json({ error: 'Missing id' })
@@ -30,6 +33,12 @@ export default async function handler(req, res) {
       supabase.from('tenants').select('id, data'),
       supabase.from('members').select('id, data'),
     ])
+    if (!isAdmin) {
+      const b = fbRows?.[0]?.data
+      const ownsIt = b && (b.companyId === auth.companyId ||
+        (b.email && b.email.toLowerCase() === auth.user.email));
+      if (!ownsIt) return res.status(403).json({ error: 'Not your booking.' })
+    }
     // Invoice numbers must be computed over ALL invoices â€” a plain select caps at
     // 1000 rows, which caused duplicate numbers. Page through just the number field.
     const invRows = await (async () => {

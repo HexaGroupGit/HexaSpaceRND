@@ -2,12 +2,19 @@
 // Creates a Supabase auth user and sends a branded "set your password" email.
 // Core logic lives in api/_invite.js (shared with the daily reconcile cron).
 import { invitePortalUser } from '../_invite.js'
+import { requireAdmin } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
-  const { email, redirectTo, subject, heading, intro, ctaLabel } = req.body ?? {}
-  const r = await invitePortalUser({ email, redirectTo, subject, heading, intro, ctaLabel })
+  // Admin-only: creating an auth account for an arbitrary email is a
+  // privileged action (member team-invites go through /api/portal/add-teammate).
+  const auth = await requireAdmin(req)
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
+
+  // redirectTo is pinned server-side (never accept a caller-supplied redirect).
+  const { email, subject, heading, intro, ctaLabel } = req.body ?? {}
+  const r = await invitePortalUser({ email, subject, heading, intro, ctaLabel })
   if (!r.ok) {
     const status = r.error === 'Email is required.' ? 400 : 500
     return res.status(status).json({ error: r.error })

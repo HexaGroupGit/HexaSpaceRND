@@ -8,6 +8,11 @@ export default async function handler(req, res) {
   if (applyCors(req, res)) return
   if (req.method !== 'POST') return res.status(405).end()
 
+  // Members only: notifies admin that a member sent a portal message.
+  const { requireMember } = await import('../_auth.js')
+  const _m = await requireMember(req)
+  if (_m.error) return res.status(_m.status).json({ error: _m.error })
+
   const resendKey = process.env.RESEND_API_KEY
   if (!resendKey) return res.status(500).json({ error: 'RESEND_API_KEY not configured.' })
 

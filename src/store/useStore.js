@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { authHeaders } from '../lib/apiFetch.js'
 import { logAudit } from '../lib/audit.js'
 import { publishListing } from '../lib/sanity.js'
 import { descPrefix, unitNameFor } from '../lib/billing.js'
@@ -90,7 +91,7 @@ async function onboardLease({ lease, tenant, space, members, settings, templates
     // chip and can resend from the member profile.
     try {
       const r = await fetch('/api/auth/invite', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({ email }),
       })
       if (primary) {
@@ -1738,10 +1739,10 @@ export function useStore() {
         .forEach((m) => {
           updateMember(m.id, { portalAccess: false })
           if (m.email) {
-            fetch('/api/auth/revoke', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
+            authHeaders().then((headers) => fetch('/api/auth/revoke', {
+              method: 'POST', headers,
               body: JSON.stringify({ email: m.email }),
-            }).catch((e) => console.error('Portal revoke failed:', e))
+            })).catch((e) => console.error('Portal revoke failed:', e))
           }
         })
     }

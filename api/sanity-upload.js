@@ -16,6 +16,10 @@ export const config = { api: { bodyParser: { sizeLimit: '8mb' } } }
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  const { requireAdmin } = await import('./_auth.js')
+  const _a = await requireAdmin(req)
+  if (_a.error) return res.status(_a.status).json({ error: _a.error })
+
   const token = process.env.SANITY_WRITE_TOKEN
   if (!token) return res.status(500).json({ error: 'SANITY_WRITE_TOKEN not configured' })
 

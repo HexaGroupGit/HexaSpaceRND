@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { authHeaders } from '../lib/apiFetch.js'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, Users, Clock, ShieldCheck, CalendarCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
@@ -122,9 +123,9 @@ export default function PortalFunction({ spaces, member, company }) {
 
     if (viaInvite) {
       // Raise the deposit + email it, move to awaiting_deposit.
-      await fetch('/api/function-bookings/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).catch(() => {})
+      await fetch('/api/function-bookings/submit', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ id }) }).catch(() => {})
     } else {
-      fetch('/api/function-bookings/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ booking: record, mode: 'signed' }) }).catch(() => {})
+      fetch('/api/function-bookings/notify', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ booking: record, mode: 'signed' }) }).catch(() => {})
     }
     // Show the status screen (persisted): the freshly-signed record drives it, and
     // a reload will re-derive the same status from the stored booking.

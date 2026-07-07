@@ -1,22 +1,18 @@
 // POST /api/auth/revoke — disables portal login for an email (offboarding).
 // Bans the Supabase auth user rather than deleting them, so history and the
 // account can be restored if the tenant comes back.
-import { createClient } from '@supabase/supabase-js'
-
-const SUPABASE_URL = process.env.SUPABASE_URL
+import { requireAdmin } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!serviceKey) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY not configured.' })
+  // Admin-only: banning an account is an offboarding action.
+  const auth = await requireAdmin(req)
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
+  const admin = auth.sb
 
   const { email } = req.body ?? {}
   if (!email) return res.status(400).json({ error: 'Email is required.' })
-
-  const admin = createClient(SUPABASE_URL, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
 
   try {
     // Admin API has no direct email lookup — page through users (bounded).

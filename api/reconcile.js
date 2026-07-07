@@ -42,6 +42,12 @@ async function loadTable(supabase, table) {
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end()
+
+  // Cron or verified admin only — mutates lease/space state + sends onboarding.
+  const { requireCronOrAdmin } = await import('./_auth.js')
+  const _g = await requireCronOrAdmin(req)
+  if (!_g.ok) return res.status(_g.status).json({ error: _g.error })
+
   const dryRun = req.query?.dryRun === '1' || req.body?.dryRun === true
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Lock, Plus, FileText, X, Coins, Printer } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
+import { authHeaders } from '../lib/apiFetch.js'
 import { usePrintPin } from './usePrintPin.js'
 import { Page, PageHeader, Card, SubTabs, Segmented, StatusBadge, Empty, Eyebrow, Field, Monogram, fmt, to12, bookingName } from './ui.jsx'
 
@@ -124,13 +125,15 @@ function TeamTab({ company, members }) {
     e.preventDefault()
     setBusy(true); setMsg(null)
     try {
-      const id = `m${Date.now()}`
-      const record = { id, name: form.name, email: form.email, companyId: company.id, status: 'invited', portalAccess: true, createdAt: new Date().toISOString().split('T')[0] }
-      await supabase.from('members').upsert({ id, data: record, updated_at: new Date().toISOString() })
-      const res = await fetch('/api/auth/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: form.email }) })
+      // Server-side (member-gated) teammate invite: creates the member record,
+      // the auth user and the set-password email under our own company.
+      const res = await fetch('/api/portal/add-teammate', {
+        method: 'POST', headers: await authHeaders(),
+        body: JSON.stringify({ companyId: company.id, name: form.name, email: form.email }),
+      })
       if (!res.ok) {
         const b = await res.json().catch(() => ({}))
-        throw new Error(b.error || 'Invite email could not be sent (will work once deployed).')
+        throw new Error(b.error || 'Invite could not be sent (will work once deployed).')
       }
       setMsg({ type: 'success', text: `Invitation sent to ${form.email}.` })
       setForm({ name: '', email: '' }); setAdding(false)

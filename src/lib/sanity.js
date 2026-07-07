@@ -1,3 +1,4 @@
+import { authHeaders } from './apiFetch.js'
 const PROJECT_ID = 'w4zxsbqi'
 const DATASET    = 'production'
 const API_VER    = '2021-06-07'
@@ -31,7 +32,7 @@ export function ptToText(blocks) {
 async function listingSync(action, space) {
   const res = await fetch('/api/sanity-sync', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ action, space }),
   })
   if (!res.ok) {
@@ -58,7 +59,7 @@ export async function uploadListingImage(file, maxDim = 1600, quality = 0.82) {
   const base64 = await resizeToBase64(file, maxDim, quality)
   const res = await fetch('/api/sanity-upload', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ data: base64, contentType: 'image/jpeg', filename: file.name ?? 'photo.jpg' }),
   })
   if (!res.ok) {

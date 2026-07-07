@@ -16,9 +16,15 @@
 
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH1, bP, bSmall, bTable } from '../_brand.js'
+import { requireAdmin } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  // Admin-only: this grants physical door access. Never driven by an
+  // unauthenticated request.
+  const auth = await requireAdmin(req)
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
 
   const { memberEmail, memberName, doorId, spaceLabel, accessFrom, accessUntil } = req.body ?? {}
   if (!memberEmail) return res.status(400).json({ error: 'memberEmail is required.' })

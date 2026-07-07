@@ -1,29 +1,32 @@
 // POST /api/food/charge — pays a food order with the company's saved card
 // (off-session, same rails as invoice charging) and marks it placed.
 // Body: { orderId }. Returns { success: true, order }.
-import { createClient } from '@supabase/supabase-js'
 import { stripeConfigured, stripeFetch } from '../_stripe.js'
-import { foodOrderTotal, markFoodOrderPlaced } from '../_food.js'
+import { foodOrderTotal, markFoodOrderPlaced, orderingOpen, ORDER_HOURS_LABEL } from '../_food.js'
 import { applyCors } from '../_cors.js'
-
-const SUPABASE_URL = process.env.SUPABASE_URL
+import { requireMember, isAdminEmail } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!stripeConfigured() || !serviceKey) return res.status(500).json({ error: 'Stripe not configured.' })
+  if (!stripeConfigured()) return res.status(500).json({ error: 'Stripe not configured.' })
+
+  // Verify the caller owns the order's company (or is an admin).
+  const auth = await requireMember(req)
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
+  const supabase = auth.sb
+  const isAdmin = await isAdminEmail(supabase, auth.user.email)
 
   const { orderId } = req.body ?? {}
   if (!orderId) return res.status(400).json({ error: 'orderId is required.' })
+  if (!orderingOpen()) return res.status(409).json({ error: `Seoul Bakery only takes orders ${ORDER_HOURS_LABEL}.` })
 
   try {
-    const supabase = createClient(SUPABASE_URL, serviceKey, { auth: { persistSession: false } })
-
     const { data: oRow } = await supabase.from('food_orders').select('data').eq('id', orderId).single()
     const order = oRow?.data
     if (!order) return res.status(404).json({ error: 'Order not found.' })
+    if (!isAdmin && order.companyId !== auth.companyId) return res.status(403).json({ error: 'Not your order.' })
     if (order.status !== 'awaiting_payment') return res.status(400).json({ error: 'This order is already paid.' })
 
     const { data: tRow } = await supabase.from('tenants').select('data').eq('id', order.companyId).single()

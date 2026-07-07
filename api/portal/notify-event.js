@@ -44,6 +44,20 @@ function extractEvent(body, headers) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
+  // Two callers: the admin panel (body.event) must be an authenticated admin;
+  // the Sanity publish webhook (raw doc) is verified by SANITY_WEBHOOK_SECRET
+  // when configured. Either way, a random request can't blast every member.
+  if (req.body?.event !== undefined) {
+    const { requireAdmin } = await import('../_auth.js')
+    const _a = await requireAdmin(req)
+    if (_a.error) return res.status(_a.status).json({ error: _a.error })
+  } else {
+    const secret = process.env.SANITY_WEBHOOK_SECRET
+    if (secret && req.headers['sanity-webhook-secret'] !== secret) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
+  }
+
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const resendKey  = process.env.RESEND_API_KEY
   if (!serviceKey || !resendKey) return res.status(500).json({ error: 'Not configured.' })

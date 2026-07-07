@@ -1,20 +1,25 @@
 // POST /api/portal/add-teammate  { companyId, name, email }
 // A member invites a teammate from the portal: creates their member record under
 // the same company and emails them a portal set-password link.
-import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH2, bP, bBtn, bSmall, OLIVE } from '../_brand.js'
-
-const SUPABASE_URL = process.env.SUPABASE_URL
+import { requireMember, isAdminEmail } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  // Verify the caller and confirm they may add to THIS company. Members may only
+  // invite teammates into their own company; admins may target any company.
+  const auth = await requireMember(req)
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
+  const supabase = auth.sb
+  const isAdmin = await isAdminEmail(supabase, auth.user.email)
+
   const { companyId, name, email } = req.body ?? {}
   if (!companyId || !name || !email) return res.status(400).json({ error: 'Company, name and email are required' })
-
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!serviceKey) return res.status(500).json({ error: 'Not configured' })
-  const supabase = createClient(SUPABASE_URL, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
+  if (!isAdmin && companyId !== auth.companyId) {
+    return res.status(403).json({ error: 'You can only add teammates to your own company.' })
+  }
 
   try {
     const [{ data: tRows }, { data: sRows }, { data: mRows }] = await Promise.all([

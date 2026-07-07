@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { authHeaders } from '../lib/apiFetch.js'
 import { ArrowLeft, Pencil, Check } from 'lucide-react'
 import { displayStatus, accessRoles, memberHasActiveMembership } from './Members.jsx'
 
@@ -45,7 +46,7 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
     setInviting(true)
     try {
       const r = await fetch('/api/auth/invite', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({ email: member.email }),
       })
       const d = await r.json().catch(() => ({}))

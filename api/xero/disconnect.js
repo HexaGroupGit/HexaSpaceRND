@@ -3,9 +3,14 @@
 // removed locally either way).
 
 import { XERO_CONNECTIONS_URL, getSupabase, loadConnection, getAccessToken } from './_client.js'
+import { requireAdmin } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  // Admin-only: tearing down the Xero integration.
+  const auth = await requireAdmin(req)
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
 
   try {
     const supabase = getSupabase()

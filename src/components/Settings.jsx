@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { authHeaders } from '../lib/apiFetch.js'
 import { useOutletContext } from 'react-router-dom'
 import { Plus, Trash2, Check } from 'lucide-react'
 import { XERO_ACCOUNTS, DEFAULT_XERO_ACCOUNTS } from './spaces/shared.jsx'
@@ -306,7 +307,7 @@ function AdminUsersSection({ settings, updateSettings }) {
     try {
       const res = await fetch('/api/auth/invite', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify({ email: inviteEmail.trim() }),
       })
       const data = await res.json()

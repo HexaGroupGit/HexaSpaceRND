@@ -1,3 +1,4 @@
+import { authHeaders } from './apiFetch.js'
 // Client helpers for the Xero integration.
 
 export async function xeroStatus() {
@@ -16,7 +17,7 @@ export function connectXero() {
 }
 
 export async function disconnectXero() {
-  const res = await fetch('/api/xero/disconnect', { method: 'POST' })
+  const res = await fetch('/api/xero/disconnect', { method: 'POST', headers: await authHeaders() })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error ?? 'Disconnect failed')
   return data
@@ -26,7 +27,7 @@ export async function disconnectXero() {
 export async function xeroSync(action, { dryRun = false } = {}) {
   const res = await fetch('/api/xero/sync', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ action, dryRun }),
   })
   const data = await res.json().catch(() => ({}))

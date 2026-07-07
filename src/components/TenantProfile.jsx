@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { authHeaders } from '../lib/apiFetch.js'
 import { format, parseISO } from 'date-fns'
 import { ArrowLeft, Pencil, Building2, Mail, Phone, Hash, Plus, FileDown, Send, MessageSquare, Users, CreditCard, Receipt, Trash2, User, UserPlus, Settings as SettingsIcon, FileText, Ban } from 'lucide-react'
 import TerminateModal, { TERMINATION_REASONS, applyTermination } from './TerminateModal.jsx'
@@ -45,7 +46,7 @@ function PortalInviteButton({ email }) {
       const st = await fetch(`/api/portal/status?email=${encodeURIComponent(email)}`).then((r) => r.json()).catch(() => ({}))
       if (st.status === 'active') { setState('active'); return }
       if (st.status === 'invited') { setState('invited'); return }
-      const res = await fetch('/api/auth/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) })
+      const res = await fetch('/api/auth/invite', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ email }) })
       setState(res.ok ? 'invited' : 'error')
     } catch { setState('error') }
   }
@@ -939,7 +940,7 @@ function PortalAccessSection({ email }) {
     try {
       const res = await fetch('/api/auth/invite', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify({ email }),
       })
       if (res.ok) {

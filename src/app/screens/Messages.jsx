@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { authHeaders } from '../../lib/apiFetch.js'
 import { format, parseISO } from 'date-fns'
 import { Send } from 'lucide-react'
 import { supabase } from '../../lib/supabase.js'
@@ -51,7 +52,7 @@ export default function Messages() {
     setMessages((prev) => [...prev, msg])
     await supabase.from('portal_messages').insert({ id: msg.id, data: msg })
     fetch(apiUrl('/api/portal/notify-message'), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: await authHeaders(),
       body: JSON.stringify({ tenantName: tenant.businessName, tenantEmail: tenant.email, message: content }),
     }).catch(() => {})
     setSending(false)

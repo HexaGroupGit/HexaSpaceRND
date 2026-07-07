@@ -3,24 +3,27 @@
 // off-session charges, without taking a payment. Body: { tenantId, returnTo }.
 // The webhook (checkout.session.completed, mode=setup) writes the card back
 // onto the tenant record.
-import { createClient } from '@supabase/supabase-js'
 import { stripeConfigured, stripeFetch, ensureStripeCustomer } from '../_stripe.js'
 import { applyCors } from '../_cors.js'
-
-const SUPABASE_URL = process.env.SUPABASE_URL
+import { requireMember, isAdminEmail } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!stripeConfigured() || !serviceKey) return res.status(500).json({ error: 'Stripe not configured.' })
+  if (!stripeConfigured()) return res.status(500).json({ error: 'Stripe not configured.' })
 
-  const { tenantId, returnTo } = req.body ?? {}
-  if (!tenantId) return res.status(400).json({ error: 'tenantId is required.' })
+  // Verify the caller. A member sets up a card for THEIR OWN company (tenantId is
+  // derived from their session, not the body); an admin may target any tenantId.
+  const auth = await requireMember(req)
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
+  const supabase = auth.sb
+  const isAdmin = await isAdminEmail(supabase, auth.user.email)
+  const tenantId = isAdmin ? (req.body?.tenantId || auth.companyId) : auth.companyId
+  const returnTo = req.body?.returnTo
+  if (!tenantId) return res.status(400).json({ error: 'No company on this account.' })
 
   try {
-    const supabase = createClient(SUPABASE_URL, serviceKey, { auth: { persistSession: false } })
     const { data: tRow } = await supabase.from('tenants').select('data').eq('id', tenantId).single()
     const tenant = tRow?.data
     if (!tenant) return res.status(404).json({ error: 'Account not found.' })

@@ -10,6 +10,11 @@ export default async function handler(req, res) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!serviceKey) return res.status(500).json({ error: 'Not configured.' })
 
+  // Admin-only: this is a membership/enumeration oracle over all users.
+  const { requireAdmin } = await import('../_auth.js')
+  const _a = await requireAdmin(req)
+  if (_a.error) return res.status(_a.status).json({ error: _a.error })
+
   const { email } = req.query
   if (!email) return res.status(400).json({ error: 'Email required.' })
 
