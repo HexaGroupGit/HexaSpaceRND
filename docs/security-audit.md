@@ -280,12 +280,18 @@ new frontend code deploys:
   sanity-*, xero/disconnect, send-email, notify-reply, status. Ownership-scoped:
   add-teammate, stripe/charge+checkout+setup, food/charge+checkout,
   function-bookings/submit. Crons require `CRON_SECRET` (or admin).
-- **Phase 6 — Cutover + adversarial verification:** ⏳ PENDING DEPLOY. The additive
-  work above is live but INERT (permissive policies still present → holes still
-  open exactly as at baseline; production behaviour unchanged). The cutover
-  (`migrations/phase6_cutover.sql`) drops every permissive policy — it must run
-  only AFTER this branch is deployed to production (verified: prod still serves the
-  old bundle as of this writing).
+- **Phase 6 — Cutover + adversarial verification:** ✅ DONE. Branch merged to
+  `main` + deployed; `migrations/phase6_cutover.sql` APPLIED. Result: 0 open
+  policies, 0 anon policies; 25 member + 26 admin + 3 admins-table policies remain.
+  Adversarial probe (anon + member JWT): **53/53 pass, 0 holes** — anon gets
+  `permission denied` on every table; members read only their own company; admins
+  (verified via a disposable admin) retain full access; the `add-teammate` IDOR
+  returns HTTP 401 unauthenticated in prod.
+- **Phase 7 — RLS performance fix:** ✅ DONE. `migrations/phase7_rls_perf.sql`. The
+  Phase 3/4 policies evaluated `current_company()`/`is_admin()` per-row, which timed
+  out a member's 1800-row invoice load at 8s. Wrapped every helper call in
+  `(select …)` (single eval per statement) + added btree indexes on the JSONB
+  scoping expressions. Member scoped reads: **8036ms → 42ms**.
 
 ## Cutover runbook (Phase 6)
 
