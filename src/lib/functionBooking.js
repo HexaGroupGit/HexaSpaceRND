@@ -9,6 +9,23 @@ export const RATES = { weekday: 250, weekend: 325 }
 export const CLEANING_FEE = 200          // mandatory, ex-GST
 export const SECURITY_DEPOSIT = 300      // fixed, refundable, no GST
 export const LATE_FEE = 250              // booked within LATE_WINDOW_DAYS of the event
+
+// Admin-editable defaults (Settings → settings.functionSpace, edited from the
+// Function Bookings → Pricing tab). configureFunctionPricing() is called once
+// settings load (admin store / portal / app); values override the constants
+// above for every NEW quote. Per-booking priceOverrides still win over both.
+let CONFIGURED = {}
+export function configureFunctionPricing(d) { CONFIGURED = d || {} }
+export function functionPricingDefaults() {
+  const num = (v, fb) => (v === '' || v == null || Number.isNaN(Number(v)) ? fb : Number(v))
+  return {
+    weekdayRate: num(CONFIGURED.weekdayRate, RATES.weekday),
+    weekendRate: num(CONFIGURED.weekendRate, RATES.weekend),
+    cleaningFee: num(CONFIGURED.cleaningFee, CLEANING_FEE),
+    securityDeposit: num(CONFIGURED.securityDeposit, SECURITY_DEPOSIT),
+    lateFee: num(CONFIGURED.lateFee, LATE_FEE),
+  }
+}
 export const LATE_WINDOW_DAYS = 7
 export const STAFF_RATE = 40             // per hour, ex-GST
 export const STAFF_GUEST_THRESHOLD = 80  // staff only charged for functions over 80 pax
@@ -113,12 +130,13 @@ export function computeQuote(input = {}) {
   const sessionList = bookingSessions(input)
   const staffApplies = Number(guests) > STAFF_GUEST_THRESHOLD
 
+  const D = functionPricingDefaults()
   const customRate = numOr(o.rate, null)
-  const cleaningFee = numOr(o.cleaningFee, CLEANING_FEE)
+  const cleaningFee = numOr(o.cleaningFee, D.cleaningFee)
 
   const sessions = sessionList.map((s) => {
     const isWeekend = isWeekendDate(s.date)
-    const rate = customRate ?? (isWeekend ? RATES.weekend : RATES.weekday)
+    const rate = customRate ?? (isWeekend ? D.weekendRate : D.weekdayRate)
     const hours = round(hoursBetween(s.startTime, s.endTime))
     return {
       date: s.date, startTime: s.startTime, endTime: s.endTime,
@@ -129,7 +147,7 @@ export function computeQuote(input = {}) {
     }
   })
   const sessionCount = sessions.length
-  const first = sessions[0] ?? { isWeekend: false, rate: customRate ?? RATES.weekday, date: input.eventDate }
+  const first = sessions[0] ?? { isWeekend: false, rate: customRate ?? D.weekdayRate, date: input.eventDate }
 
   const hours = round(sessions.reduce((s, x) => s + x.hours, 0))
   const rental = round(sessions.reduce((s, x) => s + x.rental, 0))
@@ -144,7 +162,7 @@ export function computeQuote(input = {}) {
 
   const days = daysBetween(bookedOn, first.date)
   const lateFee = o.waiveLateFee ? 0
-    : days != null && days >= 0 && days < LATE_WINDOW_DAYS ? LATE_FEE : 0
+    : days != null && days >= 0 && days < LATE_WINDOW_DAYS ? D.lateFee : 0
 
   // Negotiated discount — % of the pre-discount subtotal, or a flat amount.
   const preDiscount = round(rental + cleaning + addonsTotal + lateFee)
@@ -162,7 +180,7 @@ export function computeQuote(input = {}) {
   // refundable security deposit (no GST). Balance = the other 50% (GST).
   const depositHalf = round(taxable * DEPOSIT_PCT)          // ex-GST invoice line
   const balanceHalf = round(taxable - depositHalf)          // ex-GST invoice line
-  const securityDeposit = numOr(o.securityDeposit, SECURITY_DEPOSIT) // no GST
+  const securityDeposit = numOr(o.securityDeposit, D.securityDeposit) // no GST
   const depositIncGst = round(depositHalf * (1 + GST_RATE))
   const dueNow = round(depositIncGst + securityDeposit)     // display
   const balanceDue = round(total - depositIncGst)           // display

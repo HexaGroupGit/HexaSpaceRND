@@ -27,6 +27,7 @@ import {
   provisionSaltoAccess, revokeSaltoAccess,
 } from '../lib/onboarding.js'
 import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, bookingFeeName, billingEmailFor } from '../lib/credits.js'
+import { configureFunctionPricing } from '../lib/functionBooking.js'
 import { isRentFreeMonth } from '../lib/paymentSchedule.js'
 
 // All spaces a lease occupies (primary + any bundled items, e.g. parking).
@@ -939,6 +940,7 @@ export function useStore() {
         setCommissions(loadedCommissions)
         setSettings(loadedSettings)
         settingsRef.current = loadedSettings
+        configureFunctionPricing(loadedSettings.functionSpace)
 
         // ── Auto bill run ──────────────────────────────────────────────
         const today = new Date()
@@ -2131,6 +2133,7 @@ export function useStore() {
     setSettings((prev) => {
       const next = { ...prev, ...patch }
       settingsRef.current = next
+      if (patch.functionSpace) configureFunctionPricing(next.functionSpace)
       supabase.from('settings').upsert({ id: 'global', data: next })
         .then(({ error }) => { if (error) console.error('Supabase settings sync:', error) })
       return next

@@ -488,11 +488,66 @@ const FILTERS = [
   { key: 'confirmed', label: 'Confirmed' },
   { key: 'completed', label: 'Completed' },
   { key: 'cancelled', label: 'Cancelled' },
+  { key: 'pricing', label: '⚙ Pricing' },
 ]
+
+// Default pricing for NEW quotes — stored in settings.functionSpace and applied
+// by the shared engine everywhere (admin, portal form, invoices). Blank fields
+// fall back to the built-in standard shown as the placeholder. Existing locked
+// quotes are untouched; per-booking Adjust pricing still overrides everything.
+function PricingDefaultsTab({ settings, updateSettings }) {
+  const cur = settings?.functionSpace ?? {}
+  const [f, setF] = useState({
+    weekdayRate: cur.weekdayRate ?? '', weekendRate: cur.weekendRate ?? '',
+    cleaningFee: cur.cleaningFee ?? '', securityDeposit: cur.securityDeposit ?? '', lateFee: cur.lateFee ?? '',
+  })
+  const [saved, setSaved] = useState(false)
+  const up = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
+
+  function save(e) {
+    e.preventDefault()
+    const out = {}
+    for (const [k, v] of Object.entries(f)) if (v !== '' && !isNaN(Number(v))) out[k] = Number(v)
+    updateSettings({ functionSpace: out })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  const fields = [
+    ['weekdayRate', 'Weekday rate ($/hr ex-GST)', '250'],
+    ['weekendRate', 'Weekend rate ($/hr ex-GST)', '325'],
+    ['cleaningFee', 'Cleaning fee (per session, ex-GST)', '200'],
+    ['securityDeposit', 'Security deposit ($, no GST)', '300'],
+    ['lateFee', 'Late booking surcharge ($)', '250'],
+  ]
+
+  return (
+    <form onSubmit={save} className="bg-card border border-border rounded-lg p-5 max-w-lg">
+      <h2 className="font-semibold text-foreground mb-1">Function pricing defaults</h2>
+      <p className="text-sm text-muted-foreground mb-4">
+        Applied to every new quote — the website form, portal, and invoices all use these.
+        Leave a field blank to use the standard (shown greyed). Locked-in quotes don't change;
+        use Adjust pricing on a booking for one-off deals.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        {fields.map(([k, label, ph]) => (
+          <div key={k} className={k === 'lateFee' ? 'col-span-2 max-w-[calc(50%-0.375rem)]' : ''}>
+            <label className={lab}>{label}</label>
+            <input type="number" step="0.01" min="0" value={f[k]} onChange={up(k)} placeholder={ph} className={inp} />
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-3 mt-4">
+        <button type="submit" className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90">Save defaults</button>
+        {saved && <span className="text-xs text-green-700 font-medium">Saved ✓ — new quotes use these immediately</span>}
+      </div>
+    </form>
+  )
+}
 
 export default function FunctionBookings() {
   const store = useOutletContext()
-  const { deleteBooking, settings, bookings: calendarBookings, spaces } = store
+  const { deleteBooking, settings, updateSettings, bookings: calendarBookings, spaces } = store
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
@@ -605,6 +660,11 @@ export default function FunctionBookings() {
           <button onClick={load} className="ml-auto p-1.5 text-muted-foreground hover:text-foreground" title="Refresh"><RefreshCw size={15} /></button>
         </div>
 
+        {filter === 'pricing' ? (
+          <div className="flex-1 overflow-y-auto">
+            <PricingDefaultsTab settings={settings} updateSettings={updateSettings} />
+          </div>
+        ) : (
         <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card">
           {loading ? (
             <div className="p-10 text-center text-muted-foreground text-sm">Loading…</div>
@@ -633,6 +693,7 @@ export default function FunctionBookings() {
             </table>
           )}
         </div>
+        )}
       </div>
 
       {selected && (

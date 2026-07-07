@@ -38,5 +38,14 @@ export function publicSettings(settings = {}) {
     },
     portalUrl: s.portalUrl ?? 'https://portal.hexaspace.com.au',
     functionBookingUrl: s.functionBookingUrl ?? '',
+    // Function-space pricing defaults appear on every quote a client sees —
+    // public to the authenticated member, not secret.
+    functionSpace: {
+      weekdayRate: s.functionSpace?.weekdayRate ?? null,
+      weekendRate: s.functionSpace?.weekendRate ?? null,
+      cleaningFee: s.functionSpace?.cleaningFee ?? null,
+      securityDeposit: s.functionSpace?.securityDeposit ?? null,
+      lateFee: s.functionSpace?.lateFee ?? null,
+    },
   };
 }

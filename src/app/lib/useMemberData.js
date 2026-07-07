@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { unreadDmCount } from './memberMessages.js'
+import { configureFunctionPricing } from '../../lib/functionBooking.js'
 
 // Loads the member's world for the mobile app. Mirrors PortalApp.jsx fetchData
 // (which stays untouched — the app is a separate experience): same tables, same
@@ -25,6 +26,7 @@ export function useMemberData(email) {
         // admin/service-role only and not readable by members after cutover.
         fetch('/api/portal/settings').then((r) => r.json()).then((d) => d.settings ?? {}).catch(() => ({})),
       ])
+      configureFunctionPricing(settings.functionSpace)
       const [companies, members, spaces, bookings, fees] =
         results.map((r) => (r.data ?? []).map((row) => row.data))
 

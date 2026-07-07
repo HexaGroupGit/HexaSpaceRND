@@ -6,7 +6,23 @@ import { supabase } from '../lib/supabase.js'
 import { Page, PageHeader, Card, Eyebrow, Empty, money0 } from './ui.jsx'
 import { findFunctionSpace } from './functionSpace.js'
 import SignatureCanvas from '../components/SignatureCanvas.jsx'
-import { ADDONS, LAYOUTS, TERMS, TERMS_INTRO, computeQuote, money, bookingSessions } from '../lib/functionBooking.js'
+import { ADDONS, LAYOUTS, TERMS, TERMS_INTRO, computeQuote, money, bookingSessions, configureFunctionPricing } from '../lib/functionBooking.js'
+
+// Admin-configurable pricing defaults (cleaning fee, rates…) — fetched once so
+// the quote the client sees matches what approve/invoicing will compute.
+let _pricingLoaded = false
+function usePricingDefaults() {
+  const [ready, setReady] = useState(_pricingLoaded)
+  useEffect(() => {
+    if (_pricingLoaded) return
+    fetch('/api/portal/settings')
+      .then((r) => r.json())
+      .then((d) => { configureFunctionPricing(d?.settings?.functionSpace); _pricingLoaded = true })
+      .catch(() => {})
+      .finally(() => setReady(true))
+  }, [])
+  return ready
+}
 
 const today = () => new Date().toISOString().split('T')[0]
 const fmtDate = (d) => {
@@ -44,6 +60,7 @@ function Row({ label, value, strong, muted }) {
 }
 
 export default function PortalFunction({ spaces, member, company }) {
+  usePricingDefaults() // re-renders once the configured defaults arrive
   const fn = findFunctionSpace(spaces)
   const rate = fn?.hourlyRate ?? fn?.rate
   const [existing, setExisting] = useState(null)
