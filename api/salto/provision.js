@@ -45,6 +45,19 @@ export default async function handler(req, res) {
   if (!memberEmail) return res.status(400).json({ error: 'memberEmail is required.' })
   const accessGroup = resolveAccessGroup(doorId, spaceLabel, membershipType)
 
+  // Virtual Office members get no door access at all — creating a KS user for
+  // them is a wasted seat (per Eric, 8 Jul 2026). A space with an explicit
+  // saltoDoors override still provisions (doorId wins in the resolver), which
+  // is the escape hatch if a particular VO member ever needs e.g. mail-room access.
+  if (accessGroup === 'Virtual Office') {
+    return res.status(200).json({
+      skipped: 'virtual-office',
+      saltoUserId: null,
+      accessLink: null,
+      note: 'Virtual Office membership — no Salto user created (no door access).',
+    })
+  }
+
   // KS's API assigns groups by ID. settings.salto.accessGroupIds maps our
   // group names → KS group IDs (harvested once from the Zapier dropdown /
   // KS portal). Data-driven: updating the map needs no redeploy.
