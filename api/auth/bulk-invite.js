@@ -13,6 +13,11 @@ import { requireAdmin } from '../_auth.js'
 import { loadAdoption } from '../_adoption.js'
 import { invitePortalUser } from '../_invite.js'
 
+// The adoption load + per-member auth/email calls take well over Vercel's
+// 10s default — the first blast died on the clock before a single send
+// completed. 60s budget + a batch size that fits inside it.
+export const config = { maxDuration: 60 }
+
 const DEFAULTS = {
   portal_invite: {
     subject: 'Your new Hexa Space member portal & app is ready',
@@ -34,19 +39,25 @@ export default async function handler(req, res) {
   if (auth.error) return res.status(auth.status).json({ error: auth.error })
   const sb = auth.sb
 
-  const { mode = 'invite', limit = 60 } = req.body ?? {}
+  const { mode = 'invite', limit = 25 } = req.body ?? {}
   if (!['invite', 'remind'].includes(mode)) return res.status(400).json({ error: "mode must be 'invite' or 'remind'." })
-  const cap = Math.max(1, Math.min(200, Number(limit) || 60))
+  // ~1s per member (auth user + link + email + stamp) — 40 max keeps a full
+  // batch inside the 60s budget with the adoption load up front.
+  const cap = Math.max(1, Math.min(40, Number(limit) || 25))
 
   try {
     const { rows } = await loadAdoption(sb)
     const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString()
-    const targets = rows.filter((r) => !r.signedInAt && (
-      mode === 'invite' ? !r.invitedAt : (r.invitedAt && r.invitedAt < threeDaysAgo && !r.remindedAt)
-    )).slice(0, cap)
+    const remindable = (r) => r.invitedAt && (!r.remindedAt || r.remindedAt < threeDaysAgo)
+    const eligible = rows.filter((r) => !r.signedInAt && (mode === 'invite' ? !r.invitedAt : remindable(r)))
+    const targets = eligible.slice(0, cap)
 
-    const { data: settRows } = await sb.from('settings').select('data').eq('id', 'global')
+    const [{ data: settRows }, { data: memberRows }] = await Promise.all([
+      sb.from('settings').select('data').eq('id', 'global'),
+      sb.from('members').select('id, data').in('id', targets.map((t) => t.id)),
+    ])
     const settings = settRows?.[0]?.data ?? {}
+    const memberById = new Map((memberRows ?? []).map((r) => [r.id, r.data]))
     const tplKey = mode === 'invite' ? 'portal_invite' : 'portal_invite_reminder'
     const tpl = { ...DEFAULTS[tplKey], ...(settings.emailTemplates?.[tplKey] ?? {}) }
 
@@ -62,15 +73,17 @@ export default async function handler(req, res) {
       })
       if (!r.ok) { failed.push({ email: t.email, error: r.error }); continue }
       // Stamp the member so the next batch skips them.
-      const { data: mRow } = await sb.from('members').select('data').eq('id', t.id).single()
-      if (mRow?.data) {
-        const stamped = { ...mRow.data, [mode === 'invite' ? 'portalInvitedAt' : 'portalRemindedAt']: nowIso }
+      const m = memberById.get(t.id)
+      if (m) {
+        const stamped = { ...m, [mode === 'invite' ? 'portalInvitedAt' : 'portalRemindedAt']: nowIso }
         await sb.from('members').upsert({ id: t.id, data: stamped, updated_at: nowIso })
       }
       sent.push(t.email)
+      // Resend rate limit is ~2 req/s — pace the sends.
+      await new Promise((resolve) => setTimeout(resolve, 350))
     }
 
-    return res.status(200).json({ mode, sent: sent.length, failed, remaining: Math.max(0, rows.filter((r) => !r.signedInAt && (mode === 'invite' ? !r.invitedAt : (r.invitedAt && !r.remindedAt))).length - targets.length), emails: sent })
+    return res.status(200).json({ mode, sent: sent.length, failed, remaining: Math.max(0, eligible.length - targets.length), emails: sent })
   } catch (err) {
     console.error('bulk-invite error:', err)
     return res.status(500).json({ error: 'Bulk invite failed.' })

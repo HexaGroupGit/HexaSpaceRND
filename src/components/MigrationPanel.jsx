@@ -27,12 +27,12 @@ export default function MigrationPanel() {
 
   async function run(mode) {
     const label = mode === 'invite' ? 'portal invites' : 'reminders'
-    if (!confirm(`Send the next batch of ${label} (up to 60 emails)?`)) return
+    if (!confirm(`Send the next batch of ${label} (up to 25 emails — batches keep each run inside the server's time budget)?`)) return
     setBusy(mode); setResult(null)
     try {
       const r = await fetch('/api/auth/bulk-invite', {
         method: 'POST', headers: await authHeaders(),
-        body: JSON.stringify({ mode, limit: 60 }),
+        body: JSON.stringify({ mode, limit: 25 }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d.error ?? 'Send failed.')
@@ -47,6 +47,10 @@ export default function MigrationPanel() {
   if (!data) return null
   const { counts, rows } = data
   const pending = rows.filter((r) => !r.signedInAt)
+  // Mirrors the endpoint's reminder rule: invited, not signed in, never
+  // reminded or reminded >3 days ago (so a second nudge is possible).
+  const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString()
+  const remindableCount = pending.filter((r) => r.invitedAt && (!r.remindedAt || r.remindedAt < threeDaysAgo)).length
   const pct = counts.active ? Math.round((counts.registered / counts.active) * 100) : 0
 
   return (
@@ -77,11 +81,12 @@ export default function MigrationPanel() {
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={() => run('invite')} disabled={!!busy || counts.notInvited === 0}
           className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
-          <Send size={14} /> {busy === 'invite' ? 'Sending…' : `Invite next batch (${Math.min(60, counts.notInvited)})`}
+          <Send size={14} /> {busy === 'invite' ? 'Sending… (up to 30s)' : `Invite next batch (${Math.min(25, counts.notInvited)})`}
         </button>
-        <button onClick={() => run('remind')} disabled={!!busy || counts.invited === 0}
+        <button onClick={() => run('remind')} disabled={!!busy || remindableCount === 0}
+          title={remindableCount === 0 ? 'Reminders unlock 3 days after the invite (and re-unlock 3 days after a reminder)' : undefined}
           className="flex items-center gap-2 border border-input px-4 py-2 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40">
-          <BellRing size={14} /> {busy === 'remind' ? 'Sending…' : 'Remind un-registered'}
+          <BellRing size={14} /> {busy === 'remind' ? 'Sending…' : `Remind un-registered (${Math.min(25, remindableCount)})`}
         </button>
         <button onClick={() => setOpen((v) => !v)} className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
           {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />} {pending.length} outstanding
