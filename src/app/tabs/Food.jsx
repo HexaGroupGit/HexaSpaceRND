@@ -4,6 +4,7 @@ import { Minus, Plus, CreditCard, ExternalLink, Check, RefreshCw } from 'lucide-
 import { useApp } from '../context.js'
 import { Screen, Label, Display, Rule, Chip, Sheet, BigButton, EmptyNote, money, fmt } from '../ui.jsx'
 import { createFoodOrder, loadMenu, loadMyOrders, foodTotal } from '../lib/foodActions.js'
+import { unitNameFor, floorLabelFor } from '../../lib/billing.js'
 import { apiUrl, openPayment, onAppResume } from '../lib/native.js'
 import { DRINK_CATEGORIES, isOrderingOpen, ORDER_HOURS_LABEL } from '../../lib/foodMenu.js'
 
@@ -50,12 +51,18 @@ export default function Food() {
     loadMyOrders(company?.id).then(setOrders).catch(() => {})
   }
 
-  // Office/suite prefilled from the member's lease.
+  // Office/suite prefilled from the member's lease — same unit/floor labels
+  // the invoices use (billing.js), so imported OfficeRND contracts (which name
+  // the suite in resource/level rather than linking a spaceId) resolve too.
   const suite = useMemo(() => {
-    const active = (leases ?? []).find((l) => l.status === 'active' && l.spaceId)
-    const space = (spaces ?? []).find((s) => s.id === active?.spaceId)
-    if (!space) return ''
-    return `${space.unitNumber ?? ''}${space.floor ? `, Level ${space.floor}` : ''}`.trim()
+    for (const l of (leases ?? []).filter((x) => x.status === 'active')) {
+      const space = (spaces ?? []).find((s) => s.id === l.spaceId)
+      const unit = unitNameFor(l, space)
+      if (!unit) continue
+      const floor = floorLabelFor(l, space)
+      return floor ? `${unit}, ${floor}` : unit
+    }
+    return ''
   }, [leases, spaces])
 
   const byCategory = useMemo(() => {
