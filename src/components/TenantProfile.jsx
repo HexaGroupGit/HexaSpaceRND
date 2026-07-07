@@ -76,7 +76,7 @@ function Section({ title, action, children }) {
   )
 }
 
-export default function TenantProfile({ tenant, leases, invoices, spaces, settings, members = [], addMember, updateMember, deleteMember, addLease, updateLease, updateTenant, onBack, onEdit, onSelectInvoice, onSelectContract, onAddInvoice }) {
+export default function TenantProfile({ tenant, leases, invoices, spaces, settings, members = [], addMember, updateMember, deleteMember, addLease, updateLease, updateTenant, onBack, onEdit, onSelectInvoice, onSelectContract, onAddInvoice, bookings = [], fees = [], updateFee }) {
   const [showInvoiceForm, setShowInvoiceForm] = useState(false)
   const [memberModal, setMemberModal] = useState(null)   // null | {} (new) | member (edit)
   const [showMembership, setShowMembership] = useState(false)
@@ -84,6 +84,38 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
   const [terminateTarget, setTerminateTarget] = useState(null)  // lease to terminate
   const tenantLeases = leases.filter((l) => l.tenantId === tenant.id)
   const companyMembers = members.filter((m) => m.companyId === tenant.id)
+
+  // Bookings made by the company or any of its members, newest first.
+  const memberIds = new Set(companyMembers.map((m) => m.id))
+  const companyBookings = bookings
+    .filter((b) => b.companyId === tenant.id || (b.memberId && memberIds.has(b.memberId)))
+    .sort((a, b) => ((b.date || '') + (b.startTime || '')).localeCompare((a.date || '') + (a.startTime || '')))
+  // Charges from the fees table (booking overages, one-offs) for this company.
+  const companyFees = fees
+    .filter((f) => f.companyId === tenant.id)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+  const feeBillable = (f) => Number(f.price) > 0 && !['Paid', 'Waived', 'Invoiced'].includes(f.status)
+
+  // Invoice a fee straight from the profile — raises a pending invoice for
+  // this company and flips the fee to Invoiced (out of the bill run's sweep).
+  function invoiceFee(f) {
+    if (!confirm(`Invoice ${tenant.businessName} now for "${f.name}" (A$${Number(f.price).toFixed(2)} + GST)?`)) return
+    const today = new Date().toISOString().split('T')[0]
+    const due = new Date(); due.setDate(due.getDate() + (settings?.invoicing?.dueDateDays ?? 14))
+    const inv = onAddInvoice?.({
+      invoiceType: 'fees', source: 'company-profile',
+      status: 'pending', sentStatus: 'not_sent', vatEnabled: true,
+      issueDate: today, dueDate: due.toISOString().split('T')[0],
+      payments: [], comments: [],
+      lineItems: [{
+        id: `li_fee_${f.id}`,
+        description: `${f.name}${f.date ? ` (${f.date})` : ''}`,
+        revenueAccount: 'Meeting Room & Booking Fees',
+        unitPrice: Number(f.price) || 0, qty: 1, discountPct: 0,
+      }],
+    })
+    updateFee?.(f.id, { status: 'Invoiced', invoiceId: inv?.id ?? null })
+  }
 
   // Booking-credit allowance (company pool). Computed from active memberships;
   // an admin can override the monthly allowance or top up the remaining balance.
@@ -311,6 +343,71 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
                 remaining={creditsRemaining}
                 updateTenant={updateTenant}
               />
+            </Section>
+
+            {/* ── Bookings (company + members) ── */}
+            <Section title="Bookings">
+              {companyBookings.length === 0 ? (
+                <p className="text-sm text-muted-foreground px-1 py-2">No bookings yet.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-muted-foreground uppercase">
+                      <th className="text-left pb-2">Date</th><th className="text-left pb-2">Time</th>
+                      <th className="text-left pb-2">Room</th><th className="text-left pb-2">Booked by</th>
+                      <th className="text-left pb-2">Status</th><th className="text-right pb-2">Credits</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {companyBookings.slice(0, 12).map((b) => {
+                      const past = b.date < new Date().toISOString().split('T')[0]
+                      return (
+                        <tr key={b.id} className={`border-t border-border ${past ? 'text-muted-foreground' : 'text-foreground'}`}>
+                          <td className="py-2 whitespace-nowrap">{b.date ? b.date.split('-').reverse().join('/') : '—'}</td>
+                          <td className="py-2 whitespace-nowrap">{b.startTime}{b.endTime ? `–${b.endTime}` : ''}</td>
+                          <td className="py-2">{spaces.find((s) => s.id === b.resourceId)?.unitNumber || b.resourceName || '—'}</td>
+                          <td className="py-2">{members.find((m) => m.id === b.memberId)?.name || (b.createdBy === 'Admin' ? 'Hexa (admin)' : tenant.businessName)}</td>
+                          <td className="py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${b.status === 'Confirmed' ? 'bg-green-50 text-green-700' : b.status === 'Cancelled' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>{b.status || '—'}</span></td>
+                          <td className="py-2 text-right tabular-nums">{b.creditsUsed ?? '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+              {companyBookings.length > 12 && <p className="text-xs text-muted-foreground mt-2">Showing the latest 12 of {companyBookings.length} — see Bookings for the rest.</p>}
+            </Section>
+
+            {/* ── Fees & charges (booking overages, one-offs) ── */}
+            <Section title="Fees & Charges">
+              {companyFees.length === 0 ? (
+                <p className="text-sm text-muted-foreground px-1 py-2">No fees or charges.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-muted-foreground uppercase">
+                      <th className="text-left pb-2">Charge</th><th className="text-left pb-2">Date</th>
+                      <th className="text-left pb-2">Status</th><th className="text-right pb-2">Amount</th><th className="pb-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {companyFees.map((f) => (
+                      <tr key={f.id} className="border-t border-border text-foreground">
+                        <td className="py-2 pr-3">{f.name}{f.type ? <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{f.type}</span> : null}</td>
+                        <td className="py-2 whitespace-nowrap">{f.date ? f.date.split('-').reverse().join('/') : '—'}</td>
+                        <td className="py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${f.status === 'Invoiced' ? 'bg-blue-50 text-blue-700' : f.status === 'Paid' ? 'bg-green-50 text-green-700' : f.status === 'Waived' ? 'bg-muted text-muted-foreground' : 'bg-amber-50 text-amber-700'}`}>{f.status}</span></td>
+                        <td className="py-2 text-right tabular-nums">A${(Number(f.price) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</td>
+                        <td className="py-2 text-right whitespace-nowrap">
+                          {feeBillable(f) && (
+                            <button onClick={() => invoiceFee(f)} className="text-xs font-semibold text-green-700 hover:underline">Invoice now</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <p className="text-[11px] text-muted-foreground mt-2">Un-invoiced charges are swept onto the company's next bill-run invoice automatically; Invoice now bills them immediately instead.</p>
             </Section>
 
             {/* ── Members ── */}

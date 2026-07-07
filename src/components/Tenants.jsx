@@ -26,7 +26,7 @@ const STATUS_STYLE = {
 
 export default function Tenants() {
   const { tenants, addTenant, updateTenant, deleteTenant, leases = [], invoices = [], spaces = [], settings, addInvoice,
-    members = [], addMember, updateMember, deleteMember, addLease, updateLease } = useOutletContext()
+    members = [], addMember, updateMember, deleteMember, addLease, updateLease, bookings = [], fees = [], updateFee } = useOutletContext()
   const navigate = useNavigate()
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState(null)
@@ -84,6 +84,7 @@ export default function Tenants() {
           leases={leases} invoices={invoices} spaces={spaces} settings={settings}
           members={members} addMember={addMember} updateMember={updateMember} deleteMember={deleteMember}
           addLease={addLease} updateLease={updateLease} updateTenant={updateTenant}
+          bookings={bookings} fees={fees} updateFee={updateFee}
           onBack={() => setSelectedTenant(null)}
           onEdit={() => openEdit(selectedTenant)}
           onSelectContract={(lease) => navigate('/leases', { state: { openLeaseId: lease.id } })}
