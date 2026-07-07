@@ -15,6 +15,10 @@ import { selectAllRows } from '../_db.js'
 import { invitePortalUser } from '../_invite.js'
 import { SANS, INK } from '../_brand.js'
 
+// A batch of 20 (createUser + link + email each) runs well past Vercel's 10s
+// default — give the function a real budget so batches complete.
+export const config = { maxDuration: 60 }
+
 const SUBJECT = 'Your new Hexa Space member portal is ready'
 const HEADING = "We're moving to a new member portal"
 const INTRO = 'Hexa Space is upgrading to our own member portal at <strong>portal.hexaspace.com.au</strong>. It replaces the old members site and becomes your home for everything to do with your membership. Your membership, invoices and booking history are already in place — your login is this email address, you just need to set a password.'
