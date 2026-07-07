@@ -39,7 +39,7 @@ function Section({ title, addLabel, onAdd, children }) {
 }
 
 export default function MemberProfile({ member, ctx, onBack, onEdit }) {
-  const { tenants = [], invoices = [], leases = [], updateMember } = ctx
+  const { tenants = [], invoices = [], leases = [], bookings = [], spaces = [], updateMember } = ctx
   const [tab, setTab] = useState('Overview')
   const [inviting, setInviting] = useState(false)
 
@@ -64,6 +64,12 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
   }
   const company = tenants.find((t) => t.id === member.companyId)
   const memberInvoices = invoices.filter((i) => i.tenantId === member.companyId)
+  // Their own bookings, plus company-level ones with no member attribution
+  // (booked by a primary contact who has no member record) — newest first.
+  const memberBookings = bookings
+    .filter((b) => b.memberId === member.id ||
+      (member.companyId && b.companyId === member.companyId && !b.memberId))
+    .sort((a, b) => ((b.date || '') + (b.startTime || '')).localeCompare((a.date || '') + (a.startTime || '')))
   const st = displayStatus(member, memberHasActiveMembership(member, leases))
   const show = (s) => tab === 'Overview' || tab === s
   const set = (k, v) => updateMember(member.id, { [k]: v })
@@ -151,7 +157,36 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
           )}
 
           {show('Memberships') && <Section title="Memberships" addLabel="Add membership">No memberships to show.</Section>}
-          {show('Bookings') && <Section title="Bookings" addLabel="New booking">No bookings to show.</Section>}
+          {show('Bookings') && (
+            <Section title="Bookings" addLabel="New booking">
+              {memberBookings.length === 0 ? 'No bookings to show.' : (
+                <table className="w-full text-sm text-foreground">
+                  <thead>
+                    <tr className="text-xs text-muted-foreground uppercase">
+                      <th className="text-left pb-2">Date</th><th className="text-left pb-2">Time</th>
+                      <th className="text-left pb-2">Room</th><th className="text-left pb-2">Title</th>
+                      <th className="text-left pb-2">Status</th><th className="text-right pb-2">Credits</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {memberBookings.map((b) => {
+                      const past = b.date < new Date().toISOString().split('T')[0]
+                      return (
+                        <tr key={b.id} className={`border-t border-border ${past ? 'text-muted-foreground' : ''}`}>
+                          <td className="py-2 whitespace-nowrap">{b.date ? b.date.split('-').reverse().join('/') : '—'}</td>
+                          <td className="py-2 whitespace-nowrap">{b.startTime}{b.endTime ? `–${b.endTime}` : ''}</td>
+                          <td className="py-2">{spaces.find((s) => s.id === b.resourceId)?.unitNumber || b.resourceName || '—'}</td>
+                          <td className="py-2">{b.title || '—'}{!b.memberId && <span className="text-xs text-muted-foreground"> · company booking</span>}</td>
+                          <td className="py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${b.status === 'Confirmed' ? 'bg-green-50 text-green-700' : b.status === 'Cancelled' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>{b.status || '—'}</span></td>
+                          <td className="py-2 text-right tabular-nums">{b.creditsUsed ?? '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </Section>
+          )}
           {show('Day Passes') && <Section title="Day Passes" addLabel="Add Day Passes">No day passes to show.</Section>}
           {show('Credits') && <Section title="Credits" addLabel="Add credits">No credits to show.</Section>}
           {show('One-off Fees') && <Section title="One-off Fees" addLabel="Add fee">No one-off fees to show.</Section>}
