@@ -18,13 +18,14 @@ export function useMemberData(email) {
     setLoading(true)
     try {
       const tables = ['tenants', 'members', 'spaces', 'bookings', 'fees']
-      const results = await Promise.all([
-        ...tables.map((t) => supabase.from(t).select('data')),
-        supabase.from('settings').select('data').eq('id', 'global'),
+      const [results, settings] = await Promise.all([
+        Promise.all(tables.map((t) => supabase.from(t).select('data'))),
+        // Public settings subset via endpoint — the settings row itself is
+        // admin/service-role only and not readable by members after cutover.
+        fetch('/api/portal/settings').then((r) => r.json()).then((d) => d.settings ?? {}).catch(() => ({})),
       ])
-      const [companies, members, spaces, bookings, fees, settingsRes] =
+      const [companies, members, spaces, bookings, fees] =
         results.map((r) => (r.data ?? []).map((row) => row.data))
-      const settings = settingsRes[0] ?? {}
 
       const lc = email.toLowerCase()
       const member = members.find((m) => m.email?.toLowerCase() === lc) ?? null

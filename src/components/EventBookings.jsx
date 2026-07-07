@@ -230,8 +230,8 @@ function CountersignModal({ booking, adminSigDefault, onDone, onClose }) {
         .from('event-insurance')
         .upload(pdfPath, pdfBlob, { contentType: 'application/pdf', upsert: true })
       if (!uploadError) {
-        const { data: { publicUrl } } = supabase.storage.from('event-insurance').getPublicUrl(pdfPath)
-        updated = { ...updated, agreementPdfUrl: publicUrl }
+        const { data: signed } = await supabase.storage.from('event-insurance').createSignedUrl(pdfPath, 31536000)
+        updated = { ...updated, agreementPdfUrl: signed?.signedUrl ?? null }
       } else {
         alert(`PDF upload failed: ${uploadError.message}`)
       }
@@ -1210,9 +1210,9 @@ export default function EventBookings() {
       alert(`PDF upload failed: ${uploadError.message}\n\nMake sure the "event-insurance" Storage bucket exists in Supabase (Dashboard → Storage → New Bucket, public = ON).`)
       return
     }
-    const { data: { publicUrl } } = supabase.storage.from('event-insurance').getPublicUrl(pdfPath)
+    const { data: signed } = await supabase.storage.from('event-insurance').createSignedUrl(pdfPath, 31536000)
     const now = new Date().toISOString()
-    const updated = { ...booking, agreementPdfUrl: publicUrl, updatedAt: now }
+    const updated = { ...booking, agreementPdfUrl: signed?.signedUrl ?? null, updatedAt: now }
     await supabase.from('event_bookings').upsert({ id: booking.id, data: updated, updated_at: now })
     setBookings(prev => prev.map(b => b.id === booking.id ? updated : b))
     setSelected(updated)

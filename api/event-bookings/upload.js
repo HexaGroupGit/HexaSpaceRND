@@ -38,8 +38,9 @@ export default async function handler(req, res) {
       upsert: true,
     });
     if (upErr) return res.status(500).json({ error: 'Upload failed.' });
-    const { data: { publicUrl } } = supabase.storage.from('event-insurance').getPublicUrl(path);
-    return res.status(200).json({ ok: true, url: publicUrl, path });
+    // Private bucket → return a long-lived signed URL (safe to store/email).
+    const { data: signed } = await supabase.storage.from('event-insurance').createSignedUrl(path, 31536000);
+    return res.status(200).json({ ok: true, url: signed?.signedUrl ?? null, path });
   } catch (err) {
     console.error('event-bookings/upload error:', err);
     return res.status(500).json({ error: 'Upload failed.' });
