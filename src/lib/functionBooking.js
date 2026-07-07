@@ -94,45 +94,75 @@ export function sessionsLabel(b = {}) {
 // deposit is held once per booking; the late surcharge applies once, judged
 // against the FIRST session. bookedOn defaults to the first date (no late fee)
 // if not supplied — callers that know "today" should pass it.
+//
+// NEGOTIATED PRICING: input.priceOverrides (set on the booking via Admin →
+// Function Bookings → Adjust pricing) customises a quote without forking the
+// maths — every recompute (approve, deposit-paid, resend) flows the overrides
+// through, so a negotiated price survives stage transitions.
+//   { rate,                 // custom $/hr ex-GST, replaces weekday AND weekend
+//     cleaningFee,          // per-session ex-GST ('' / null = standard)
+//     securityDeposit,      // flat, no GST ('' / null = standard $300)
+//     waiveLateFee,         // true → no late surcharge
+//     discountPct | discountAmount, discountReason,   // pct wins if both set
+//     extraLines: [{ description, amount }] }         // ex-GST, taxable
+const numOr = (v, fallback) => (v === '' || v == null || Number.isNaN(Number(v)) ? fallback : Number(v))
+
 export function computeQuote(input = {}) {
   const { guests, bookedOn } = input
+  const o = input.priceOverrides || {}
   const sessionList = bookingSessions(input)
   const staffApplies = Number(guests) > STAFF_GUEST_THRESHOLD
 
+  const customRate = numOr(o.rate, null)
+  const cleaningFee = numOr(o.cleaningFee, CLEANING_FEE)
+
   const sessions = sessionList.map((s) => {
     const isWeekend = isWeekendDate(s.date)
-    const rate = isWeekend ? RATES.weekend : RATES.weekday
+    const rate = customRate ?? (isWeekend ? RATES.weekend : RATES.weekday)
     const hours = round(hoursBetween(s.startTime, s.endTime))
     return {
       date: s.date, startTime: s.startTime, endTime: s.endTime,
       isWeekend, rate, hours,
       rental: round(rate * hours),
       staff: staffApplies ? round(STAFF_RATE * hours) : 0,
-      cleaning: CLEANING_FEE,
+      cleaning: cleaningFee,
     }
   })
   const sessionCount = sessions.length
-  const first = sessions[0] ?? { isWeekend: false, rate: RATES.weekday, date: input.eventDate }
+  const first = sessions[0] ?? { isWeekend: false, rate: customRate ?? RATES.weekday, date: input.eventDate }
 
   const hours = round(sessions.reduce((s, x) => s + x.hours, 0))
   const rental = round(sessions.reduce((s, x) => s + x.rental, 0))
   const staff = round(sessions.reduce((s, x) => s + x.staff, 0))
-  const cleaning = round(CLEANING_FEE * Math.max(1, sessionCount))
-  const addonsTotal = staff
+  const cleaning = round(cleaningFee * Math.max(1, sessionCount))
+
+  const extras = (o.extraLines || [])
+    .map((l) => ({ description: (l.description || '').trim(), amount: round(l.amount) }))
+    .filter((l) => l.description && l.amount !== 0)
+  const extrasTotal = round(extras.reduce((s, l) => s + l.amount, 0))
+  const addonsTotal = round(staff + extrasTotal)
 
   const days = daysBetween(bookedOn, first.date)
-  const lateFee = days != null && days >= 0 && days < LATE_WINDOW_DAYS ? LATE_FEE : 0
+  const lateFee = o.waiveLateFee ? 0
+    : days != null && days >= 0 && days < LATE_WINDOW_DAYS ? LATE_FEE : 0
+
+  // Negotiated discount — % of the pre-discount subtotal, or a flat amount.
+  const preDiscount = round(rental + cleaning + addonsTotal + lateFee)
+  const discountPct = numOr(o.discountPct, 0)
+  const discount = discountPct > 0
+    ? round(preDiscount * Math.min(discountPct, 100) / 100)
+    : Math.min(numOr(o.discountAmount, 0), preDiscount)
 
   // Booking cost = everything except the refundable security deposit. GST applies.
-  const taxable = round(rental + cleaning + addonsTotal + lateFee)
+  const taxable = round(preDiscount - discount)
   const gst = round(taxable * GST_RATE)
   const total = round(taxable + gst)
 
-  // Deposit invoice (due now) = 50% of the booking cost (GST applies) + the flat
-  // $300 refundable security deposit (no GST). Balance = the other 50% (GST).
+  // Deposit invoice (due now) = 50% of the booking cost (GST applies) + the
+  // refundable security deposit (no GST). Balance = the other 50% (GST).
   const depositHalf = round(taxable * DEPOSIT_PCT)          // ex-GST invoice line
   const balanceHalf = round(taxable - depositHalf)          // ex-GST invoice line
-  const securityDeposit = SECURITY_DEPOSIT                  // no GST
+  const securityDeposit = numOr(o.securityDeposit, SECURITY_DEPOSIT) // no GST
   const depositIncGst = round(depositHalf * (1 + GST_RATE))
   const dueNow = round(depositIncGst + securityDeposit)     // display
   const balanceDue = round(total - depositIncGst)           // display
@@ -142,7 +172,11 @@ export function computeQuote(input = {}) {
     isWeekend: first.isWeekend, rate: first.rate, hours,
     rental, depositHalf, balanceHalf,
     cleaning, staff, staffApplies, addonsTotal,
+    extras, extrasTotal,
     lateFee,
+    discount, discountPct: discountPct > 0 ? discountPct : 0,
+    discountReason: discount > 0 ? (o.discountReason || '').trim() : '',
+    customRate: customRate != null,
     taxable, gst, total,
     securityDeposit, depositIncGst, dueNow, balanceDue,
   }

@@ -286,16 +286,20 @@ export default function PortalFunction({ spaces, member, company }) {
               <Row label="Cleaning fee" value={money(quote.cleaning)} />
               {quote.staffApplies ? <Row label={`F&B & AV staff (80+ pax)`} value={money(quote.staff)} /> : null}
               {ADDONS.filter((a) => f.addons[a.key]).map((a) => <Row key={a.key} label={a.label} value={money(a.price)} />)}
+              {(quote.extras ?? []).map((l, i) => <Row key={`x${i}`} label={l.description} value={money(l.amount)} />)}
               {quote.lateFee ? <Row label="Late booking surcharge" value={money(quote.lateFee)} /> : null}
+              {quote.discount > 0 && (
+                <Row label={`Discount${quote.discountPct ? ` (${quote.discountPct}%)` : ''}${quote.discountReason ? ` — ${quote.discountReason}` : ''}`} value={`−${money(quote.discount)}`} />
+              )}
               <div className="border-t border-ink/10 mt-2 pt-2">
                 <Row label="GST (10%)" value={money(quote.gst)} muted />
                 <Row label="Total (inc GST)" value={money(quote.total)} strong />
               </div>
               <div className="mt-3 border-t border-ink/10 pt-3">
-                <Row label="Deposit due now — 50% + $300 security" value={money(quote.dueNow)} strong />
+                <Row label={`Deposit due now — 50% + ${money(quote.securityDeposit ?? 300)} security`} value={money(quote.dueNow)} strong />
                 <Row label="Balance (14 days before event)" value={money(quote.balanceDue)} muted />
               </div>
-              <p className="hx-prose text-[12px] mt-4">The $300 security deposit is refundable within 5 business days after your event if there’s no damage or excessive cleaning.</p>
+              <p className="hx-prose text-[12px] mt-4">The {money(quote.securityDeposit ?? 300)} security deposit is refundable within 5 business days after your event if there’s no damage or excessive cleaning.</p>
             </Card>
           </div>
           <div>

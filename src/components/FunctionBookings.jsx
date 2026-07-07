@@ -11,7 +11,7 @@ import {
   bookingSessions, sessionsLabel, seriesDateClashes, seriesCalendarClashes,
 } from '../lib/functionBooking.js'
 import { findFunctionSpace } from '../portal/functionSpace.js'
-import { approveFunctionBooking, confirmDepositPaid, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite } from '../lib/functionActions.js'
+import { approveFunctionBooking, confirmDepositPaid, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 const nowIso = () => new Date().toISOString()
@@ -57,15 +57,106 @@ function QuoteBreakdown({ booking }) {
       )}
       {q.staffApplies ? line(`F&B & AV staff (80+ pax) — ${q.hours} hrs`, q.staff) : null}
       {addonLines.map((a) => <div key={a.key}>{line(a.label, a.price)}</div>)}
+      {(q.extras ?? []).map((l, i) => <div key={`x${i}`}>{line(l.description, l.amount)}</div>)}
       {q.lateFee ? line('Late booking surcharge', q.lateFee) : null}
+      {q.discount > 0 && (
+        <div className="flex justify-between py-1 text-sm text-green-700">
+          <span>Discount{q.discountPct ? ` (${q.discountPct}%)` : ''}{q.discountReason ? ` — ${q.discountReason}` : ''}</span>
+          <span className="tabular-nums">−{money(q.discount)}</span>
+        </div>
+      )}
       <div className="border-t border-border mt-1 pt-1">
         {line('GST (10%)', q.gst, 'text-muted-foreground')}
         {line('Total (inc GST)', q.total, 'font-bold')}
       </div>
       <div className="mt-3 bg-muted/50 border border-border rounded-md p-3">
-        {line('Payable now — 50% deposit + $300 security', q.dueNow, 'font-semibold')}
+        {line(`Payable now — 50% deposit + ${money(q.securityDeposit ?? 300)} security`, q.dueNow, 'font-semibold')}
         {line('Balance (14 days before event)', q.balanceDue, 'text-muted-foreground')}
       </div>
+    </div>
+  )
+}
+
+// ── Adjust pricing (negotiated proposals) ────────────────────────────────────
+// Writes booking.priceOverrides; the shared quote engine applies them on every
+// recompute, so the negotiated price survives approve/confirm and shows
+// identically in the portal, agreement emails and invoices.
+function PricingBox({ booking, onApply, busy }) {
+  const o = booking.priceOverrides || {}
+  const [f, setF] = useState({
+    rate: o.rate ?? '', cleaningFee: o.cleaningFee ?? '', securityDeposit: o.securityDeposit ?? '',
+    discountPct: o.discountPct ?? '', discountAmount: o.discountAmount ?? '', discountReason: o.discountReason ?? '',
+    waiveLateFee: !!o.waiveLateFee,
+    extraLines: (o.extraLines || []).map((l) => ({ ...l })),
+  })
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
+  const setLine = (i, k, v) => setF((p) => ({ ...p, extraLines: p.extraLines.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)) }))
+
+  const cleaned = (() => {
+    const out = {}
+    if (f.rate !== '') out.rate = Number(f.rate)
+    if (f.cleaningFee !== '') out.cleaningFee = Number(f.cleaningFee)
+    if (f.securityDeposit !== '') out.securityDeposit = Number(f.securityDeposit)
+    if (Number(f.discountPct) > 0) { out.discountPct = Number(f.discountPct); out.discountReason = f.discountReason }
+    else if (Number(f.discountAmount) > 0) { out.discountAmount = Number(f.discountAmount); out.discountReason = f.discountReason }
+    if (f.waiveLateFee) out.waiveLateFee = true
+    const lines = f.extraLines.filter((l) => (l.description || '').trim() && Number(l.amount))
+    if (lines.length) out.extraLines = lines.map((l) => ({ description: l.description.trim(), amount: Number(l.amount) }))
+    return Object.keys(out).length ? out : null
+  })()
+  const preview = computeQuote({ ...booking, priceOverrides: cleaned, bookedOn: today() })
+
+  // Deposit raised but unpaid → saving should re-issue the invoice at the new amount.
+  const reissue = booking.stage === 'awaiting_deposit' && !booking.depositPaid
+
+  return (
+    <div className="bg-muted/50 border border-border rounded-md p-3 space-y-3 mt-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div><label className={lab}>Hourly rate ($/hr ex-GST)</label><input type="number" min={0} step="0.01" className={inp} value={f.rate} onChange={set('rate')} placeholder="250 wk / 325 w-end" /></div>
+        <div><label className={lab}>Cleaning fee (per session)</label><input type="number" min={0} step="0.01" className={inp} value={f.cleaningFee} onChange={set('cleaningFee')} placeholder="200" /></div>
+        <div><label className={lab}>Discount %</label><input type="number" min={0} max={100} step="0.1" className={inp} value={f.discountPct} onChange={set('discountPct')} placeholder="—" /></div>
+        <div><label className={lab}>or Discount $ (ex-GST)</label><input type="number" min={0} step="0.01" className={inp} value={f.discountAmount} onChange={set('discountAmount')} placeholder="—" disabled={Number(f.discountPct) > 0} /></div>
+        <div className="col-span-2"><label className={lab}>Discount reason (client sees this)</label><input className={inp} value={f.discountReason} onChange={set('discountReason')} placeholder="e.g. Repeat client — negotiated Jul 2026" /></div>
+        <div><label className={lab}>Security deposit ($)</label><input type="number" min={0} step="1" className={inp} value={f.securityDeposit} onChange={set('securityDeposit')} placeholder="300" /></div>
+        <label className="flex items-center gap-2 text-sm text-foreground mt-5">
+          <input type="checkbox" checked={f.waiveLateFee} onChange={set('waiveLateFee')} /> Waive late surcharge
+        </label>
+      </div>
+
+      <div>
+        <label className={lab}>Extra lines (ex-GST — e.g. AV technician, furniture)</label>
+        {f.extraLines.map((l, i) => (
+          <div key={i} className="flex gap-2 mb-1.5">
+            <input className={inp} value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} placeholder="Description" />
+            <input type="number" step="0.01" className={`${inp} w-28`} value={l.amount} onChange={(e) => setLine(i, 'amount', e.target.value)} placeholder="$" />
+            <button type="button" onClick={() => setF((p) => ({ ...p, extraLines: p.extraLines.filter((_, idx) => idx !== i) }))}
+              className="text-muted-foreground hover:text-destructive px-1"><X size={14} /></button>
+          </div>
+        ))}
+        <button type="button" onClick={() => setF((p) => ({ ...p, extraLines: [...p.extraLines, { description: '', amount: '' }] }))}
+          className="text-xs text-foreground underline">+ Add line</button>
+      </div>
+
+      <div className="border-t border-border pt-2 text-sm space-y-0.5">
+        <div className="flex justify-between"><span className="text-muted-foreground">New total (inc GST)</span><strong className="tabular-nums">{money(preview.total)}</strong></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Deposit due now</span><span className="tabular-nums">{money(preview.dueNow)}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Balance</span><span className="tabular-nums">{money(preview.balanceDue)}</span></div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button disabled={busy} onClick={() => onApply(cleaned, reissue)}
+          className="flex-1 bg-primary text-primary-foreground py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
+          {busy ? 'Saving…' : reissue ? 'Save & re-issue deposit invoice' : 'Save pricing'}
+        </button>
+        {booking.priceOverrides && (
+          <button disabled={busy} onClick={() => onApply(null, reissue)}
+            className="px-3 py-2 rounded-md text-sm border border-input text-muted-foreground hover:text-foreground disabled:opacity-40">
+            Reset to standard
+          </button>
+        )}
+      </div>
+      {reissue && <p className="text-[11px] text-muted-foreground">The pending deposit invoice will be voided and a fresh one raised &amp; emailed at the new amount.</p>}
+      {booking.depositPaid && <p className="text-[11px] text-amber-700">Deposit already paid — changes here adjust the balance invoice when the venue is secured.</p>}
     </div>
   )
 }
@@ -208,6 +299,7 @@ function RefundBox({ booking, onResolve }) {
 // ── Detail panel ─────────────────────────────────────────────────────────────
 function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calClash }) {
   const b = booking
+  const [showPricing, setShowPricing] = useState(false)
   const sessions = bookingSessions(b)
   const lastDate = sessions[sessions.length - 1]?.date ?? b.eventDate
   const passed = lastDate && lastDate < today()
@@ -256,8 +348,22 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
         {sessions.length > 1 && <p className="text-xs text-muted-foreground">Each session gets its own calendar hold with a 30-min buffer each side. One $300 security deposit covers the series; balance is due 14 days before the first session.</p>}
 
         <div>
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Quote</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Quote
+              {b.priceOverrides && <span className="ml-2 normal-case tracking-normal font-semibold text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">Adjusted</span>}
+            </h3>
+            {!['completed', 'refunded', 'cancelled', 'declined'].includes(b.stage) && (
+              <button onClick={() => setShowPricing((v) => !v)} className="flex items-center gap-1 text-xs text-foreground underline">
+                <DollarSign size={11} /> {showPricing ? 'Close' : 'Adjust pricing'}
+              </button>
+            )}
+          </div>
           <QuoteBreakdown booking={b} />
+          {showPricing && (
+            <PricingBox booking={b} busy={busy}
+              onApply={async (overrides, reissue) => { await actions.adjustPricing(b, overrides, reissue); setShowPricing(false) }} />
+          )}
         </div>
 
         {b.additionalRequirements && (
@@ -418,6 +524,18 @@ export default function FunctionBookings() {
     async decline(b) {
       if (!confirm('Decline this booking? Any calendar hold will be released.')) return
       apply(await declineFunctionBooking({ store, booking: b }))
+    },
+    // Negotiated pricing: save the overrides, and — when the deposit invoice is
+    // out but unpaid — void + re-raise it at the new amount and email the client.
+    async adjustPricing(b, overrides, reissue) {
+      setBusy(true)
+      try {
+        let rec = await updatePricing({ booking: b, overrides })
+        if (reissue) rec = await reissueDeposit({ store, booking: rec })
+        apply(rec)
+      } catch (e) {
+        alert(e.message)
+      } finally { setBusy(false) }
     },
   }
 

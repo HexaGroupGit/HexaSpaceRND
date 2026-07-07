@@ -97,6 +97,36 @@ export async function approveFunctionBooking({ store, booking, settings }) {
   return data?.[0]?.data || { ...cur, stage: 'awaiting_deposit' }
 }
 
+// ── Negotiated pricing ────────────────────────────────────────────────────────
+// Persist per-booking price overrides (Admin → Function Bookings → Adjust
+// pricing) and refresh any locked-in quote so the portal, emails and invoice
+// amounts all show the negotiated numbers. Pass overrides = null to reset to
+// standard rates.
+export async function updatePricing({ booking, overrides }) {
+  const b = { ...booking, priceOverrides: overrides || null, pricingAdjustedAt: overrides ? nowIso() : null }
+  if (b.quote) b.quote = computeQuote({ ...b, bookedOn: today() })
+  return persistFn(b)
+}
+
+// Re-issue the deposit at the adjusted price while it's still unpaid: void the
+// pending deposit invoice, clear submit.js's raise-lock, and let it raise +
+// email a fresh invoice at the new amount. Once the deposit is PAID, pricing
+// changes flow to the balance invoice instead (raised at deposit-paid time).
+export async function reissueDeposit({ store, booking }) {
+  if (booking.depositPaid) throw new Error('Deposit already paid — adjustments now apply to the balance invoice only.')
+  const q = computeQuote({ ...booking, bookedOn: today() })
+  const cur = await persistFn({ ...booking, quote: q, depositRaisedAt: null, depositInvoiceId: null })
+  const dep = (store.invoices || []).find((i) =>
+    i.functionRef === booking.ref && i.invoiceType === 'function_deposit' && !['paid', 'voided'].includes(i.status))
+  if (dep) store.voidInvoice(dep.id)
+  await fetch('/api/function-bookings/submit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: cur.id }),
+  }).catch(() => {})
+  const { data } = await supabase.from('function_bookings').select('data').eq('id', cur.id)
+  return data?.[0]?.data || cur
+}
+
 // ── 4. Ask the client to pick a different date (clash) ───────────────────────
 export async function askAmendDate({ booking, settings }) {
   const requestToken = booking.requestToken || randToken()
