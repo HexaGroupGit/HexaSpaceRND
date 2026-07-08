@@ -22,7 +22,7 @@ import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
 import { brandFrame, bKicker, bH1, bH2, bPanel, bBtn, SANS, INK, MUTE } from './_brand.js'
 import {
-  requiresAccessGate, accessGateMet, shouldOnboard,
+  requiresAccessGate, accessGateMet, shouldOnboard, requiresCardOnFile,
   renderOnboardingTemplate, resolveOnboardingCopy, onboardingEmailHtml,
 } from '../src/lib/onboarding.js'
 import { invitePortalUser } from './_invite.js'
@@ -84,7 +84,7 @@ export default async function handler(req, res) {
     const flippedLeaseIds = new Set()
     for (const lease of leases) {
       if (lease.status !== 'active') continue
-      if (!requiresAccessGate(lease) || !accessGateMet(lease, invoices)) continue
+      if (!requiresAccessGate(lease) || !accessGateMet(lease, invoices, tenants.find((t) => t.id === lease.tenantId))) continue
       if (lease.startDate && lease.startDate > todayISO) continue
       const space = spaces.find((s) => s.id === lease.spaceId)
       if (!space || space.status !== 'reserved') continue
@@ -99,8 +99,8 @@ export default async function handler(req, res) {
 
     // ── 2. Onboarding catch-up (gate met, never onboarded) ──────────────────
     for (const lease of leases) {
-      if (!shouldOnboard(lease, invoices)) continue
       const tenant = tenants.find((t) => t.id === lease.tenantId)
+      if (!shouldOnboard(lease, invoices, tenant)) continue
       const space = spaces.find((s) => s.id === lease.spaceId)
       const label = `${tenant?.businessName ?? lease.tenantId} (${lease.contractNumber ?? lease.id})`
       try {
@@ -140,6 +140,57 @@ export default async function handler(req, res) {
         }
         out.onboarded.push(`${label} → ${email}`)
       } catch (e) { out.errors.push(`onboard ${label}: ${e.message}`) }
+    }
+
+    // ── 2b. Card-on-file chaser ──────────────────────────────────────────────
+    // Card-required memberships (VO/desk) whose client has SIGNED but never
+    // completed the Stripe card step: onboarding is held (see accessGateMet),
+    // so chase them — first nudge 24h after signing, then every 2 days, up to
+    // 5 reminders. The link re-opens their signing page, which shows the
+    // "verify your payment card" step until a card is on file.
+    out.cardReminders = []
+    const H24 = 24 * 3600 * 1000
+    for (const lease of leases) {
+      if (!requiresCardOnFile(lease)) continue
+      if (['expired', 'cancelled', 'terminated'].includes(String(lease.status))) continue
+      const signedAt = lease.tenantSignedAt || lease.signedAt
+      const hasSigned = signedAt || ['e_signed', 'manually_signed'].includes(String(lease.signatureStatus))
+      if (!hasSigned) continue
+      const tenant = tenants.find((t) => t.id === lease.tenantId)
+      if (!tenant || tenant.stripePaymentMethodId) continue
+      if (!lease.eSignMemberLink) continue // no signing page to send them back to
+      if (signedAt && Date.now() - new Date(signedAt).getTime() < H24) continue
+      if (lease.cardReminderAt && Date.now() - new Date(lease.cardReminderAt).getTime() < 2 * H24) continue
+      if ((lease.cardRemindersSent ?? 0) >= 5) continue
+
+      const primary = pickPrimaryContact(tenant, members)
+      const email = tenant.email || primary?.email
+      const label = `${tenant.businessName ?? lease.tenantId} (${lease.contractNumber ?? lease.id})`
+      if (!email) continue
+      try {
+        if (!dryRun) {
+          await saveRow('leases', lease.id, {
+            ...lease,
+            cardReminderAt: new Date().toISOString(),
+            cardRemindersSent: (lease.cardRemindersSent ?? 0) + 1,
+          })
+          if (resendKey) {
+            const inner =
+              bKicker('One Step Left') +
+              bH1('Register your payment card 💳') +
+              `<p style="font-family:${SANS};font-size:14px;line-height:1.7;color:${MUTE};margin:0 0 12px">Hi ${tenant.contactName ?? primary?.name ?? 'there'}, thanks for signing <strong style="color:${INK}">${lease.contractNumber ?? 'your agreement'}</strong>. As set out in its payment authority, your membership needs a payment card securely on file with Stripe before we can complete your onboarding — it's only ever charged for amounts owing under the agreement (e.g. overdue invoices).</p>` +
+              bBtn('Verify your card — takes a minute', lease.eSignMemberLink) +
+              `<p style="font-family:${SANS};font-size:12px;color:${MUTE};margin:14px 0 0">Card details are held by Stripe — Hexa Space never sees the number. Your access and welcome pack follow as soon as it's done.</p>`
+            await sendResendEmail({
+              from: 'Hexa Space <info@hexaspace.com.au>',
+              to: [email],
+              subject: `One step left — register your card for ${lease.contractNumber ?? 'your membership'}`,
+              html: brandFrame(inner, { footerLabel: 'Memberships' }),
+            }).catch((e) => out.errors.push(`card reminder ${label}: ${e.message}`))
+          }
+        }
+        out.cardReminders.push(`${label} → ${email} (#${(lease.cardRemindersSent ?? 0) + 1})`)
+      } catch (e) { out.errors.push(`card reminder ${label}: ${e.message}`) }
     }
 
     // ── 3. Vacate-date expiry (notice served, date passed) ──────────────────

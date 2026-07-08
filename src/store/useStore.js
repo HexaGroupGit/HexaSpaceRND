@@ -1172,13 +1172,13 @@ export function useStore() {
         const demoting = alreadyOccupied && desired === 'reserved'
         if (desired !== space.status && !demoting) updateSpace(space.id, { status: desired })
       }
-      if (shouldOnboard(lease, invoices)) {
+      const gateTenant = tenants.find((t) => t.id === lease.tenantId)
+      if (shouldOnboard(lease, invoices, gateTenant)) {
         if (alreadyOccupied) {
           // Pre-existing move-in — suppress retroactive onboarding (no email/invite).
           updateLease(lease.id, { onboardedAt: lease.activatedAt ?? new Date().toISOString() })
         } else {
-          const tenant = tenants.find((t) => t.id === lease.tenantId)
-          onboardLease({ lease, tenant, space, members, settings, templates, updateLease, updateMember })
+          onboardLease({ lease, tenant: gateTenant, space, members, settings, templates, updateLease, updateMember })
         }
       }
     })
@@ -1405,8 +1405,8 @@ export function useStore() {
   const provisionAndOnboardLease = useCallback((leaseId) => {
     const lease = leasesRef.current.find((l) => l.id === leaseId)
     if (!lease || lease.onboardedAt) return
-    if (!accessGateMet(lease, invoicesRef.current)) return
     const tenant = tenantsRef.current.find((t) => t.id === lease.tenantId)
+    if (!accessGateMet(lease, invoicesRef.current, tenant)) return
     const space = spacesRef.current.find((s) => s.id === lease.spaceId)
     const alreadyOccupied = space?.status === 'occupied'
     if (space) {

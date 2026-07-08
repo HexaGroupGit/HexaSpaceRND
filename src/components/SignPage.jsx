@@ -56,7 +56,14 @@ export default function SignPage({ token }) {
         if (!req) { setState('invalid'); return }
 
         setRequest(req)
-        if (req.status === 'fully_signed') { setState('fully_signed'); return }
+        if (req.status === 'fully_signed') {
+          // Lease + tenant still load so the card-on-file step can render
+          // when the membership requires a card that isn't saved yet.
+          if (payload.lease) setLease(payload.lease)
+          if (payload.tenant) setTenant(payload.tenant)
+          setState('fully_signed')
+          return
+        }
         if (req.status === 'tenant_signed') {
           // Still load the lease + tenant: the post-sign card-on-file step
           // needs them (e.g. the client signed, then came back to the link).
@@ -168,13 +175,30 @@ export default function SignPage({ token }) {
     )
   }
 
-  if (state === 'fully_signed') return (
-    <StatusScreen
-      icon="✅"
-      title="Agreement fully signed"
-      subtitle="This agreement has been signed by all parties. A copy has been sent to your email."
-    />
-  )
+  if (state === 'fully_signed') {
+    // Fully executed but the required card never got saved (e.g. they closed
+    // the tab after signing) — the chaser email points back here, so keep the
+    // card step available until Stripe confirms one.
+    const needsCard = lease && requiresCardOnFile(lease) && !tenant?.stripePaymentMethodId && !cardSaved
+    if (needsCard) return (
+      <StatusScreen
+        icon="💳"
+        title="One last step — verify your payment card"
+        subtitle="Your agreement is fully signed. Your membership requires a payment card on file: it's stored securely by Stripe, shown in your member portal, and only charged for amounts owing under your agreement (e.g. overdue invoices), as authorised in the agreement's payment authority."
+      >
+        <button onClick={startCardSetup} disabled={cardBusy} className="hx-btn mt-6 disabled:opacity-50">
+          {cardBusy ? 'Opening secure card page…' : 'Verify card with Stripe →'}
+        </button>
+      </StatusScreen>
+    )
+    return (
+      <StatusScreen
+        icon="✅"
+        title={cardSaved ? 'Card verified — all done' : 'Agreement fully signed'}
+        subtitle={`${cardSaved ? 'Your payment card is safely on file with Stripe. ' : ''}This agreement has been signed by all parties. A copy has been sent to your email.`}
+      />
+    )
+  }
 
   const contractNum = lease?.contractNumber ?? `CON-${lease?.id?.slice(-3).toUpperCase()}`
 

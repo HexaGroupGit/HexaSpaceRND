@@ -30,8 +30,6 @@ export default async function handler(req, res) {
       status: request.status,
       licensee_signer_name: request.licensee_signer_name ?? null,
     };
-    if (request.status === 'fully_signed') return res.status(200).json({ request: reqOut });
-
     const { data: lRows } = await supabase.from('leases').select('data').eq('id', request.lease_id);
     const lease = lRows?.[0]?.data ?? null;
     if (!lease) return res.status(404).json({ error: 'invalid' });
@@ -54,7 +52,10 @@ export default async function handler(req, res) {
       billingPerson: !!m.billingPerson, contactPerson: !!m.contactPerson,
     }));
 
-    if (request.status === 'tenant_signed') {
+    // Signed states still return lease + tenant: the page's card-on-file step
+    // (VO/desk payment authority) must stay reachable until a card is saved —
+    // including after countersigning, so the card-chaser email link works.
+    if (request.status === 'tenant_signed' || request.status === 'fully_signed') {
       return res.status(200).json({ request: reqOut, lease, tenant });
     }
 

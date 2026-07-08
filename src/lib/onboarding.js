@@ -56,7 +56,7 @@ export function firstRecurringInvoice(lease, invoices) {
 
 // The access gate: contract signed, deposit paid (if one is owed), and the first
 // recurring invoice paid. Returns false until every required payment has landed.
-export function accessGateMet(lease, invoices) {
+export function accessGateMet(lease, invoices, tenant) {
   if (!isSigned(lease) || isEnded(lease)) return false
 
   const depositOwed = depositAmount(lease) > 0
@@ -67,6 +67,12 @@ export function accessGateMet(lease, invoices) {
 
   const first = firstRecurringInvoice(lease, invoices)
   if (!first || first.status !== 'paid') return false
+
+  // Card-on-file memberships (VO/desk): the signed payment authority requires
+  // a verified stored card before access is handed over — hold onboarding
+  // until Stripe confirms one. Callers without tenant context keep the legacy
+  // behaviour (space-status math doesn't need the card).
+  if (tenant && requiresCardOnFile(lease) && !tenant.stripePaymentMethodId) return false
 
   return true
 }
@@ -88,8 +94,8 @@ export function desiredSpaceStatus(lease, invoices, today = new Date()) {
 
 // Should onboarding (portal invite + how-tos + Salto access) fire for this lease?
 // Fires once the gate is met and it has not been onboarded yet.
-export function shouldOnboard(lease, invoices) {
-  return accessGateMet(lease, invoices) && !lease?.onboardedAt
+export function shouldOnboard(lease, invoices, tenant) {
+  return accessGateMet(lease, invoices, tenant) && !lease?.onboardedAt
 }
 
 // Licence agreement clause 13(b): a departing Private Office member is
