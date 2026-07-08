@@ -88,7 +88,7 @@ export default function ContractDetail({
   async function handleSendForESign() {
     setShowSignMenu(false)
     try {
-      await sendLeaseForSigning({ lease, tenant, settings, templates, updateLease: onUpdateLease })
+      await sendLeaseForSigning({ lease, tenant, members, settings, templates, updateLease: onUpdateLease })
     } catch (e) {
       alert(`Could not send for signing: ${e.message}`)
     }

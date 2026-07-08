@@ -313,7 +313,7 @@ export default function Renewals() {
                   // sit unsigned by mistake.
                   if (created && shouldAutoSendForSigning(created)) {
                     const tenant = tenants.find((t) => t.id === created.tenantId)
-                    sendLeaseForSigning({ lease: created, tenant, settings, templates: templates ?? [], updateLease })
+                    sendLeaseForSigning({ lease: created, tenant, members, settings, templates: templates ?? [], updateLease })
                       .catch((e) => console.error('Renewal e-sign send failed:', e))
                   }
                   setRenewLease(null)
