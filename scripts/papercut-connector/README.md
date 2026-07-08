@@ -39,6 +39,37 @@ node index.mjs --period 2026-07
 Schedule it monthly, a day or two **before** the bill run, so charges are `Not Paid` in
 time to be folded onto the month-end invoices.
 
+## Other scripts in this folder
+
+- **provision-members.mjs** — Hexa roster → PaperCut users/groups/card numbers (dry-run by
+  default; `PAPERCUT_PROVISION_APPLY=1` to write). Run nightly or after onboarding.
+- **sync-pins.mjs** — reads each user's card number + personal balance back into Hexa
+  (`member_pins`) so members see their own print PIN and printing balance in the app/portal.
+  Schedule daily-ish to keep the balance fresh.
+- **auth-provider.mjs / hexa-auth.cmd** — PaperCut **custom authentication program**: lets
+  members sign in to print (Mobility Print first-run, the `:9191` user portal) with their
+  **Hexa portal email + password** instead of OfficeRnD credentials. See below.
+
+## Portal-credential sign-in (replaces OfficeRnD's papercutauth.exe at cutover)
+
+1. Copy `auth-provider.mjs` + `hexa-auth.cmd` to e.g. `C:\Program Files\PaperCut MF\providers\hexa\`,
+   and create `hexa-config.json` there from `hexa-config.example.json` (Supabase URL, **anon**
+   key — never the service key — plus the local Web Services token so legacy usernames can be
+   resolved to emails).
+2. Allow the directory in `[app-path]\server\security.properties`:
+   `security.custom-executable.allowed-directory-list=C:\Program Files\PaperCut MF\providers\hexa`
+3. In the PaperCut admin config editor set:
+   - `auth.source.custom-program` → `C:\Program Files\PaperCut MF\providers\hexa\hexa-auth.cmd`
+   - `auth.source.env-vars` → `HEXA_AUTH_CONFIG=C:\Program Files\PaperCut MF\providers\hexa\hexa-config.json`
+4. Test: `echo member@example.com& echo theirPortalPassword` piped to `hexa-auth.cmd` should
+   print `OK` + the PaperCut username; a wrong password prints `ERROR`.
+
+**Timing: do NOT switch this before cutover** — while members still authenticate with
+OfficeRnD credentials, leave papercutauth.exe in place. Switch when the portal migration
+completes (members have set portal passwords). Members typing a legacy (non-email) username
+still work: the provider resolves it to their email over localhost XML-RPC. Card/PIN release
+at the copier is unaffected either way.
+
 ## Before go-live — decide the charge model
 
 The script defaults to reading each user's **personal-account balance** as the amount.

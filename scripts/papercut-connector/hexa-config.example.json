@@ -1,0 +1,6 @@
+{
+  "supabaseUrl": "https://YOUR-PROJECT-REF.supabase.co",
+  "supabaseAnonKey": "PASTE THE ANON (PUBLIC) KEY — NEVER THE SERVICE ROLE KEY",
+  "papercutServer": "http://localhost:9191",
+  "papercutAuthToken": "PASTE THE WEB SERVICES API AUTH TOKEN (Options → Advanced)"
+}

@@ -188,12 +188,31 @@ group)`.
 ### Full end-to-end flow (target state)
 1. Member invited to Hexa portal → sets password (Supabase). ✅ exists
 2–4. Nightly/on-demand `provision-members.mjs` creates their PaperCut user + group + PIN. 🔨 built, needs live run
-5. Member installs PaperCut client. ✅ guide
-6. Auth at printer = **PIN** (not Supabase password). ✅ via provisioning
+5. Member installs PaperCut client. ✅ guide (portal Guides → Printer Setup, OS-aware Mac/Windows download)
+6. Driver/web sign-in = **Hexa portal email + password** via the custom auth provider ([[3d]]); at the copier = card number/PIN. ✅ built, switch at cutover
 7. PIN shown in app + portal. ✅ built
 8. Print → hold/release at device via PIN. ✅ native PaperCut config
 9. Month-end: negative balance → fee → invoice. ✅ built
-10. Balance resets; show live balance + payable on portal. 🟡 live-balance display still to build
+10. Balance resets; live balance shown in app + portal via sync-pins (`member_pins.balance`). ✅ built 8 Jul 2026 — schedule sync-pins daily for freshness
+
+## 3d. Portal-credential print sign-in (built 8 Jul 2026)
+
+When a member signs in to print (Mobility Print first-run, the `:9191` user web portal),
+PaperCut consults its **custom authentication program** — today OfficeRnD's
+`papercutauth.exe` (config keys `auth.source.custom-program` + `auth.source.env-vars`,
+the latter just pointing the exe at its own config file). That validates OfficeRnD
+credentials, which die at cutover.
+
+Replacement: [scripts/papercut-connector/auth-provider.mjs](../scripts/papercut-connector/auth-provider.mjs)
+(+ `hexa-auth.cmd` wrapper, `hexa-config.example.json`). Implements PaperCut's documented
+protocol (two stdin lines username/password → `OK\n<username>` or `ERROR`, exit 0 always;
+per [PaperCutSoftware/CustomSynAndAuthentication](https://github.com/PaperCutSoftware/CustomSynAndAuthentication)).
+It validates the password against the member's **Supabase portal login**
+(`/auth/v1/token?grant_type=password`, anon key), and returns the member's PaperCut
+username — resolving legacy non-email usernames ↔ emails over localhost XML-RPC — so the
+job credits the account that owns their card number, balance and company group. Fails
+closed; never logs the password; banned portal logins (removed teammates) are refused
+automatically. Install + config-key changes: [scripts/papercut-connector/README.md](../scripts/papercut-connector/README.md).
 
 ## 4. Open questions (resolve before coding)
 
