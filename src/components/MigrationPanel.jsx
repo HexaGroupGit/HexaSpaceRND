@@ -14,6 +14,7 @@ export default function MigrationPanel() {
   const [busy, setBusy] = useState(null) // 'invite' | 'remind'
   const [result, setResult] = useState(null)
   const [open, setOpen] = useState(false)
+  const [view, setView] = useState('all') // all | signed | awaiting | notinvited
 
   useEffect(() => { load() }, [])
   async function load() {
@@ -47,6 +48,17 @@ export default function MigrationPanel() {
   if (!data) return null
   const { counts, rows } = data
   const pending = rows.filter((r) => !r.signedInAt)
+  // Per-person registration state for the roster below.
+  const statusOf = (r) => (r.signedInAt ? 'signed' : r.invitedAt ? 'awaiting' : 'notinvited')
+  const VIEWS = [
+    ['all', 'All', rows.length],
+    ['signed', 'Signed up', counts.registered],
+    ['awaiting', 'Awaiting sign-up', counts.invited],
+    ['notinvited', 'Not invited', counts.notInvited],
+  ]
+  const roster = rows.filter((r) => view === 'all' || statusOf(r) === view)
+  const PILL = { signed: 'bg-green-50 text-green-700', awaiting: 'bg-amber-50 text-amber-700', notinvited: 'bg-muted text-muted-foreground' }
+  const LABEL = { signed: 'Signed up', awaiting: 'Awaiting sign-up', notinvited: 'Not invited' }
   // Mirrors the endpoint's reminder rule: invited, not signed in, never
   // reminded or reminded >3 days ago (so a second nudge is possible).
   const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString()
@@ -89,7 +101,7 @@ export default function MigrationPanel() {
           <BellRing size={14} /> {busy === 'remind' ? 'Sending…' : `Remind un-registered (${Math.min(25, remindableCount)})`}
         </button>
         <button onClick={() => setOpen((v) => !v)} className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />} {pending.length} outstanding
+          {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />} {open ? 'Hide' : 'View'} who's registered
         </button>
       </div>
 
@@ -104,27 +116,42 @@ export default function MigrationPanel() {
       )}
 
       {open && (
-        <div className="mt-4 border border-border rounded-md overflow-hidden max-h-72 overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-muted/60 text-muted-foreground sticky top-0">
-              <tr>{['Member', 'Company', 'Invited', 'Reminded', 'Status'].map((h) => <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>)}</tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {pending.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-3 py-2 text-foreground">{r.name}<div className="text-muted-foreground">{r.email}</div></td>
-                  <td className="px-3 py-2 text-muted-foreground">{r.company}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{r.invitedAt ? r.invitedAt.slice(0, 10) : '—'}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{r.remindedAt ? r.remindedAt.slice(0, 10) : '—'}</td>
-                  <td className="px-3 py-2">
-                    <span className={`px-2 py-0.5 rounded-full font-semibold ${r.invitedAt ? 'bg-amber-50 text-amber-700' : 'bg-muted text-muted-foreground'}`}>
-                      {r.invitedAt ? 'Awaiting sign-up' : 'Not invited'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-4">
+          {/* Filter the roster by registration state */}
+          <div className="flex flex-wrap gap-1.5 mb-3 text-xs">
+            {VIEWS.map(([v, label, n]) => (
+              <button key={v} onClick={() => setView(v)}
+                className={`px-2.5 py-1 rounded-md border ${view === v ? 'bg-primary text-primary-foreground border-primary' : 'bg-card border-border text-muted-foreground hover:bg-muted/50'}`}>
+                {label} ({n})
+              </button>
+            ))}
+          </div>
+          <div className="border border-border rounded-md overflow-hidden max-h-96 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/60 text-muted-foreground sticky top-0">
+                <tr>{['Member', 'Company', 'Invited', 'Signed up', 'Status'].map((h) => <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {roster.length === 0 && (
+                  <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Nobody in this group.</td></tr>
+                )}
+                {roster.map((r) => {
+                  const st = statusOf(r)
+                  return (
+                    <tr key={r.id}>
+                      <td className="px-3 py-2 text-foreground">{r.name}<div className="text-muted-foreground">{r.email}</div></td>
+                      <td className="px-3 py-2 text-muted-foreground">{r.company}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{r.invitedAt ? r.invitedAt.slice(0, 10) : '—'}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{r.signedInAt ? r.signedInAt.slice(0, 10) : '—'}</td>
+                      <td className="px-3 py-2">
+                        <span className={`px-2 py-0.5 rounded-full font-semibold ${PILL[st]}`}>{LABEL[st]}</span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
