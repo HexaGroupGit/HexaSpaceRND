@@ -26,7 +26,8 @@ export default async function handler(req, res) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   const { pins } = req.body ?? {}
-  // pins: [{ email, pin }]
+  // pins: [{ email, pin, balance? }] — balance is the member's PaperCut
+  // personal-account balance in dollars, shown to them in the portal/app.
   if (!Array.isArray(pins)) {
     return res.status(400).json({ error: 'pins must be an array of { email, pin }.' })
   }
@@ -39,7 +40,11 @@ export default async function handler(req, res) {
   // Normalise, drop empties. Count only — NEVER put a pin in the response or a log.
   const rows = pins
     .filter((p) => p?.email && p?.pin != null && String(p.pin).length > 0)
-    .map((p) => ({ email: String(p.email).toLowerCase(), pin: String(p.pin) }))
+    .map((p) => ({
+      email: String(p.email).toLowerCase(),
+      pin: String(p.pin),
+      balance: Number.isFinite(Number(p.balance)) && p.balance !== null && p.balance !== '' ? Number(p.balance) : undefined,
+    }))
 
   if (!token || !serviceKey) {
     return res.status(200).json({
@@ -59,9 +64,14 @@ export default async function handler(req, res) {
   const failed = []
   for (const row of rows) {
     // Upsert on email (primary key of member_pins). Do not surface the pin on error.
+    // Balance is only written when the push includes one, so a pins-only sync
+    // never wipes a previously synced balance.
     const { error } = await supabase
       .from('member_pins')
-      .upsert({ email: row.email, pin: row.pin, updated_at: nowIso }, { onConflict: 'email' })
+      .upsert({
+        email: row.email, pin: row.pin, updated_at: nowIso,
+        ...(row.balance !== undefined ? { balance: row.balance, balance_updated_at: nowIso } : {}),
+      }, { onConflict: 'email' })
     if (error) failed.push({ email: row.email, reason: error.message })
     else stored += 1
   }

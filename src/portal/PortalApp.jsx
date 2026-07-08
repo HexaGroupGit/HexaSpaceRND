@@ -284,7 +284,7 @@ export default function PortalApp() {
               <Route path="/account"       element={<PortalAccount data={data} />} />
               <Route path="/messages"      element={<PortalMessages tenant={company} />} />
               <Route path="/events"        element={<PortalEvents />} />
-              <Route path="/guides"        element={<PortalGuides />} />
+              <Route path="/guides"        element={<PortalGuides member={data.member} />} />
               <Route path="*"              element={<Navigate to="/" replace />} />
             </>
           )}

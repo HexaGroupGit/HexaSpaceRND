@@ -1,7 +1,10 @@
 import { Printer, CalendarClock, Receipt, Wifi, KeyRound, Coffee, Laptop, Smartphone, Download, ExternalLink } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { usePrintPin } from './usePrintPin.js'
+import { usePrintAccount } from './usePrintPin.js'
 import { Page, PageHeader, Card, Eyebrow } from './ui.jsx'
+
+// Which desktop OS is this browser on? Drives which installer we lead with.
+const IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent)
 
 const GUIDES = [
   { icon: CalendarClock, title: 'Book a meeting room', body: 'Browse rooms under Meeting Rooms, request your time, and our team confirms availability — usually within the hour.' },
@@ -11,7 +14,7 @@ const GUIDES = [
   { icon: Coffee, title: 'Lounge & amenities', body: 'Barista-style coffee, filtered water and end-of-trip facilities are included with every membership.' },
 ]
 
-export default function PortalGuides() {
+export default function PortalGuides({ member }) {
   // Live Wi-Fi credentials from the public settings subset.
   const [wifi, setWifi] = useState({})
   useEffect(() => {
@@ -41,14 +44,23 @@ export default function PortalGuides() {
       </div>
 
       <Eyebrow className="mb-4">Printer Setup</Eyebrow>
-      <PrintPin />
+      <PrintAccount member={member} />
 
       <div className="grid gap-px bg-ink/10 mt-4">
-        {/* Laptop / desktop */}
-        <MethodCard icon={Laptop} title="Print from your laptop" subtitle="Windows & Mac · “Hexa-Secure” printers">
+        {/* Laptop / desktop — lead with the installer for the OS we detect */}
+        <MethodCard icon={Laptop} title="Print from your laptop" subtitle={`Windows & Mac · “Hexa-Secure” printers${IS_MAC ? ' · Mac detected' : ' · Windows detected'}`}>
           <div className="flex flex-wrap gap-3 mb-5">
-            <a href="/downloads/hexa-printer-windows.exe" download className="hx-btn inline-flex items-center gap-2"><Download size={13} /> Windows installer</a>
-            <a href="/downloads/hexa-printer-mac.dmg" download className="hx-btn-ghost inline-flex items-center gap-2"><Download size={13} /> Mac installer</a>
+            {IS_MAC ? (
+              <>
+                <a href="/downloads/hexa-printer-mac.dmg" download className="hx-btn inline-flex items-center gap-2"><Download size={13} /> Download for Mac</a>
+                <a href="/downloads/hexa-printer-windows.exe" download className="hx-btn-ghost inline-flex items-center gap-2"><Download size={13} /> Windows installer</a>
+              </>
+            ) : (
+              <>
+                <a href="/downloads/hexa-printer-windows.exe" download className="hx-btn inline-flex items-center gap-2"><Download size={13} /> Download for Windows</a>
+                <a href="/downloads/hexa-printer-mac.dmg" download className="hx-btn-ghost inline-flex items-center gap-2"><Download size={13} /> Mac installer</a>
+              </>
+            )}
           </div>
           <Steps items={[
             'Connect to the “Hexa Spaces” Wi-Fi network.',
@@ -133,19 +145,68 @@ function Steps({ items }) {
   )
 }
 
-// Shows the signed-in member's OWN print PIN (their PaperCut Hexa-Secure number).
-// Fetched from the JWT-verified, owner-scoped endpoint — never from the bulk member
-// data. Renders nothing until/unless a PIN comes back. (uniFlow issues a separate PIN.)
-function PrintPin() {
-  const pin = usePrintPin()
-  if (!pin) return null
+// The signed-in member's OWN print account (mirrors the mobile app's Printing
+// screen): PaperCut Hexa-Secure PIN, live printing balance and sign-in details.
+// PIN + balance come from the JWT-verified, owner-scoped endpoint — never from
+// the bulk member data. (uniFlow on Level 2 issues a separate PIN.)
+function PrintAccount({ member }) {
+  const { pin, balance, balanceUpdatedAt } = usePrintAccount()
+  const owing = balance != null && balance < 0
+  const balanceLabel = balance == null ? null
+    : `${owing ? '−' : ''}$${Math.abs(balance).toFixed(2)}`
+  const asAt = balanceUpdatedAt
+    ? new Date(balanceUpdatedAt).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : null
+
   return (
-    <div className="bg-charcoal text-paper px-6 py-5 flex items-center justify-between gap-4">
-      <div>
-        <span className="block font-heading uppercase tracking-label text-[11px] text-paper/50">Your print PIN · Hexa-Secure</span>
-        <span className="block hx-prose text-[12px] text-paper/50 mt-1">Type this at the printer keypad to release your jobs, or tap your access pass.</span>
+    <div className="bg-charcoal text-paper p-7">
+      <div className="flex items-center justify-between">
+        <span className="font-heading uppercase tracking-label text-[11px] text-paper/50">Your print account</span>
+        <Printer size={16} strokeWidth={1.4} className="text-paper/40" />
       </div>
-      <span className="font-mono text-3xl tracking-[0.25em] text-paper shrink-0">{pin}</span>
+      <p className="font-display font-extralight text-2xl mt-3">PaperCut · Hexa-Secure</p>
+
+      {(pin || balance != null) && (
+        <div className="grid sm:grid-cols-2 gap-px bg-paper/15 mt-5 border border-paper/20">
+          {pin && (
+            <div className="bg-charcoal px-5 py-4 flex items-end justify-between gap-4">
+              <div>
+                <span className="block font-heading uppercase tracking-label text-[10px] text-paper/50">Your print PIN</span>
+                <span className="block hx-prose text-[11px] text-paper/40 mt-1">Type at the keypad, or tap your pass</span>
+              </div>
+              <span className="font-mono text-3xl tracking-[0.3em] text-hexa-green leading-none shrink-0">{pin}</span>
+            </div>
+          )}
+          {balance != null && (
+            <div className="bg-charcoal px-5 py-4 flex items-end justify-between gap-4">
+              <div>
+                <span className="block font-heading uppercase tracking-label text-[10px] text-paper/50">Printing balance</span>
+                <span className="block hx-prose text-[11px] text-paper/40 mt-1">
+                  {owing ? 'Above allowance — billed on your next invoice' : 'Monthly allowance remaining'}{asAt ? ` · as at ${asAt}` : ''}
+                </span>
+              </div>
+              <span className={`font-display font-extralight text-3xl leading-none shrink-0 ${owing ? 'text-amber-400' : 'text-hexa-green'}`}>{balanceLabel}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="border-t border-paper/15 my-5" />
+      <div className="grid sm:grid-cols-2 gap-x-10 gap-y-2">
+        <PrintKV k="Sign-in" v={member?.email || 'your member email'} />
+        <PrintKV k="Queue" v="Hexa-Secure" />
+        <PrintKV k="Portal" v="print.hexaspace.com.au" />
+        <PrintKV k="Release" v="Tap your access pass at any printer" />
+      </div>
+    </div>
+  )
+}
+
+function PrintKV({ k, v }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <span className="hx-prose text-[12px] text-paper/50">{k}</span>
+      <span className="font-body text-[13px] text-paper text-right break-all">{v}</span>
     </div>
   )
 }

@@ -36,14 +36,18 @@ export default async function handler(req, res) {
 
   const email = user.email.toLowerCase()
 
-  // Look up ONLY this verified email's pin.
+  // Look up ONLY this verified email's pin + printing balance.
   const { data, error } = await supabase
     .from('member_pins')
-    .select('pin')
+    .select('pin, balance, balance_updated_at')
     .eq('email', email)
     .maybeSingle()
   if (error) return res.status(500).json({ error: 'Lookup failed.' })
 
   // 200 with pin: null when we don't have one yet (member not synced / no PIN set).
-  return res.status(200).json({ pin: data?.pin ?? null })
+  return res.status(200).json({
+    pin: data?.pin ?? null,
+    balance: data?.balance ?? null,
+    balanceUpdatedAt: data?.balance_updated_at ?? null,
+  })
 }

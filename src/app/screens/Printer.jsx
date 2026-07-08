@@ -1,6 +1,6 @@
 import { Printer as PrinterIcon, Download, ExternalLink } from 'lucide-react'
 import { useApp } from '../context.js'
-import { usePrintPin } from '../lib/usePrintPin.js'
+import { usePrintAccount } from '../lib/usePrintPin.js'
 import { platform, apiUrl, IOS_PRINT_PROFILE, ANDROID_PRINT_APP } from '../lib/native.js'
 import { Screen, BackHeader, Label, Card } from '../ui.jsx'
 
@@ -9,7 +9,8 @@ import { Screen, BackHeader, Label, Card } from '../ui.jsx'
 export default function Printer() {
   const { data } = useApp()
   const email = data.member?.email || data.company?.email || ''
-  const pin = usePrintPin()
+  const { pin, balance, balanceUpdatedAt } = usePrintAccount()
+  const owing = balance != null && balance < 0
 
   return (
     <Screen>
@@ -29,6 +30,22 @@ export default function Printer() {
               <span className="block hx-prose text-[11px] text-paper/40 mt-1">Type at the keypad, or tap your pass</span>
             </div>
             <span className="font-mono text-3xl tracking-[0.3em] text-hexa-green leading-none">{pin}</span>
+          </div>
+        )}
+
+        {/* Printing balance — the PaperCut personal-account balance */}
+        {balance != null && (
+          <div className="mt-3 border border-paper/20 bg-paper/5 px-4 py-3.5 flex items-end justify-between">
+            <div>
+              <span className="block font-heading uppercase tracking-label text-[10px] text-paper/50">Printing balance</span>
+              <span className="block hx-prose text-[11px] text-paper/40 mt-1">
+                {owing ? 'Above allowance — billed on your next invoice' : 'Monthly allowance remaining'}
+                {balanceUpdatedAt ? ` · as at ${new Date(balanceUpdatedAt).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : ''}
+              </span>
+            </div>
+            <span className={`font-display font-extralight text-3xl leading-none ${owing ? 'text-amber-400' : 'text-hexa-green'}`}>
+              {balance < 0 ? '−' : ''}${Math.abs(balance).toFixed(2)}
+            </span>
           </div>
         )}
 

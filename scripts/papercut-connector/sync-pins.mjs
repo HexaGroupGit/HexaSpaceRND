@@ -2,9 +2,11 @@
 //
 // Separate from the billing run (index.mjs) on purpose: PINs change rarely (new
 // members), so run this occasionally or after onboarding — not tied to month-end.
-// Reads each user's `pin` and pushes { email, pin } to /api/papercut/pins, which
-// stores them in the access-controlled member_pins table. Members then see their
-// OWN pin in the app/portal. See docs/papercut-integration.md.
+// Reads each user's card number + personal balance and pushes { email, pin, balance }
+// to /api/papercut/pins, which stores them in the access-controlled member_pins
+// table. Members then see their OWN pin and printing balance in the app/portal —
+// schedule this daily-ish if you want the balance reasonably fresh.
+// See docs/papercut-integration.md.
 //
 // RUNS ON THE LAN (same as index.mjs). Env (reuse the same .env):
 //   PAPERCUT_AUTH_TOKEN, PAPERCUT_SERVER (default http://localhost:9191),
@@ -46,11 +48,17 @@ async function main() {
     // The member's printer login on THIS MF version is the Primary Card/Identity
     // number (`primary-card-number`). `pin`/`card-pin` are NOT valid properties here
     // (the API rejects the names), which is why earlier runs read 0.
-    const [email, card] = await Promise.all([
+    const [email, card, balance] = await Promise.all([
       call(client, 'api.getUserProperty', [u, 'email']).catch(() => ''),
       call(client, 'api.getUserProperty', [u, 'primary-card-number']).catch(() => ''),
+      // Personal-account balance ($30 allowance counting down; negative = owing).
+      // Shown to the member in the portal/app as their printing balance.
+      call(client, 'api.getUserProperty', [u, 'balance']).catch(() => null),
     ])
-    if (card != null && String(card).length > 0) pins.push({ email: email || u, pin: String(card) })
+    if (card != null && String(card).length > 0) {
+      const bal = balance == null || balance === '' ? null : Number(balance)
+      pins.push({ email: email || u, pin: String(card), ...(Number.isFinite(bal) ? { balance: bal } : {}) })
+    }
   }
 
   // Count only — NEVER print a number.
