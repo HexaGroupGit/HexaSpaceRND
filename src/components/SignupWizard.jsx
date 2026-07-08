@@ -28,7 +28,7 @@ const STEP_META = [
 export default function SignupWizard({ onClose }) {
   const ctx = useOutletContext()
   const { addTenant, addMember, addLease, addInvoice, updateLease, updateTenant,
-    leases = [], tenants = [], spaces = [], templates = [] } = ctx
+    leases = [], tenants = [], spaces = [], templates = [], members = [] } = ctx
   const navigate = useNavigate()
 
   const [step, setStep] = useState(0)
@@ -195,6 +195,7 @@ export default function SignupWizard({ onClose }) {
               leases={leases}
               tenants={tenants}
               spaces={spaces}
+              members={members}
               templates={templates}
               onSave={saveContract}
               onDiscard={() => setStep(1)}

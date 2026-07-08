@@ -85,7 +85,7 @@ function ColHeader({ label, sortKey, currentSort, onSort, filterable = true }) {
 const ITEMS_PER_PAGE_OPTIONS = [5, 10, 25, 50]
 
 export default function Leases() {
-  const { leases, tenants, spaces, templates, invoices = [], addLease, updateLease, deleteLease, addInvoice, settings } = useOutletContext()
+  const { leases, tenants, spaces, templates, invoices = [], members = [], addLease, updateLease, deleteLease, addInvoice, settings } = useOutletContext()
   const navigate = useNavigate()
 
   const { state: navState } = useLocation()
@@ -255,6 +255,7 @@ export default function Leases() {
           leases={leases}
           tenants={tenants}
           spaces={spaces}
+          members={members}
           templates={templates}
           onSave={handleSave}
           onDiscard={() => {

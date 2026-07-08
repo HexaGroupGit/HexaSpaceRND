@@ -288,6 +288,7 @@ export default function Renewals() {
                 leases={leases}
                 tenants={tenants}
                 spaces={spaces}
+                members={members}
                 templates={templates ?? []}
                 discounts={discounts ?? []}
                 settings={settings}

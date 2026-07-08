@@ -181,7 +181,7 @@ const selectCls = (err) =>
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ContractForm({ editLease, leases, tenants, spaces, templates = [], onSave, onDiscard, lockTenant = false }) {
+export default function ContractForm({ editLease, leases, tenants, spaces, templates = [], members = [], onSave, onDiscard, lockTenant = false }) {
   const [form, setForm] = useState(() => initForm(editLease, leases))
   const [errors, setErrors] = useState({})
 
@@ -434,11 +434,21 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                   className={selectCls()}
                 >
                   <option value="">—</option>
-                  {selectedTenant?.contactName && (
-                    <option value={selectedTenant.contactName}>
-                      {selectedTenant.contactName}
-                    </option>
-                  )}
+                  {(() => {
+                    // The company's members (billing person first), plus the
+                    // tenant's contactName if it isn't already one of them.
+                    const mine = members
+                      .filter((m) => m.companyId === selectedTenant?.id && m.name)
+                      .sort((a, b) => (b.billingPerson === true) - (a.billingPerson === true) || (a.name || '').localeCompare(b.name || ''))
+                    const names = mine.map((m) => m.name)
+                    if (selectedTenant?.contactName && !names.includes(selectedTenant.contactName)) names.push(selectedTenant.contactName)
+                    // Keep a saved memberName selectable even if that member was removed.
+                    if (form.memberName && !names.includes(form.memberName)) names.unshift(form.memberName)
+                    return names.map((n) => {
+                      const m = mine.find((x) => x.name === n)
+                      return <option key={n} value={n}>{n}{m?.billingPerson ? ' · billing person' : ''}</option>
+                    })
+                  })()}
                 </select>
               </Field>
             </div>
