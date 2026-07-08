@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Trash2, Minus, ChevronDown, X, AlertCircle } from 'lucide-react'
+import { discountedPrice, discountPct } from '../lib/leasePricing.js'
 
 const FORM_SECTIONS = [
   { id: 'company', label: 'Company Information' },
@@ -87,7 +88,8 @@ function initForm(editLease, leases) {
             {
               startDate: editLease.startDate ?? '',
               endDate: editLease.endDate ?? '',
-              listPrice: editLease.monthlyRent ?? 0,
+              // monthlyRent is the discounted charge — restore the RRP for the form.
+              listPrice: editLease.listPrice ?? editLease.monthlyRent ?? 0,
               discount: editLease.discount ?? '',
             },
           ],
@@ -348,7 +350,10 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
       spaceId: firstItem.spaceId,
       startDate: form.startDate,
       endDate: form.endDate,
-      monthlyRent: Number(firstStep.listPrice ?? 0),
+      // What we actually charge: list price less the step's discount. The RRP is
+      // kept alongside so documents can show "list $X — discount → $Y".
+      monthlyRent: discountedPrice(firstStep.listPrice, firstStep.discount),
+      listPrice: Number(firstStep.listPrice ?? 0),
       bondAmount: Number(firstItem.deposit ?? 0),
       status: form.status,
       notes: form.notes,
@@ -746,6 +751,13 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                               </button>
                             )}
                             {item.steps.length === 1 && <span />}
+
+                            {/* Effective price once a discount is applied */}
+                            {discountPct(step.discount) > 0 && (
+                              <div className="col-span-full -mt-1 text-xs text-emerald-700 text-right pr-24">
+                                After {step.discount} discount: A${discountedPrice(step.listPrice, step.discount).toLocaleString('en-AU', { minimumFractionDigits: 2 })}/mo
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

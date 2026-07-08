@@ -4,6 +4,7 @@ import { format, parseISO } from 'date-fns'
 import { FileDown, FileText } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { discountPct } from '../lib/leasePricing.js'
 
 const TYPE_LABEL = {
   warehouse: 'Warehouse Unit',
@@ -144,7 +145,10 @@ export default function AgreementGenerator() {
     sectionTitle('3. Term & Rent')
     row('Commencement Date', format(parseISO(selectedLease.startDate), 'dd MMMM yyyy'))
     row('Expiry Date', format(parseISO(selectedLease.endDate), 'dd MMMM yyyy'))
-    row('Monthly Licence Fee', `AUD $${Number(selectedLease.monthlyRent).toLocaleString('en-AU')} (incl. GST)`)
+    row('Monthly Licence Fee', `AUD $${Number(selectedLease.monthlyRent).toLocaleString('en-AU')} (incl. GST)${
+      discountPct(selectedLease.discount) > 0 && Number(selectedLease.listPrice) > Number(selectedLease.monthlyRent)
+        ? ` — incl. ${selectedLease.discount} discount off list AUD $${Number(selectedLease.listPrice).toLocaleString('en-AU')}`
+        : ''}`)
     row('Bond / Security Deposit', `AUD $${Number(selectedLease.bondAmount).toLocaleString('en-AU')}`)
     y += 2
 
@@ -388,7 +392,12 @@ export default function AgreementGenerator() {
                 {format(parseISO(selectedLease.endDate), 'dd/MM/yyyy')}
               </span>
               <span className="text-gray-400">Monthly Rent</span>
-              <span className="font-semibold">${Number(selectedLease.monthlyRent).toLocaleString('en-AU')} AUD</span>
+              <span className="font-semibold">
+                ${Number(selectedLease.monthlyRent).toLocaleString('en-AU')} AUD
+                {discountPct(selectedLease.discount) > 0 && Number(selectedLease.listPrice) > Number(selectedLease.monthlyRent) && (
+                  <span className="font-normal text-gray-400"> · {selectedLease.discount} off list ${Number(selectedLease.listPrice).toLocaleString('en-AU')}</span>
+                )}
+              </span>
               <span className="text-gray-400">Bond</span>
               <span>${Number(selectedLease.bondAmount).toLocaleString('en-AU')} AUD</span>
             </div>

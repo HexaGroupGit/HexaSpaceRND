@@ -1,4 +1,5 @@
 import { format, parseISO } from 'date-fns'
+import { stepMonthly } from './leasePricing.js'
 
 // Build the month-by-month payment schedule shown on the licence agreement.
 //
@@ -46,7 +47,7 @@ export function buildPaymentSchedule(lease, settings) {
         if (to < from) continue
         // Math.round, not floor: a DST transition makes one day 23/25 hours.
         const days = Math.round((to - from) / 86400000) + 1
-        const monthly = Number(step.listPrice ?? 0) * Number(step.qty ?? 1)
+        const monthly = stepMonthly(step) // list × qty less the step's discount
         const amount = prorate && days < daysInMonth ? (monthly * days) / daysInMonth : monthly
         if (isServices(item.spaceId)) services += amount
         else office += amount

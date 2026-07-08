@@ -10,6 +10,7 @@ import { jsPDF } from 'jspdf'
 import DocumentsPanel from './DocumentsPanel.jsx'
 import { logAudit } from '../lib/audit.js'
 import { buildPaymentSchedule, scheduleAmount } from '../lib/paymentSchedule.js'
+import { stepMonthly } from '../lib/leasePricing.js'
 import { sendLeaseForSigning } from '../lib/esign.js'
 import { requiresCardOnFile } from '../lib/onboarding.js'
 
@@ -117,7 +118,7 @@ export default function ContractDetail({
   const items = lease.items ?? [{
     spaceId: lease.spaceId,
     deposit: lease.bondAmount ?? 0,
-    steps: [{ startDate: lease.startDate, endDate: lease.endDate, listPrice: lease.monthlyRent, discount: '' }],
+    steps: [{ startDate: lease.startDate, endDate: lease.endDate, listPrice: lease.listPrice ?? lease.monthlyRent, discount: lease.discount ?? '' }],
   }]
 
   // Attached templates
@@ -268,7 +269,7 @@ export default function ContractDetail({
       const items = lease.items ?? [{
         spaceId: lease.spaceId,
         deposit: lease.bondAmount ?? 0,
-        steps: [{ startDate: lease.startDate, endDate: lease.endDate, listPrice: lease.monthlyRent ?? 0, qty: 1 }],
+        steps: [{ startDate: lease.startDate, endDate: lease.endDate, listPrice: lease.listPrice ?? lease.monthlyRent ?? 0, discount: lease.discount ?? '', qty: 1 }],
       }]
 
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
@@ -276,15 +277,14 @@ export default function ContractDetail({
       for (const item of items) {
         for (const step of (item.steps ?? [])) {
           checkPage()
-          const price = Number(step.listPrice ?? 0)
-          const qty = Number(step.qty ?? 1)
+          const monthly = stepMonthly(step) // charged amount — list less the step's discount
           if (rowIdx % 2 === 0) { doc.setFillColor(248, 248, 248); doc.rect(ml, y - 2, mr - ml, 7, 'F') }
           doc.setTextColor(0)
           doc.text(space?.unitNumber ?? '—', cols.office, y + 3)
           doc.text(step.startDate ? format(parseISO(step.startDate), 'dd/MM/yyyy') : '—', cols.start, y + 3)
           doc.text(step.endDate ? format(parseISO(step.endDate), 'dd/MM/yyyy') : '—', cols.end, y + 3)
           doc.setFont('helvetica', 'bold')
-          doc.text(`$${(price * qty).toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD`, cols.total, y + 3, { align: 'right' })
+          doc.text(`$${monthly.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD`, cols.total, y + 3, { align: 'right' })
           doc.setFont('helvetica', 'normal')
           y += 8; rowIdx++
         }
