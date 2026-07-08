@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { authHeaders } from '../lib/apiFetch.js'
 import { Search, Mail, Building2, UserPlus, Check } from 'lucide-react'
 import { Page, PageHeader, Card, SubTabs, Monogram, Empty } from './ui.jsx'
@@ -6,6 +6,24 @@ import { Page, PageHeader, Card, SubTabs, Monogram, Empty } from './ui.jsx'
 export default function PortalMembers({ members, companies, company }) {
   const [tab, setTab] = useState('members')
   const [q, setQ] = useState('')
+
+  // Community directory — every ACTIVE company + member across Hexa Space,
+  // from the sanitized member-authed endpoint (RLS scopes direct table reads
+  // to the member's own company, so the props only cover their own team).
+  const [directory, setDirectory] = useState(null)
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await fetch('/api/portal/directory', { headers: await authHeaders() })
+        const d = res.ok ? await res.json() : null
+        if (alive && d?.companies) setDirectory(d)
+      } catch { /* fall back to scoped props */ }
+    })()
+    return () => { alive = false }
+  }, [])
+  const allMembers = directory?.members ?? members ?? []
+  const allCompanies = directory?.companies ?? companies ?? []
 
   // ── Your team (invite teammates) ──
   const team = useMemo(() => (members || []).filter((m) => company?.id && m.companyId === company.id && m.status !== 'archived'), [members, company])
@@ -27,20 +45,20 @@ export default function PortalMembers({ members, companies, company }) {
 
   const visibleMembers = useMemo(() => {
     const term = q.trim().toLowerCase()
-    return [...members]
-      .filter(m => m.status !== 'archived')
-      .filter(m => !term || `${m.name} ${m.email}`.toLowerCase().includes(term))
+    return [...allMembers]
+      .filter(m => !['archived', 'Former'].includes(m.status))
+      .filter(m => !term || `${m.name} ${m.email} ${m.companyName || ''}`.toLowerCase().includes(term))
       .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-  }, [members, q])
+  }, [allMembers, q])
 
   const visibleCompanies = useMemo(() => {
     const term = q.trim().toLowerCase()
-    return [...companies]
+    return [...allCompanies]
       .filter(c => !term || `${c.businessName} ${c.industry || ''}`.toLowerCase().includes(term))
       .sort((a, b) => (a.businessName || '').localeCompare(b.businessName || ''))
-  }, [companies, q])
+  }, [allCompanies, q])
 
-  const nameFor = (id) => companies.find(c => c.id === id)?.businessName
+  const nameFor = (id) => allCompanies.find(c => c.id === id)?.businessName
 
   return (
     <Page>
@@ -107,8 +125,8 @@ export default function PortalMembers({ members, companies, company }) {
                 <Monogram name={m.name} className="h-14 w-14 shrink-0" />
                 <div className="min-w-0">
                   <div className="font-heading uppercase tracking-nav text-[12px] text-ink truncate">{m.name}</div>
-                  {nameFor(m.companyId) && (
-                    <div className="hx-prose text-[13px] truncate">{nameFor(m.companyId)}</div>
+                  {(m.companyName || nameFor(m.companyId)) && (
+                    <div className="hx-prose text-[13px] truncate">{m.companyName || nameFor(m.companyId)}</div>
                   )}
                   {m.bio && <p className="hx-prose text-[13px] mt-2 line-clamp-2">{m.bio}</p>}
                   {m.email && (
