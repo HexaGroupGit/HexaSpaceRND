@@ -47,6 +47,7 @@ export default async function handler(req, res) {
     const people = members
       .filter((m) => companyName.has(m.companyId))
       .filter((m) => m.name && !['Former', 'archived'].includes(m.status))
+      .filter((m) => !m.hideFromDirectory) // per-member opt-out (portal profile)
       .map((m) => ({
         id: m.id,
         name: m.name,

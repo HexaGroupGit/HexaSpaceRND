@@ -11,6 +11,7 @@ import { Page, PageHeader, Card, SubTabs, Segmented, StatusBadge, Empty, Eyebrow
 function ProfileTab({ company, member }) {
   const [form, setForm] = useState({
     name: member?.name ?? '', phone: member?.phone ?? '', bio: member?.bio ?? '',
+    hideFromDirectory: member?.hideFromDirectory ?? false,
   })
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -40,6 +41,13 @@ function ProfileTab({ company, member }) {
           </div>
           <div><label className="hx-eyebrow block mb-1.5">Bio</label><textarea rows={3} className="hx-input" value={form.bio} onChange={e => setForm(f => ({ ...f, bio: e.target.value }))} /></div>
           <Field label="Email" value={member?.email || company.email} />
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" checked={!form.hideFromDirectory}
+              onChange={e => setForm(f => ({ ...f, hideFromDirectory: !e.target.checked }))} className="mt-1 shrink-0" />
+            <span className="hx-prose text-[13px]">
+              Show me in the community directory — other Hexa Space members can see your name, company, bio and contact email under Members.
+            </span>
+          </label>
           {msg && <div className={`text-sm px-3 py-2 border ${msg.type === 'success' ? 'text-hexa-green bg-hexa-green/5 border-hexa-green/30' : 'text-red-700 bg-red-50 border-red-200'}`}>{msg.text}</div>}
           <button type="submit" disabled={saving} className="hx-btn disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
         </Card>
