@@ -13,6 +13,7 @@ import Food from './tabs/Food.jsx'
 import More from './tabs/More.jsx'
 import Mail from './screens/Mail.jsx'
 import Printer from './screens/Printer.jsx'
+import Key from './screens/Key.jsx'
 import MemberChat from './screens/MemberChat.jsx'
 
 /** Phone splash — auth/loading/error states share it. */
@@ -88,6 +89,7 @@ export default function MobileApp() {
           <Route path="/more/*" element={<More />} />
           <Route path="/mail" element={<Mail />} />
           <Route path="/printer" element={<Printer />} />
+          <Route path="/key" element={<Key />} />
           <Route path="/dm/:otherId" element={<MemberChat />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
