@@ -6,6 +6,7 @@ import {
   Wrench, BarChart2, Menu, X, Calendar, MessageSquare,
   ClipboardList, Megaphone, Building2, User, Tag, DollarSign,
   CalendarCheck, Activity, CalendarDays, PartyPopper, Mailbox, Croissant, KeyRound,
+  MonitorPlay,
 } from 'lucide-react'
 import { logout } from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
@@ -48,6 +49,7 @@ const GROUPS = [
     items: [
       { to: '/messages', icon: MessageSquare, label: 'Messages' },
       { to: '/mail', icon: Mailbox, label: 'Mail & Deliveries' },
+      { to: '/directory', icon: MonitorPlay, label: 'Directory' },
       { to: '/food-orders', icon: Croissant, label: 'Food Orders' },
       { to: '/maintenance', icon: Wrench, label: 'Maintenance' },
       { to: '/reports', icon: BarChart2, label: 'Reports' },

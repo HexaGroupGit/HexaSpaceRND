@@ -25,6 +25,7 @@ import Fobs from './components/Fobs.jsx'
 import Bookings from './components/Bookings.jsx'
 import ActivityLog from './components/ActivityLog.jsx'
 import Calendar from './components/Calendar.jsx'
+import Directory from './components/Directory.jsx'
 import { useStore } from './store/useStore.js'
 
 function Splash() {
@@ -68,6 +69,7 @@ export default function AdminApp({ onLogout }) {
           <Route path="marketing" element={<Marketing />} />
           <Route path="messages" element={<AdminMessages />} />
           <Route path="mail" element={<MailRegister />} />
+          <Route path="directory" element={<Directory />} />
           <Route path="food-orders" element={<FoodOrders />} />
           <Route path="events" element={<EventsHub />} />
           <Route path="event-bookings" element={<EventBookings />} />

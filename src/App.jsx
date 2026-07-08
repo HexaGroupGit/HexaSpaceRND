@@ -6,6 +6,7 @@ import FunctionSignPage from './components/FunctionSignPage.jsx'
 import FunctionBookPage from './components/FunctionBookPage.jsx'
 import ReferrerDashboard from './components/ReferrerDashboard.jsx'
 import ProposalAccept from './components/ProposalAccept.jsx'
+import DirectoryDisplay from './components/DirectoryDisplay.jsx'
 import PortalApp from './portal/PortalApp.jsx'
 import AdminApp from './AdminApp.jsx'
 import { supabase } from './lib/supabase.js'
@@ -87,6 +88,9 @@ export default function App() {
   }
 
   // Public pages — no auth needed.
+  const dirMatch = path.match(/^\/directory\/(2|4)\/?$/)
+  if (dirMatch) return <DirectoryDisplay level={dirMatch[1]} />
+
   if (path.startsWith('/book-function')) return <FunctionBookPage />
 
   const functionSignMatch = path.match(/^\/book\/function\/([^/]+)/)
