@@ -43,7 +43,9 @@ export default function PortalCalendar({ resources, allBookings, member, company
   )
 
   const dayStr = format(day, 'yyyy-MM-dd')
-  const dayBookings = bookings.filter((b) => b.date === dayStr)
+  // Cancelled bookings free their slot — never draw them (a cancel would
+  // otherwise leave its block on screen and look like it did nothing).
+  const dayBookings = bookings.filter((b) => b.date === dayStr && b.status !== 'Cancelled')
 
   function openSlot(resourceId, hour) {
     setModal({ resourceId, date: dayStr, startTime: fromDec(hour), endTime: fromDec(hour + 1) })
