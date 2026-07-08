@@ -36,7 +36,10 @@ export default function Directory() {
   }
 
   const board = boards[level]
-  const link = `${publicOrigin()}/directory/${level}`
+  // The TV-safe standalone page (plain HTML, renders on old Samsung/Tizen
+  // browsers that white-screen on the React bundle). /directory/<level> still
+  // works too, for previewing on a normal computer.
+  const link = `${publicOrigin()}/tv.html?level=${level}`
 
   function patchBoard(patch) {
     setBoards((prev) => ({ ...prev, [level]: { ...prev[level], ...patch } }))

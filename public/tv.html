@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hexa Space Directory</title>
+<!--
+  Standalone lobby-TV directory board. Deliberately dependency-free and written
+  in old-browser-safe ES5 (var / function / XMLHttpRequest, no optional chaining,
+  no arrow functions) so it renders on Samsung Tizen and other older smart-TV
+  browsers that white-screen on the modern React bundle.
+
+  Usage: /tv.html?level=4  or  /tv.html?level=2
+  Reads the board from the public (anon read-only) directory_boards table and
+  re-fetches every 30s, so admin edits reach the screen without touching the TV.
+-->
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0a0a0c; }
+  * { box-sizing: border-box; }
+  body {
+    color: #ffffff;
+    font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-weight: 300;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  #bg {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0;
+    background-color: #14151a;
+    background-image:
+      radial-gradient(115% 75% at 22% 6%, rgba(140,150,170,0.13), rgba(20,21,26,0) 55%),
+      repeating-linear-gradient(135deg, rgba(255,255,255,0.016) 0px, rgba(255,255,255,0.016) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) 9px),
+      radial-gradient(125% 115% at 50% 26%, #1e2126 0%, #14151a 45%, #0a0a0c 100%);
+  }
+  #wrap { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 48px 56px; }
+  .addr { text-align: center; font-size: 12px; letter-spacing: 0.5em; color: #8a8a92; text-transform: uppercase; }
+  .head { display: flex; align-items: flex-start; justify-content: space-between; margin-top: 34px; }
+  .title { line-height: 0.92; }
+  .title .lv { display: block; font-size: 60px; font-weight: 300; letter-spacing: 0.12em; }
+  .title .dr { display: block; font-size: 60px; font-weight: 700; letter-spacing: 0.06em; }
+  .brand { text-align: right; padding-top: 4px; white-space: nowrap; }
+  .brand .n { font-size: 38px; font-weight: 300; letter-spacing: 0.18em; }
+  .brand .cn { margin-top: 6px; font-size: 20px; letter-spacing: 0.6em; color: #a7a7ae; }
+  .cols { display: flex; margin-top: 40px; padding-bottom: 12px; padding-left: 20px;
+          border-bottom: 1px solid rgba(255,255,255,0.10);
+          font-size: 12px; letter-spacing: 0.35em; color: #8a8a92; text-transform: uppercase; }
+  .cols .c1 { width: 150px; }
+  .list { margin-top: 8px; border-left: 1px solid rgba(255,255,255,0.10); }
+  .row { display: flex; align-items: flex-start; padding: 16px 0 16px 20px; }
+  .row .s { width: 150px; flex: 0 0 150px; font-size: 26px; font-weight: 300; color: #a7a7ae; }
+  .row .b { font-size: 26px; font-weight: 300; line-height: 1.25; }
+  .row .b .l2 { font-size: 21px; color: #c9c9d0; }
+  .comm { margin-top: 56px; }
+  .comm .h { text-align: center; font-size: 30px; letter-spacing: 0.35em; text-transform: uppercase; }
+  .comm .sh { text-align: center; margin-top: 10px; font-size: 14px; letter-spacing: 0.4em; color: #8a8a92; }
+  .comm .grid { margin-top: 32px; -webkit-column-count: 3; -moz-column-count: 3; column-count: 3; -webkit-column-gap: 32px; column-gap: 32px; }
+  .comm .item { -webkit-column-break-inside: avoid; break-inside: avoid; font-size: 16px; font-weight: 300;
+                color: #c9c9d0; line-height: 1.3; padding-bottom: 12px; margin-bottom: 12px;
+                border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .foot { margin-top: 64px; text-align: center; font-size: 11px; letter-spacing: 0.4em; color: #55555c; text-transform: uppercase; }
+  .msg { position: relative; z-index: 1; text-align: center; padding-top: 40vh; color: #8a8a92; letter-spacing: 0.3em; }
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div id="app"><div class="msg">LOADING DIRECTORY&hellip;</div></div>
+
+<script>
+(function () {
+  var SUPABASE_URL = "https://ihvhnsdsvjwpyquvetzz.supabase.co";
+  var ANON_KEY = "sb_publishable_L390rX9G4rGIguhI-3yApA_TRhFzhVN";
+  var REFRESH_MS = 30000;
+
+  function qs(name) {
+    var m = new RegExp("[?&]" + name + "=([^&]*)").exec(window.location.search);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  var level = qs("level") === "2" ? "2" : "4";
+  document.title = "Hexa Space Directory — Level " + level;
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function nameHtml(name) {
+    var lines = String(name == null ? "" : name).split("\n");
+    var out = esc(lines[0]);
+    for (var i = 1; i < lines.length; i++) {
+      out += '<div class="l2">' + esc(lines[i]) + "</div>";
+    }
+    return out;
+  }
+
+  function render(board) {
+    if (!board) return;
+    var h = "";
+    h += '<div class="addr">' + esc(board.address || "830 WHITEHORSE ROAD · BOX HILL") + "</div>";
+    h += '<div class="head">';
+    h += '<div class="title"><span class="lv">' + esc(board.levelLabel || ("LEVEL " + level)) + "</span>";
+    h += '<span class="dr">DIRECTORY</span></div>';
+    h += '<div class="brand"><div class="n">HEXA SPACE</div><div class="cn">六 合 空 间</div></div>';
+    h += "</div>";
+
+    h += '<div class="cols"><div class="c1">Suite</div><div>Business Name</div></div>';
+    h += '<div class="list">';
+    var suites = board.suites || [];
+    for (var i = 0; i < suites.length; i++) {
+      h += '<div class="row"><div class="s">' + esc(suites[i].suite) + "</div>";
+      h += '<div class="b">' + nameHtml(suites[i].name) + "</div></div>";
+    }
+    h += "</div>";
+
+    var comm = board.community || [];
+    if (board.showCommunity && comm.length) {
+      h += '<div class="comm"><div class="h">' + esc(board.communityHeading || "COMMUNITY MEMBERS") + "</div>";
+      if (board.communitySubheading) h += '<div class="sh">' + esc(board.communitySubheading) + "</div>";
+      h += '<div class="grid">';
+      for (var j = 0; j < comm.length; j++) {
+        h += '<div class="item">' + esc(comm[j]) + "</div>";
+      }
+      h += "</div></div>";
+    }
+
+    h += '<div class="foot">HEXA SPACE · 830 WHITEHORSE ROAD BOX HILL</div>';
+    var wrap = document.createElement("div");
+    wrap.id = "wrap";
+    wrap.innerHTML = h;
+    var app = document.getElementById("app");
+    app.innerHTML = "";
+    app.appendChild(wrap);
+  }
+
+  function load() {
+    try {
+      var xhr = new XMLHttpRequest();
+      var url = SUPABASE_URL + "/rest/v1/directory_boards?id=eq." + level + "&select=data";
+      xhr.open("GET", url, true);
+      xhr.setRequestHeader("apikey", ANON_KEY);
+      xhr.setRequestHeader("Authorization", "Bearer " + ANON_KEY);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            var rows = JSON.parse(xhr.responseText);
+            if (rows && rows.length && rows[0].data) render(rows[0].data);
+          } catch (e) { /* keep last good render */ }
+        }
+        // on error: leave whatever is on screen (don't blank the TV)
+      };
+      xhr.send();
+    } catch (e) { /* ignore, retry on next tick */ }
+  }
+
+  load();
+  setInterval(load, REFRESH_MS);
+})();
+</script>
+</body>
+</html>
