@@ -1,5 +1,6 @@
 import { format, parseISO } from 'date-fns'
-import { buildPaymentSchedule, scheduleAmount } from '../lib/paymentSchedule.js'
+import { buildPaymentSchedule, scheduleAmount, isMonthToMonthLease, monthToMonthRows } from '../lib/paymentSchedule.js'
+import { VO_INCLUSIONS, isVirtualOfficeAgreement } from '../lib/voInclusions.js'
 import { stepMonthly, discountPct } from '../lib/leasePricing.js'
 import { resolvePrimaryContact } from '../lib/leaseContact.js'
 import { requiresCardOnFile } from '../lib/onboarding.js'
@@ -51,6 +52,9 @@ export default function ContractTemplate({ lease, tenant, space, settings, membe
   }]
   const deposit = items[0]?.deposit ?? 0
   const schedule = buildPaymentSchedule(lease, settings)
+  const mtm = isMonthToMonthLease(lease)
+  const scheduleRows = mtm ? monthToMonthRows(schedule) : (schedule?.rows ?? [])
+  const showInclusions = isVirtualOfficeAgreement(lease, space)
   const taxRatePct = settings?.billingRules?.taxRate ?? 10
   const gst = Math.round(deposit * (taxRatePct / 100) * 100) / 100
   const totalInitial = Math.round((deposit + gst) * 100) / 100
@@ -149,6 +153,27 @@ export default function ContractTemplate({ lease, tenant, space, settings, membe
         </tbody>
       </table>
 
+      {/* ── Virtual Office inclusions ── */}
+      {showInclusions && (
+        <>
+          <h2 className="font-bold uppercase text-gray-900 mb-3 tracking-wide">INCLUSIONS</h2>
+          <table className="w-full text-xs border border-gray-300 mb-8">
+            <thead>
+              <tr className="border-b border-gray-300 bg-gray-50">
+                <th className="text-left px-3 py-2.5 font-semibold text-gray-600">ITEM</th>
+              </tr>
+            </thead>
+            <tbody>
+              {VO_INCLUSIONS.map((item) => (
+                <tr key={item} className="border-b border-gray-200 last:border-b-0">
+                  <td className="px-3 py-2 text-gray-700">{item}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
       {/* ── Summary ── */}
       <div className="grid grid-cols-2 gap-10 mb-10">
         {/* Left: periods */}
@@ -156,7 +181,7 @@ export default function ContractTemplate({ lease, tenant, space, settings, membe
           {[
             ['Minimum Notice Period:', `${lease.noticePeriodMonths ?? 1} (M), 0 (W), 0 (D)`],
             ['Start Date:', lease.startDate ? format(parseISO(lease.startDate), 'dd/MM/yyyy') : '—'],
-            ['End Date:', lease.endDate ? format(parseISO(lease.endDate), 'dd/MM/yyyy') : '—'],
+            ['End Date:', lease.endDate ? format(parseISO(lease.endDate), 'dd/MM/yyyy') : mtm ? 'Month-to-month' : '—'],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between py-2 border-b border-gray-200">
               <span className="font-medium text-gray-700">{label}</span>
@@ -202,7 +227,7 @@ export default function ContractTemplate({ lease, tenant, space, settings, membe
               </tr>
             </thead>
             <tbody>
-              {schedule.rows.map((r) => (
+              {scheduleRows.map((r) => (
                 <tr key={r.key} className="border-b border-gray-200">
                   <td className="px-3 py-2 border-r border-gray-200">
                     {r.label}
@@ -214,15 +239,23 @@ export default function ContractTemplate({ lease, tenant, space, settings, membe
                   <td className="px-3 py-2 text-right font-medium">{scheduleAmount(r.incGst)} AUD</td>
                 </tr>
               ))}
-              <tr className="bg-gray-50 font-semibold">
-                <td className="px-3 py-2 border-r border-gray-200">Total</td>
-                <td className="px-3 py-2 text-right border-r border-gray-200">{scheduleAmount(schedule.totals.office)} AUD</td>
-                <td className="px-3 py-2 text-right border-r border-gray-200">{scheduleAmount(schedule.totals.services)} AUD</td>
-                <td className="px-3 py-2 text-right border-r border-gray-200">{scheduleAmount(schedule.totals.total)} AUD</td>
-                <td className="px-3 py-2 text-right">{scheduleAmount(schedule.totals.incGst)} AUD</td>
-              </tr>
+              {!mtm && (
+                <tr className="bg-gray-50 font-semibold">
+                  <td className="px-3 py-2 border-r border-gray-200">Total</td>
+                  <td className="px-3 py-2 text-right border-r border-gray-200">{scheduleAmount(schedule.totals.office)} AUD</td>
+                  <td className="px-3 py-2 text-right border-r border-gray-200">{scheduleAmount(schedule.totals.services)} AUD</td>
+                  <td className="px-3 py-2 text-right border-r border-gray-200">{scheduleAmount(schedule.totals.total)} AUD</td>
+                  <td className="px-3 py-2 text-right">{scheduleAmount(schedule.totals.incGst)} AUD</td>
+                </tr>
+              )}
             </tbody>
           </table>
+          {mtm && (
+            <p className="text-xs text-gray-400 mb-8 leading-relaxed">
+              *Billed monthly in advance. This agreement continues month-to-month until either party gives{' '}
+              {lease.noticePeriodMonths ?? 1} month{(lease.noticePeriodMonths ?? 1) === 1 ? '' : 's'} written notice.
+            </p>
+          )}
           {schedule.rows.some((r) => r.free) && (
             <p className="text-xs text-gray-400 mb-8 leading-relaxed">
               *New-member offer — the rent-free month{schedule.rows.filter((r) => r.free).length > 1 ? 's are' : ' is'} applied

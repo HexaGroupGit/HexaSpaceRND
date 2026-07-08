@@ -9,8 +9,9 @@ import { supabase } from '../lib/supabase.js'
 import { jsPDF } from 'jspdf'
 import DocumentsPanel from './DocumentsPanel.jsx'
 import { logAudit } from '../lib/audit.js'
-import { buildPaymentSchedule, scheduleAmount } from '../lib/paymentSchedule.js'
+import { buildPaymentSchedule, scheduleAmount, isMonthToMonthLease, monthToMonthRows } from '../lib/paymentSchedule.js'
 import { stepMonthly } from '../lib/leasePricing.js'
+import { VO_INCLUSIONS, isVirtualOfficeAgreement } from '../lib/voInclusions.js'
 import { resolvePrimaryContact } from '../lib/leaseContact.js'
 import { sendLeaseForSigning } from '../lib/esign.js'
 import { requiresCardOnFile } from '../lib/onboarding.js'
@@ -294,6 +295,24 @@ export default function ContractDetail({
       doc.setDrawColor(0); doc.setLineWidth(0.4); doc.line(ml, y, mr, y)
       y += 6
 
+      // ── Virtual Office inclusions ─────────────────────────────
+      if (isVirtualOfficeAgreement(lease, space)) {
+        checkPage(20)
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(80)
+        doc.text('INCLUSIONS', ml, y); doc.setTextColor(0)
+        doc.setDrawColor(180); doc.setLineWidth(0.3); doc.line(ml, y + 2, mr, y + 2)
+        y += 7
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+        for (const item of VO_INCLUSIONS) {
+          const lines = doc.splitTextToSize(item, mr - ml - 8)
+          checkPage(lines.length * 4 + 4)
+          doc.text('•', ml + 1, y + 3)
+          doc.text(lines, ml + 5, y + 3)
+          y += lines.length * 4 + 2.5
+        }
+        y += 5
+      }
+
       // Summary
       const deposit = Number(items[0]?.deposit ?? 0)
       const taxRatePct = settings?.billingRules?.taxRate ?? 10
@@ -304,7 +323,7 @@ export default function ContractDetail({
       const sumRows = [
         ['Minimum Notice Period:', `${lease.noticePeriodMonths ?? 1} (M), 0 (W), 0 (D)`],
         ['Start Date:', lease.startDate ? format(parseISO(lease.startDate), 'dd/MM/yyyy') : '—'],
-        ['End Date:', lease.endDate ? format(parseISO(lease.endDate), 'dd/MM/yyyy') : '—'],
+        ['End Date:', lease.endDate ? format(parseISO(lease.endDate), 'dd/MM/yyyy') : isMonthToMonthLease(lease) ? 'Month-to-month' : '—'],
       ]
       const payRows = [
         ['Initial payment:', `${deposit.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD`],
@@ -358,8 +377,11 @@ export default function ContractDetail({
         }
         scheduleHeader()
 
+        // Month-to-month: the first month + one ongoing row, no year table.
+        const mtmPdf = isMonthToMonthLease(lease)
+        const pdfRows = mtmPdf ? monthToMonthRows(schedule) : schedule.rows
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
-        schedule.rows.forEach((r, i) => {
+        pdfRows.forEach((r, i) => {
           if (y + 8 > H - 15) { doc.addPage(); y = 20; scheduleHeader(); doc.setFont('helvetica', 'normal'); doc.setFontSize(8) }
           if (i % 2 === 0) { doc.setFillColor(248, 248, 248); doc.rect(ml, y - 2, mr - ml, 7, 'F') }
           doc.setTextColor(0)
@@ -372,6 +394,14 @@ export default function ContractDetail({
           doc.setFont('helvetica', 'normal')
           y += 8
         })
+        if (mtmPdf) {
+          // Open-ended: no meaningful total — state the continuation terms instead.
+          if (y + 8 > H - 15) { doc.addPage(); y = 20 }
+          doc.setFontSize(6.5); doc.setTextColor(130)
+          const n = lease.noticePeriodMonths ?? 1
+          doc.text(`*Billed monthly in advance. This agreement continues month-to-month until either party gives ${n} month${n === 1 ? '' : 's'} written notice.`, ml, y + 3)
+          doc.setFontSize(8); doc.setTextColor(0)
+        } else {
         // Totals row
         if (y + 8 > H - 15) { doc.addPage(); y = 20 }
         doc.setDrawColor(0); doc.setLineWidth(0.4); doc.line(ml, y - 1, mr, y - 1)
@@ -382,6 +412,7 @@ export default function ContractDetail({
         doc.text(`${scheduleAmount(schedule.totals.total)} AUD`, sCols.total, y + 3, { align: 'right' })
         doc.text(`${scheduleAmount(schedule.totals.incGst)} AUD`, sCols.incGst, y + 3, { align: 'right' })
         doc.setFont('helvetica', 'normal')
+        }
         y += 9
         if (schedule.rows.some((r) => r.free)) {
           doc.setFontSize(6.5); doc.setTextColor(130)

@@ -97,6 +97,24 @@ export function buildPaymentSchedule(lease, settings) {
 
 export const scheduleAmount = (n) => n.toLocaleString('en-AU', { minimumFractionDigits: 2 })
 
+// Month-to-month display: an open-ended agreement shouldn't print a year-long
+// table. Show the (possibly prorated) first month plus one ongoing row.
+export const isMonthToMonthLease = (lease) =>
+  lease?.contractType === 'Month-to-month' ||
+  /month-to-month/i.test(String(lease?.documentType ?? '')) ||
+  (!!lease?.startDate && !lease?.endDate)
+
+export function monthToMonthRows(schedule) {
+  if (!schedule?.rows?.length) return []
+  const [first, second] = schedule.rows
+  const ongoing = second ?? first
+  const prorated = second && Math.abs(first.total - second.total) > 0.005
+  return [
+    { ...first, label: `${first.label}${prorated ? ' (first month, prorated)' : ''}` },
+    { ...ongoing, key: 'ongoing', label: 'Each month thereafter — ongoing' },
+  ]
+}
+
 // True when the given month is $0 under the lease's contract schedule — either
 // a step-encoded free period or the final-N-months new-member offer. Billing
 // engines use this to skip invoicing months the agreement promises rent-free.
