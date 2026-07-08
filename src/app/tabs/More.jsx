@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import {
-  Receipt, CalendarDays, MessageSquare, BookOpen, User, Users, LogOut, ChevronRight,
+  Receipt, CalendarDays, MessageSquare, BookOpen, User, Users, LogOut, ChevronRight, Printer,
 } from 'lucide-react'
 import { useApp } from '../context.js'
 import { Screen, Label, Display, Rule } from '../ui.jsx'
@@ -30,6 +30,7 @@ const ITEMS = [
   { to: '/more/billing', icon: Receipt, label: 'Billing & invoices', sub: 'Invoices, membership, saved card' },
   { to: '/more/events', icon: CalendarDays, label: 'Events', sub: "What's on at Hexa Space" },
   { to: '/more/messages', icon: MessageSquare, label: 'Messages', sub: 'Talk to the Hexa team' },
+  { to: '/printer', icon: Printer, label: 'Printing', sub: 'Your print ID & balance' },
   { to: '/more/guides', icon: BookOpen, label: 'Guides', sub: 'Wi-Fi, printing, access, amenities' },
   { to: '/more/members', icon: Users, label: 'Members directory', sub: 'The Hexa Space community' },
   { to: '/more/account', icon: User, label: 'Account', sub: 'Your details & payment method' },
