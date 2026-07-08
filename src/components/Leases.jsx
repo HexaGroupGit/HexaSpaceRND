@@ -186,6 +186,34 @@ export default function Leases() {
         break
       }
 
+      case 'duplicate': {
+        // Fresh copy of this contract under the next number: same company,
+        // spaces, dates and pricing — but unsigned, pending, and with every
+        // per-contract artefact (signatures, e-sign links, onboarding stamps,
+        // reminders) cleared so it starts life as a brand-new contract.
+        setEditingLease({
+          ...lease,
+          id: undefined,
+          contractNumber: undefined, // ContractForm generates the next CON-###
+          previousContractId: undefined,
+          status: 'pending',
+          signatureStatus: 'not_signed',
+          createdAt: undefined,
+          payments: [],
+          signedAt: undefined, signerName: undefined,
+          tenantSignedAt: undefined, tenantSignerName: undefined,
+          eSignSentAt: undefined, eSignAdminLink: undefined, eSignMemberLink: undefined, eSignEmailedTo: undefined,
+          onboardedAt: undefined, activatedAt: undefined, saltoProvisionedAt: undefined, saltoAccessLink: undefined,
+          noticeGiven: undefined, noticeServedAt: undefined, vacateDate: undefined,
+          terminationScheduledFor: undefined, needsOffboard: undefined,
+          cardReminderAt: undefined, cardRemindersSent: undefined,
+          lastGeneratedAt: undefined,
+        })
+        setSelectedLease(null)
+        setMode('create')
+        break
+      }
+
       case 'serve-notice':
         if (window.confirm(`Serve notice on ${lease.contractNumber ?? lease.id}? This will record today's notice date.`)) {
           updateLease(lease.id, { noticeServedAt: format(new Date(), 'yyyy-MM-dd') })
@@ -377,6 +405,7 @@ export default function Leases() {
                           >
                             {[
                               { action: 'renew',        icon: '↻', label: 'Renew' },
+                              { action: 'duplicate',    icon: '⧉', label: 'Duplicate' },
                               { action: 'serve-notice', icon: '📄', label: 'Serve Notice' },
                               { action: 'preview',      icon: '👁', label: 'Preview PDF' },
                               { action: 'terminate',    icon: '⊘', label: 'Terminate', danger: false },
