@@ -86,8 +86,10 @@ export default async function handler(req, res) {
           accessGroupId: groupIds[accessGroup] ?? null,
           roomName: room?.unitNumber ?? '',
           bookingRef: b.reference ?? b.id,
-          // Full datetimes for Zapier "Delay Until"…
-          accessFrom: new Date(from).toISOString(),
+          // Full datetimes for Zapier "Delay Until". Access opens 15 minutes
+          // BEFORE the booking start so members can set up (book 3:00 → door
+          // works from 2:45); it ends exactly at the booking end.
+          accessFrom: new Date(from - 15 * 60 * 1000).toISOString(),
           accessUntil: new Date(until).toISOString(),
           // …and split date/time fields straight from the booking, for any
           // KS field that wants them separately (Melbourne local).
