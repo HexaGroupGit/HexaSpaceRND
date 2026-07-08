@@ -9,6 +9,7 @@ import ProposalAccept from './components/ProposalAccept.jsx'
 import PortalApp from './portal/PortalApp.jsx'
 import AdminApp from './AdminApp.jsx'
 import { supabase } from './lib/supabase.js'
+import { IS_RECOVERY_FLOW, SetPasswordScreen } from './lib/authRecovery.jsx'
 
 // Admins reach the management app; everyone else gets the member portal — decided
 // by the logged-in email, not the URL. This fallback guarantees the core team can
@@ -30,10 +31,15 @@ function Splash() {
 function RootAuth() {
   const [session, setSession] = useState(undefined) // undefined = loading
   const [role, setRole] = useState(null)            // null = undetermined | 'admin' | 'member'
+  // Invite / password-reset links: set a password FIRST — for admins and members
+  // alike — before we route anywhere (admins were landing on login with no way to
+  // set a password because this only lived in the member app).
+  const [needsPassword, setNeedsPassword] = useState(IS_RECOVERY_FLOW)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session ?? null))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'PASSWORD_RECOVERY') { setSession(s ?? null); setNeedsPassword(true); return }
       setSession(s ?? null)
       if (!s) setRole(null)
     })
@@ -58,6 +64,7 @@ function RootAuth() {
     return () => { cancelled = true }
   }, [session])
 
+  if (needsPassword) return <SetPasswordScreen onDone={() => setNeedsPassword(false)} />
   if (session === undefined) return <Splash />
   if (!session) return <PortalLogin />
   if (role === null) return <Splash />

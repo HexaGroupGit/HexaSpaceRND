@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
+import { IS_RECOVERY_FLOW, recoveryHandled, SetPasswordScreen } from '../lib/authRecovery.jsx'
 import PortalLogin from './PortalLogin.jsx'
 import PortalLayout from './PortalLayout.jsx'
 import PortalDashboard from './PortalDashboard.jsx'
@@ -16,18 +17,9 @@ import PortalGuides from './PortalGuides.jsx'
 import PortalPrinting from './PortalPrinting.jsx'
 import PortalFunctionHome from './PortalFunctionHome.jsx'
 
-// Detect a set-password (recovery/invite) link from BOTH sources, because of
-// load order: the LIVE hash — this module evaluates before Supabase's async
-// URL processing clears it — and the copy main.jsx saves to sessionStorage
-// (main.jsx's inline code runs AFTER imported modules like this one, so on the
-// first load only the live hash is visible here; the saved copy covers any
-// later reload). Relying on the saved copy alone missed the flow entirely, and
-// the PASSWORD_RECOVERY auth event fires before this component mounts (RootAuth
-// is still resolving the role), so it can't be the only trigger either.
-const _savedHash = sessionStorage.getItem('_initialHash') ?? ''
-sessionStorage.removeItem('_initialHash')
-const _liveHash = typeof window !== 'undefined' ? window.location.hash : ''
-const IS_RECOVERY_FLOW = [_savedHash, _liveHash].some((h) => h.includes('type=recovery') || h.includes('type=invite'))
+// Set-password (invite/recovery) detection + screen now live in
+// ../lib/authRecovery.js and are handled at the RootAuth level (so admins get it
+// too). recoveryHandled() guards against re-prompting once RootAuth has done it.
 
 /** Brand splash used by loading / error / no-account / set-password screens. */
 function Splash({ children }) {
@@ -39,51 +31,6 @@ function Splash({ children }) {
         <div className="mt-10">{children}</div>
       </div>
     </div>
-  )
-}
-
-function SetPasswordScreen({ onDone }) {
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm]   = useState('')
-  const [saving, setSaving]     = useState(false)
-  const [error, setError]       = useState('')
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    if (password.length < 8) return setError('Password must be at least 8 characters.')
-    if (password !== confirm)  return setError('Passwords do not match.')
-    setSaving(true)
-    setError('')
-    const { error } = await supabase.auth.updateUser({ password })
-    if (error) { setError(error.message); setSaving(false); return }
-    onDone()
-  }
-
-  return (
-    <Splash>
-      <div className="hx-card p-8 text-left">
-        <h1 className="hx-h text-lg mb-2">Set your password</h1>
-        <p className="hx-prose mb-6">Choose a password to secure your account.</p>
-        {error && (
-          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>
-        )}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="hx-eyebrow block mb-1.5">New Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              required minLength={8} placeholder="At least 8 characters" className="hx-input" />
-          </div>
-          <div>
-            <label className="hx-eyebrow block mb-1.5">Confirm Password</label>
-            <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
-              required placeholder="Repeat your password" className="hx-input" />
-          </div>
-          <button type="submit" disabled={saving} className="hx-btn w-full disabled:opacity-50">
-            {saving ? 'Saving…' : 'Set password & enter'}
-          </button>
-        </form>
-      </div>
-    </Splash>
   )
 }
 
@@ -100,7 +47,9 @@ export default function PortalApp() {
   const [data, setData]         = useState(null) // { company, member, members, companies, leases, invoices, spaces, bookings, fees, templates }
   const [loading, setLoading]   = useState(true)
   const [loadError, setLoadError] = useState(false)
-  const [needsPassword, setNeedsPassword] = useState(IS_RECOVERY_FLOW)
+  // RootAuth handles the set-password screen for both admins and members; only
+  // fall back to it here if RootAuth somehow didn't.
+  const [needsPassword, setNeedsPassword] = useState(IS_RECOVERY_FLOW && !recoveryHandled())
   const loadedFor = useRef(null)
 
   useEffect(() => {
@@ -109,7 +58,7 @@ export default function PortalApp() {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       clearTimeout(stuck)
       setSession(session)
-      if (IS_RECOVERY_FLOW || !session) { setLoading(false); return }
+      if ((IS_RECOVERY_FLOW && !recoveryHandled()) || !session) { setLoading(false); return }
       await fetchData(session.user.email)
     })
 
