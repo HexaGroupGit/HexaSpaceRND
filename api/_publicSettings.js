@@ -53,5 +53,8 @@ export function publicSettings(settings = {}) {
       securityDeposit: s.functionSpace?.securityDeposit ?? null,
       lateFee: s.functionSpace?.lateFee ?? null,
     },
+    // Which rooms are free for private-office (suite) members + the usage caps.
+    // Public so the portal/app can enforce them; not sensitive.
+    officePerks: s.officePerks ?? null,
   };
 }

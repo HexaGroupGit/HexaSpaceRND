@@ -1,7 +1,7 @@
 import { Page, PageHeader, Empty } from './ui.jsx'
 import PortalCalendar from './PortalCalendar.jsx'
 
-export default function PortalStudios({ spaces, allBookings, member, company }) {
+export default function PortalStudios({ spaces, allBookings, member, company, leases, settings }) {
   const studios = (spaces ?? []).filter(s => s.type === 'studio' || s.type === 'podcast')
     .sort((a, b) => (a.type === b.type ? 0 : a.type === 'studio' ? -1 : 1))
 
@@ -13,7 +13,7 @@ export default function PortalStudios({ spaces, allBookings, member, company }) 
       </PageHeader>
       {studios.length === 0
         ? <Empty label="No studios available." sub="Please check back soon." />
-        : <PortalCalendar resources={studios} allBookings={allBookings} member={member} company={company} />}
+        : <PortalCalendar resources={studios} allBookings={allBookings} member={member} company={company} leases={leases} settings={settings} allSpaces={spaces} />}
     </Page>
   )
 }

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight, X, Repeat, Check, User } from 'lucide-react'
 import { format, addDays, addMonths } from 'date-fns'
 import { supabase } from '../lib/supabase.js'
-import { bookingFeeName } from '../lib/credits.js'
+import { bookingFeeName, isPerkRoom, hasPrivateOffice, perkHoursUsed, officePerkConfig } from '../lib/credits.js'
 import { Card } from './ui.jsx'
 
 // Mirrors the admin Calendar so the portal reads/writes the SAME bookings table.
@@ -27,7 +27,7 @@ const capacityOf = (room) => {
   return m ? Number(m[1] ?? m[2]) : null
 }
 
-export default function PortalCalendar({ resources, allBookings, member, company }) {
+export default function PortalCalendar({ resources, allBookings, member, company, leases, settings, allSpaces }) {
   const [day, setDay] = useState(new Date())
   const [bookings, setBookings] = useState(allBookings ?? [])
   const [modal, setModal] = useState(null) // { resourceId, date, startTime, endTime }
@@ -155,6 +155,7 @@ export default function PortalCalendar({ resources, allBookings, member, company
       {amend && (
         <AmendModal
           booking={amend} resources={resources} bookings={bookings} company={company} remaining={remaining}
+          leases={leases} settings={settings} allSpaces={allSpaces ?? resources}
           onClose={() => setAmend(null)}
           onSaved={(updated, newRemaining) => {
             setBookings((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
@@ -167,6 +168,7 @@ export default function PortalCalendar({ resources, allBookings, member, company
       {modal && (
         <BookingModal
           slot={modal} resources={resources} bookings={bookings} member={member} company={company} remaining={remaining}
+          leases={leases} settings={settings} allSpaces={allSpaces ?? resources}
           onClose={() => setModal(null)}
           onBooked={(created, newRemaining) => { setBookings((prev) => [...prev, ...created]); if (newRemaining != null) setRemaining(newRemaining); setModal(null) }}
         />
@@ -189,7 +191,7 @@ async function notifyAttendees(bookingId, mode, occurrences = 1) {
   } catch { /* invitations are best-effort */ }
 }
 
-function BookingModal({ slot, resources, bookings, member, company, remaining, onClose, onBooked }) {
+function BookingModal({ slot, resources, bookings, member, company, remaining, leases, settings, allSpaces, onClose, onBooked }) {
   const [f, setF] = useState({ resourceId: slot.resourceId, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, title: '', repeat: 'none', occurrences: 4, attendees: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -198,7 +200,13 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, o
   const room = resources.find((r) => r.id === f.resourceId)
   const rate = room?.hourlyRate ?? room?.rate ?? 0
   const hrs = Math.max(0, toDec(f.endTime) - toDec(f.startTime))
-  const perCost = hrs * rate
+  // Office perk: private-office (suite) companies get Sky/Earth/Sun/Moon free,
+  // capped per booking + per company per day. When it applies, no credits/fee.
+  const perkCfg = officePerkConfig(settings)
+  const isPerk = isPerkRoom(room, settings) && hasPrivateOffice(company?.id, leases, allSpaces ?? resources)
+  const perkHoursToday = isPerk ? perkHoursUsed({ companyId: company?.id, date: f.date, bookings, spaces: allSpaces ?? resources, settings }) : 0
+  const perkLeftToday = Math.max(0, perkCfg.maxHoursPerDay - perkHoursToday)
+  const perCost = isPerk ? 0 : hrs * rate
   const count = f.repeat === 'none' ? 1 : Math.max(1, Math.min(12, Number(f.occurrences) || 1))
   const totalCost = perCost * count
   const totalCredits = Math.round((totalCost / CREDIT_VALUE) * 100) / 100
@@ -221,12 +229,24 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, o
   async function confirm() {
     setError('')
     if (hrs <= 0) return setError('End time must be after start time.')
+    // Office-perk cap: max hours PER BOOKING (checked once — same length for a series).
+    if (isPerk && hrs > perkCfg.maxHoursPerBooking) {
+      return setError(`${room?.unitNumber || 'This room'} is included with your office — up to ${perkCfg.maxHoursPerBooking}h per booking. Please shorten or split it.`)
+    }
     const dates = occurrenceDates()
     const created = []
     const skipped = []
+    const dayCapped = []            // dates skipped by the per-day perk cap
+    const perkAddedByDate = {}      // running perk hours this session, per date
     for (const date of dates) {
       const clash = bookings.some((b) => b.resourceId === f.resourceId && b.date === date && b.status !== 'Cancelled' && overlaps(f.startTime, f.endTime, b.startTime, b.endTime))
       if (clash) { skipped.push(date); continue }
+      // Office-perk cap: max hours PER DAY per company across the free rooms.
+      if (isPerk) {
+        const used = perkHoursUsed({ companyId: company?.id, date, bookings, spaces: allSpaces ?? resources, settings }) + (perkAddedByDate[date] || 0)
+        if (used + hrs > perkCfg.maxHoursPerDay) { dayCapped.push(date); continue }
+        perkAddedByDate[date] = (perkAddedByDate[date] || 0) + hrs
+      }
       created.push({
         id: `bk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         reference: `BKG-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -238,39 +258,48 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, o
         createdAt: new Date().toISOString().split('T')[0],
       })
     }
-    if (created.length === 0) return setError('Those times are already booked. Please choose another slot.')
+    if (created.length === 0) {
+      if (dayCapped.length && !skipped.length) {
+        return setError(`Your office includes up to ${perkCfg.maxHoursPerDay}h/day in the small rooms — you've reached that day's limit.`)
+      }
+      return setError('Those times are already booked. Please choose another slot.')
+    }
 
-    // Deduct the company's credit allowance per booking; any overage becomes a
-    // Booking Fee added to the month-end bill.
+    // Perk bookings are FREE (no credits, no fee). Otherwise deduct the company's
+    // credit allowance per booking; any overage becomes a month-end Booking Fee.
     let bal = Number(remaining ?? company?.creditsRemaining ?? 0)
-    const perCredits = Math.round((perCost / CREDIT_VALUE) * 100) / 100
     let shortfallCredits = 0
-    created.forEach((b) => {
-      const used = Math.max(0, Math.min(bal, perCredits))
-      bal = Math.round((bal - used) * 100) / 100
-      shortfallCredits = Math.round((shortfallCredits + Math.max(0, perCredits - used)) * 100) / 100
-      b.creditsUsed = used
-      b.paidBy = perCredits - used > 0 ? (used > 0 ? 'part_credits' : 'fee') : 'credits'
-    })
+    if (isPerk) {
+      created.forEach((b) => { b.creditsUsed = 0; b.paidBy = 'included' })
+    } else {
+      const perCredits = Math.round(((hrs * rate) / CREDIT_VALUE) * 100) / 100
+      created.forEach((b) => {
+        const used = Math.max(0, Math.min(bal, perCredits))
+        bal = Math.round((bal - used) * 100) / 100
+        shortfallCredits = Math.round((shortfallCredits + Math.max(0, perCredits - used)) * 100) / 100
+        b.creditsUsed = used
+        b.paidBy = perCredits - used > 0 ? (used > 0 ? 'part_credits' : 'fee') : 'credits'
+      })
+    }
 
     setSaving(true)
     const nowIso = new Date().toISOString()
     const writes = [
       supabase.from('bookings').upsert(created.map((b) => ({ id: b.id, data: b, updated_at: nowIso }))),
     ]
-    if (company?.id) {
+    if (!isPerk && company?.id) {
       const mk = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
       // update, not upsert: members have UPDATE-only RLS on tenants (an upsert
       // is checked as an INSERT first and gets rejected).
       writes.push(supabase.from('tenants').update({ data: { ...company, creditsRemaining: bal, creditsPeriod: mk }, updated_at: nowIso }).eq('id', company.id))
     }
-    if (shortfallCredits > 0 && company?.id) {
+    if (!isPerk && shortfallCredits > 0 && company?.id) {
       const feeId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-      const room = resources.find((r) => r.id === f.resourceId)
+      const feeRoom = resources.find((r) => r.id === f.resourceId)
       const fee = {
         id: feeId,
         name: bookingFeeName({
-          roomName: room?.unitNumber, rate: room?.hourlyRate ?? room?.rate,
+          roomName: feeRoom?.unitNumber, rate: feeRoom?.hourlyRate ?? feeRoom?.rate,
           date: created[0]?.date, startTime: f.startTime, endTime: f.endTime,
           usedCredits: created.reduce((s, b) => s + (b.creditsUsed || 0), 0),
         }),
@@ -344,14 +373,24 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, o
           </div>
 
           {/* Cost summary */}
-          <div className="bg-bone border border-ink/10 p-4 text-[13px] space-y-1.5">
-            <div className="flex justify-between"><span className="hx-prose text-[13px]">{count > 1 ? `${count} bookings × ${hrs}h` : `${hrs} hour${hrs !== 1 ? 's' : ''}`}</span>
-              <span className="font-heading uppercase tracking-nav text-[11px]">{totalCost ? `A$${totalCost.toLocaleString('en-AU')} · ${totalCredits} cr` : 'Free'}</span></div>
-            {company && totalCost > 0 && (
-              <div className="flex justify-between"><span className="hx-prose text-[13px]">Allowance remaining</span>
-                <span className={`font-heading uppercase tracking-nav text-[11px] ${balance >= totalCredits ? 'text-hexa-green' : 'text-amber-700'}`}>{balance} cr{balance < totalCredits ? ' · overage billed as a fee' : ''}</span></div>
-            )}
-          </div>
+          {isPerk ? (
+            <div className="bg-hexa-green/5 border border-hexa-green/30 p-4 text-[13px] space-y-1">
+              <div className="flex justify-between">
+                <span className="hx-prose text-[13px]">{count > 1 ? `${count} bookings × ${hrs}h` : `${hrs} hour${hrs !== 1 ? 's' : ''}`}</span>
+                <span className="font-heading uppercase tracking-nav text-[11px] text-hexa-green">Included with your office</span>
+              </div>
+              <p className="hx-prose text-[12px] text-portal-muted">{room?.unitNumber} is free for suite members — up to {perkCfg.maxHoursPerBooking}h per booking, {perkCfg.maxHoursPerDay}h/day per company. You have {perkLeftToday}h left today.</p>
+            </div>
+          ) : (
+            <div className="bg-bone border border-ink/10 p-4 text-[13px] space-y-1.5">
+              <div className="flex justify-between"><span className="hx-prose text-[13px]">{count > 1 ? `${count} bookings × ${hrs}h` : `${hrs} hour${hrs !== 1 ? 's' : ''}`}</span>
+                <span className="font-heading uppercase tracking-nav text-[11px]">{totalCost ? `A$${totalCost.toLocaleString('en-AU')} · ${totalCredits} cr` : 'Free'}</span></div>
+              {company && totalCost > 0 && (
+                <div className="flex justify-between"><span className="hx-prose text-[13px]">Allowance remaining</span>
+                  <span className={`font-heading uppercase tracking-nav text-[11px] ${balance >= totalCredits ? 'text-hexa-green' : 'text-amber-700'}`}>{balance} cr{balance < totalCredits ? ' · overage billed as a fee' : ''}</span></div>
+              )}
+            </div>
+          )}
 
           {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>}
         </div>
@@ -369,7 +408,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, o
 // spend deducted; only NET overage beyond what was already fee'd raises a new
 // Booking Fee) and drops the booking back to Pending for team re-confirmation.
 // Cancelling refunds the credits that were drawn from the pool.
-function AmendModal({ booking, resources, bookings, company, remaining, onClose, onSaved }) {
+function AmendModal({ booking, resources, bookings, company, remaining, leases, settings, allSpaces, onClose, onSaved }) {
   const b = booking
   const [f, setF] = useState({ date: b.date, startTime: b.startTime, endTime: b.endTime, attendees: (b.attendees ?? []).join(', ') })
   const [saving, setSaving] = useState(false)
@@ -379,6 +418,8 @@ function AmendModal({ booking, resources, bookings, company, remaining, onClose,
   const room = resources.find((r) => r.id === b.resourceId)
   const rate = room?.hourlyRate ?? room?.rate ?? 0
   const round2c = (n) => Math.round(n * 100) / 100
+  const perkCfg = officePerkConfig(settings)
+  const isPerk = isPerkRoom(room, settings) && hasPrivateOffice(company?.id, leases, allSpaces ?? resources)
 
   const oldHrs = Math.max(0, toDec(b.endTime) - toDec(b.startTime))
   const oldNeed = round2c(oldHrs * rate / CREDIT_VALUE)
@@ -407,19 +448,29 @@ function AmendModal({ booking, resources, bookings, company, remaining, onClose,
   async function saveChanges() {
     setError('')
     if (newHrs <= 0) return setError('End time must be after start time.')
+    if (isPerk && newHrs > perkCfg.maxHoursPerBooking) {
+      return setError(`${room?.unitNumber || 'This room'} is included with your office — up to ${perkCfg.maxHoursPerBooking}h per booking.`)
+    }
     const clash = bookings.some((x) => x.id !== b.id && x.resourceId === b.resourceId && x.date === f.date &&
       x.status !== 'Cancelled' && overlaps(f.startTime, f.endTime, x.startTime, x.endTime))
     if (clash) return setError('That time is already booked — pick another slot.')
+    if (isPerk) {
+      const usedElsewhere = perkHoursUsed({ companyId: company?.id, date: f.date, bookings, spaces: allSpaces ?? resources, settings, excludeIds: [b.id] })
+      if (usedElsewhere + newHrs > perkCfg.maxHoursPerDay) {
+        const left = round2c(Math.max(0, perkCfg.maxHoursPerDay - usedElsewhere))
+        return setError(`Your office includes up to ${perkCfg.maxHoursPerDay}h/day in the small rooms — you have ${left}h left that day.`)
+      }
+    }
     setSaving(true)
     const attendees = parseEmails(f.attendees)
     const updated = {
       ...b, date: f.date, startTime: f.startTime, endTime: f.endTime, attendees,
-      creditsUsed: newUsed,
-      paidBy: newNeed > newUsed ? (newUsed > 0 ? 'part_credits' : 'fee') : 'credits',
+      creditsUsed: isPerk ? 0 : newUsed,
+      paidBy: isPerk ? 'included' : (newNeed > newUsed ? (newUsed > 0 ? 'part_credits' : 'fee') : 'credits'),
       status: 'Pending', amendedAt: nowIso(),
     }
     let feeWrite = null
-    if (extraFee > 0 && company?.id) {
+    if (!isPerk && extraFee > 0 && company?.id) {
       const feeId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
       feeWrite = supabase.from('fees').upsert({ id: feeId, data: {
         id: feeId,
@@ -431,11 +482,12 @@ function AmendModal({ booking, resources, bookings, company, remaining, onClose,
         createdAt: new Date().toISOString().split('T')[0],
       }, updated_at: nowIso() })
     }
-    const err = await persist(updated, newPool, feeWrite)
+    const poolAfter = isPerk ? Number(remaining ?? 0) : newPool
+    const err = await persist(updated, poolAfter, feeWrite)
     setSaving(false)
     if (err) return setError(err.message)
     if (attendees.length) notifyAttendees(b.id, 'update')
-    onSaved(updated, newPool)
+    onSaved(updated, poolAfter)
   }
 
   async function cancelBooking() {
@@ -471,16 +523,26 @@ function AmendModal({ booking, resources, bookings, company, remaining, onClose,
             <input value={f.attendees} onChange={up('attendees')} className="hx-input" placeholder="guest@company.com, colleague@company.com" />
             <p className="hx-prose text-[11px] mt-1.5">Attendees are emailed the updated details when you save.</p>
           </div>
-          <div className="bg-bone border border-ink/10 p-4 text-[13px] space-y-1.5">
-            <div className="flex justify-between"><span className="hx-prose text-[13px]">{newHrs} hour{newHrs !== 1 ? 's' : ''} × A${rate}/hr</span>
-              <span className="font-heading uppercase tracking-nav text-[11px]">{newNeed ? `${newNeed} cr` : 'Free'}</span></div>
-            <div className="flex justify-between"><span className="hx-prose text-[13px]">Allowance after change</span>
-              <span className="font-heading uppercase tracking-nav text-[11px] text-hexa-green">{newPool} cr</span></div>
-            {extraFee > 0 && (
-              <div className="flex justify-between"><span className="hx-prose text-[13px]">Extra over allowance</span>
-                <span className="font-heading uppercase tracking-nav text-[11px] text-amber-700">{extraFee} cr · billed as a fee</span></div>
-            )}
-          </div>
+          {isPerk ? (
+            <div className="bg-hexa-green/5 border border-hexa-green/30 p-4 text-[13px]">
+              <div className="flex justify-between">
+                <span className="hx-prose text-[13px]">{newHrs} hour{newHrs !== 1 ? 's' : ''}</span>
+                <span className="font-heading uppercase tracking-nav text-[11px] text-hexa-green">Included with your office</span>
+              </div>
+              <p className="hx-prose text-[12px] text-portal-muted mt-1">Free for suite members — up to {perkCfg.maxHoursPerBooking}h per booking, {perkCfg.maxHoursPerDay}h/day per company.</p>
+            </div>
+          ) : (
+            <div className="bg-bone border border-ink/10 p-4 text-[13px] space-y-1.5">
+              <div className="flex justify-between"><span className="hx-prose text-[13px]">{newHrs} hour{newHrs !== 1 ? 's' : ''} × A${rate}/hr</span>
+                <span className="font-heading uppercase tracking-nav text-[11px]">{newNeed ? `${newNeed} cr` : 'Free'}</span></div>
+              <div className="flex justify-between"><span className="hx-prose text-[13px]">Allowance after change</span>
+                <span className="font-heading uppercase tracking-nav text-[11px] text-hexa-green">{newPool} cr</span></div>
+              {extraFee > 0 && (
+                <div className="flex justify-between"><span className="hx-prose text-[13px]">Extra over allowance</span>
+                  <span className="font-heading uppercase tracking-nav text-[11px] text-amber-700">{extraFee} cr · billed as a fee</span></div>
+              )}
+            </div>
+          )}
           <p className="hx-prose text-[12px]">Changed bookings return to <strong>Pending</strong> until our team re-confirms the new time.</p>
           {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>}
         </div>

@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase.js'
-import { bookingFeeName } from '../../lib/credits.js'
+import { bookingFeeName, isPerkRoom, hasPrivateOffice, perkHoursUsed, officePerkConfig, round2 } from '../../lib/credits.js'
 
 // Booking writes for the app — mirrors the portal's PortalCalendar confirm()
 // exactly (same bookings/fees/tenants writes, same credit model) so the two
@@ -35,20 +35,33 @@ export function creditBalance(company) {
  * credit pool, raises a Booking Fee for any overage.
  * Returns { booking, company: updatedCompany, fee } — throws on clash/db error.
  */
-export async function createBooking({ room, date, startTime, endTime, title, member, company, allBookings }) {
+export async function createBooking({ room, date, startTime, endTime, title, member, company, allBookings, leases, spaces, settings }) {
   if (!isFree(allBookings, room.id, date, startTime, endTime)) {
     throw new Error('That time was just taken — please choose another slot.')
   }
 
-  const rate = room.hourlyRate ?? room.rate ?? 0
   const hrs = Math.max(0, toDec(endTime) - toDec(startTime))
-  const cost = hrs * rate
+
+  // Office perk: private-office (suite) companies book Sky/Earth/Sun/Moon free,
+  // capped per booking + per company per day.
+  const cfg = officePerkConfig(settings)
+  const isPerk = isPerkRoom(room, settings) && hasPrivateOffice(company?.id, leases, spaces)
+  if (isPerk) {
+    if (hrs > cfg.maxHoursPerBooking) throw new Error(`${room.unitNumber} is included with your office — up to ${cfg.maxHoursPerBooking}h per booking.`)
+    const usedToday = perkHoursUsed({ companyId: company?.id, date, bookings: allBookings, spaces, settings })
+    if (usedToday + hrs > cfg.maxHoursPerDay) {
+      throw new Error(`Your office includes up to ${cfg.maxHoursPerDay}h/day in the small rooms — you have ${round2(Math.max(0, cfg.maxHoursPerDay - usedToday))}h left today.`)
+    }
+  }
+
+  const rate = room.hourlyRate ?? room.rate ?? 0
+  const cost = isPerk ? 0 : hrs * rate
   const perCredits = Math.round((cost / CREDIT_VALUE) * 100) / 100
 
   const bal = creditBalance(company)
-  const used = Math.max(0, Math.min(bal, perCredits))
-  const newBal = Math.round((bal - used) * 100) / 100
-  const shortfall = Math.round((perCredits - used) * 100) / 100
+  const used = isPerk ? 0 : Math.max(0, Math.min(bal, perCredits))
+  const newBal = isPerk ? bal : Math.round((bal - used) * 100) / 100
+  const shortfall = isPerk ? 0 : Math.round((perCredits - used) * 100) / 100
 
   const booking = {
     id: `bk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -58,22 +71,22 @@ export async function createBooking({ room, date, startTime, endTime, title, mem
     status: 'Pending', source: 'Portal', repeat: 'none', createdBy: 'Member',
     createdAt: new Date().toISOString().split('T')[0],
     creditsUsed: used,
-    paidBy: shortfall > 0 ? (used > 0 ? 'part_credits' : 'fee') : 'credits',
+    paidBy: isPerk ? 'included' : (shortfall > 0 ? (used > 0 ? 'part_credits' : 'fee') : 'credits'),
   }
 
   const nowIso = new Date().toISOString()
-  const updatedCompany = company?.id
+  const updatedCompany = (!isPerk && company?.id)
     ? { ...company, creditsRemaining: newBal, creditsPeriod: monthKey() }
     : company
 
   const writes = [supabase.from('bookings').upsert({ id: booking.id, data: booking, updated_at: nowIso })]
-  if (company?.id) {
+  if (!isPerk && company?.id) {
     // update, not upsert: members have UPDATE-only RLS on tenants.
     writes.push(supabase.from('tenants').update({ data: updatedCompany, updated_at: nowIso }).eq('id', company.id))
   }
 
   let fee = null
-  if (shortfall > 0 && company?.id) {
+  if (!isPerk && shortfall > 0 && company?.id) {
     const feeId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     fee = {
       id: feeId,

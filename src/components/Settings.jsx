@@ -4,6 +4,7 @@ import { useOutletContext } from 'react-router-dom'
 import { Plus, Trash2, Check } from 'lucide-react'
 import { XERO_ACCOUNTS, DEFAULT_XERO_ACCOUNTS } from './spaces/shared.jsx'
 import { xeroStatus, connectXero, disconnectXero, xeroSync } from '../lib/xero.js'
+import { OFFICE_PERK_DEFAULTS } from '../lib/credits.js'
 
 const MENU = [
   {
@@ -18,6 +19,7 @@ const MENU = [
     section: 'Operations',
     items: [
       { key: 'contracts', label: 'Contracts' },
+      { key: 'room-perks', label: 'Room Perks' },
       { key: 'email-templates', label: 'Email Templates' },
     ],
   },
@@ -874,6 +876,67 @@ function BillingRulesSection({ settings, updateSettings }) {
   )
 }
 
+// ── Room Perks ────────────────────────────────────────────────────────────────
+function RoomPerksSection({ settings, updateSettings }) {
+  const cur = settings.officePerks ?? {}
+  const [form, setForm] = useState({
+    freeRooms: (cur.freeRooms ?? OFFICE_PERK_DEFAULTS.freeRooms).join(', '),
+    maxHoursPerBooking: cur.maxHoursPerBooking ?? OFFICE_PERK_DEFAULTS.maxHoursPerBooking,
+    maxHoursPerDay: cur.maxHoursPerDay ?? OFFICE_PERK_DEFAULTS.maxHoursPerDay,
+  })
+  const [saved, setSaved] = useState(false)
+
+  function save() {
+    updateSettings({ officePerks: {
+      freeRooms: form.freeRooms.split(',').map((s) => s.trim()).filter(Boolean),
+      maxHoursPerBooking: Math.max(0.5, Number(form.maxHoursPerBooking) || OFFICE_PERK_DEFAULTS.maxHoursPerBooking),
+      maxHoursPerDay: Math.max(0.5, Number(form.maxHoursPerDay) || OFFICE_PERK_DEFAULTS.maxHoursPerDay),
+    } })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  return (
+    <div>
+      <h1 className="text-xl font-bold text-foreground mb-1">Room Perks</h1>
+      <p className="text-sm text-muted-foreground mb-6">Rooms that are free for private-office (suite) members — no credits — with caps so no one books all day. Applies to the member portal and app.</p>
+
+      <FormRow label="Free rooms for suite members" description="Comma-separated room names (must match the room's name exactly). Free for any company with an active Private Office lease.">
+        <input
+          value={form.freeRooms}
+          onChange={(e) => setForm((p) => ({ ...p, freeRooms: e.target.value }))}
+          placeholder="Sky, Earth, Sun, Moon"
+          className="w-full border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </FormRow>
+      <FormRow label="Max hours per booking" description="Longest single booking a suite member can make in these rooms">
+        <div className="flex items-center gap-2">
+          <input
+            type="number" min={0.5} max={8} step={0.5}
+            value={form.maxHoursPerBooking}
+            onChange={(e) => setForm((p) => ({ ...p, maxHoursPerBooking: e.target.value }))}
+            className="w-20 border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+          />
+          <span className="text-xs text-muted-foreground">hours</span>
+        </div>
+      </FormRow>
+      <FormRow label="Max hours per day (per company)" description="Total free hours a company can book across these rooms each day">
+        <div className="flex items-center gap-2">
+          <input
+            type="number" min={0.5} max={12} step={0.5}
+            value={form.maxHoursPerDay}
+            onChange={(e) => setForm((p) => ({ ...p, maxHoursPerDay: e.target.value }))}
+            className="w-20 border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+          />
+          <span className="text-xs text-muted-foreground">hours / day</span>
+        </div>
+      </FormRow>
+
+      <SaveButton onClick={save} saved={saved} />
+    </div>
+  )
+}
+
 // ── Invoicing ─────────────────────────────────────────────────────────────────
 function InvoicingSection({ settings, updateSettings }) {
   const [form, setForm] = useState(() => ({ ...settings.invoicing }))
@@ -1486,6 +1549,7 @@ export default function Settings() {
     'admin-users': <AdminUsersSection settings={settings} updateSettings={updateSettings} />,
     'emails': <EmailsSection settings={settings} updateSettings={updateSettings} />,
     'contracts': <ContractsSection settings={settings} updateSettings={updateSettings} />,
+    'room-perks': <RoomPerksSection settings={settings} updateSettings={updateSettings} />,
     'billing-rules': <BillingRulesSection settings={settings} updateSettings={updateSettings} />,
     'invoicing': <InvoicingSection settings={settings} updateSettings={updateSettings} />,
     'email-templates': <EmailTemplatesSection settings={settings} updateSettings={updateSettings} />,

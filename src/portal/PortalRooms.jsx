@@ -4,7 +4,7 @@ import PortalCalendar from './PortalCalendar.jsx'
 import { isFunctionSpace } from './functionSpace.js'
 import { FLOORS, floorLabel } from '../components/spaces/shared.jsx'
 
-export default function PortalRooms({ spaces, allBookings, member, company }) {
+export default function PortalRooms({ spaces, allBookings, member, company, leases, settings }) {
   // Function Space is booked via its own (approval-based) tab — keep it out of the hourly calendar.
   const rooms = useMemo(() => (spaces ?? []).filter(s => s.type === 'meeting' && !isFunctionSpace(s))
     .sort((a, b) => (a.hourlyRate ?? a.rate ?? 0) - (b.hourlyRate ?? b.rate ?? 0)), [spaces])
@@ -52,7 +52,7 @@ export default function PortalRooms({ spaces, allBookings, member, company }) {
       )}
       {shown.length === 0
         ? <Empty label="No rooms available." sub="Please check back soon." />
-        : <PortalCalendar key={floor} resources={shown} allBookings={allBookings} member={member} company={company} />}
+        : <PortalCalendar key={floor} resources={shown} allBookings={allBookings} member={member} company={company} leases={leases} settings={settings} allSpaces={spaces} />}
     </Page>
   )
 }

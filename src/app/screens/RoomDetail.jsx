@@ -4,6 +4,7 @@ import { Check, Users, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useApp } from '../context.js'
 import { Screen, BackHeader, Label, Rule, Chip, Sheet, BigButton, RoomPhoto, fmt, to12, money0 } from '../ui.jsx'
 import { toDec, fromDec, isFree, creditBalance, createBooking, CREDIT_VALUE } from '../lib/bookingActions.js'
+import { isPerkRoom, hasPrivateOffice, perkHoursUsed, officePerkConfig, round2 } from '../../lib/credits.js'
 
 // Single-room day calendar — the app's version of the website's booking grid:
 // scrollable date strip on top, a 9am–5pm column below with existing bookings
@@ -22,7 +23,7 @@ const DURATIONS = [
 
 export default function RoomDetail({ room, onBack }) {
   const { data, patch } = useApp()
-  const { allBookings, member, company } = data
+  const { allBookings, member, company, leases, spaces, settings } = data
 
   const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [slot, setSlot] = useState(null) // "HH:mm" start tapped
@@ -125,6 +126,7 @@ export default function RoomDetail({ room, onBack }) {
         <SlotSheet
           room={room} date={date} start={slot}
           member={member} company={company} allBookings={allBookings} balance={balance}
+          leases={leases} spaces={spaces} settings={settings}
           onClose={() => setSlot(null)}
           onBooked={({ booking, company: updatedCompany, fee }) => {
             patch((prev) => ({
@@ -190,16 +192,24 @@ function DateStrip({ days, date, onPick }) {
   )
 }
 
-function SlotSheet({ room, date, start, member, company, allBookings, balance, onClose, onBooked }) {
+function SlotSheet({ room, date, start, member, company, allBookings, balance, leases, spaces, settings, onClose, onBooked }) {
   const [durMin, setDurMin] = useState(60)
   const [title, setTitle] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(null)
 
+  // Office perk: private-office (suite) companies book Sky/Earth/Sun/Moon free,
+  // capped per booking + per company per day.
+  const perkCfg = officePerkConfig(settings)
+  const isPerk = isPerkRoom(room, settings) && hasPrivateOffice(company?.id, leases, spaces)
+  const perkUsedToday = isPerk ? perkHoursUsed({ companyId: company?.id, date, bookings: allBookings, spaces, settings }) : 0
+
   const fits = (min) => {
     const end = toDec(start) + min / 60
-    return end <= DAY_END && isFree(allBookings, room.id, date, start, fromDec(end))
+    if (end > DAY_END || !isFree(allBookings, room.id, date, start, fromDec(end))) return false
+    if (isPerk && (min / 60 > perkCfg.maxHoursPerBooking || perkUsedToday + min / 60 > perkCfg.maxHoursPerDay)) return false
+    return true
   }
   // If the default hour doesn't fit, fall back to the longest duration that does.
   const usable = DURATIONS.filter((d) => fits(d.min))
@@ -215,7 +225,7 @@ function SlotSheet({ room, date, start, member, company, allBookings, balance, o
   async function confirm() {
     setSaving(true); setError('')
     try {
-      const result = await createBooking({ room, date, startTime: start, endTime: end, title, member, company, allBookings })
+      const result = await createBooking({ room, date, startTime: start, endTime: end, title, member, company, allBookings, leases, spaces, settings })
       onBooked(result)
       setDone(result.booking)
     } catch (e) {
@@ -265,11 +275,18 @@ function SlotSheet({ room, date, start, member, company, allBookings, balance, o
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Client meeting"
             className="hx-input min-h-[48px] mb-5" />
 
-          <div className="bg-bone border border-ink/10 p-4 space-y-2">
-            <Line k={`${to12(start)} – ${to12(end)}`} v={cost ? `${money0(cost)} · ${credits} cr` : 'Free'} />
-            <Line k="Allowance remaining" v={`${balance} cr`} green={balance >= credits} />
-            {overage > 0 && <Line k="Over allowance" v={`${overage} cr · billed as a fee`} amber />}
-          </div>
+          {isPerk ? (
+            <div className="bg-hexa-green/5 border border-hexa-green/30 p-4">
+              <Line k={`${to12(start)} – ${to12(end)}`} v="Included" green />
+              <p className="hx-prose text-[12px] text-portal-muted mt-1.5">Free with your office — up to {perkCfg.maxHoursPerBooking}h/booking, {perkCfg.maxHoursPerDay}h/day per company. {round2(Math.max(0, perkCfg.maxHoursPerDay - perkUsedToday))}h left today.</p>
+            </div>
+          ) : (
+            <div className="bg-bone border border-ink/10 p-4 space-y-2">
+              <Line k={`${to12(start)} – ${to12(end)}`} v={cost ? `${money0(cost)} · ${credits} cr` : 'Free'} />
+              <Line k="Allowance remaining" v={`${balance} cr`} green={balance >= credits} />
+              {overage > 0 && <Line k="Over allowance" v={`${overage} cr · billed as a fee`} amber />}
+            </div>
+          )}
 
           {error && <div className="mt-4 text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>}
           <BigButton onClick={confirm} disabled={saving} className="mt-6">

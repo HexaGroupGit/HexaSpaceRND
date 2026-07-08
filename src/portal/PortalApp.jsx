@@ -125,9 +125,12 @@ export default function PortalApp() {
         .filter((s) => !ownIds.has(s.id))
         .map((s) => ({ id: s.id, resourceId: s.resource_id, date: s.date, startTime: s.start_time, endTime: s.end_time, status: s.status }))
 
+      // Public settings subset — used for the office-perk room config.
+      const settings = await fetch('/api/portal/settings').then((r) => r.json()).then((d) => d.settings ?? {}).catch(() => ({}))
+
       setData({
         company, member, members, companies, spaces, templates,
-        leases,
+        leases, settings,
         invoices,
         bookings: ownBookings,
         allBookings: [...ownBookings, ...slots], // own (detailed) + others (masked)
@@ -216,7 +219,7 @@ export default function PortalApp() {
           {restricted ? (
             <>
               <Route path="/"              element={<PortalFunctionHome data={data} />} />
-              <Route path="/meeting-rooms" element={<PortalRooms spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} />} />
+              <Route path="/meeting-rooms" element={<PortalRooms spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} leases={data.leases} settings={data.settings} />} />
               <Route path="/function-space" element={<PortalFunction spaces={data.spaces} member={data.member} company={data.company} />} />
               <Route path="/billing"       element={<PortalBilling data={data} />} />
               <Route path="/account"       element={<PortalAccount data={data} />} />
@@ -227,8 +230,8 @@ export default function PortalApp() {
             <>
               <Route path="/"              element={<PortalDashboard data={data} />} />
               <Route path="/members"       element={<PortalMembers members={data.members} companies={data.companies} company={data.company} />} />
-              <Route path="/meeting-rooms" element={<PortalRooms spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} />} />
-              <Route path="/studios"       element={<PortalStudios spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} />} />
+              <Route path="/meeting-rooms" element={<PortalRooms spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} leases={data.leases} settings={data.settings} />} />
+              <Route path="/studios"       element={<PortalStudios spaces={data.spaces} allBookings={data.allBookings} member={data.member} company={data.company} leases={data.leases} settings={data.settings} />} />
               <Route path="/function-space" element={<PortalFunction spaces={data.spaces} member={data.member} company={data.company} />} />
               <Route path="/billing"       element={<PortalBilling data={data} />} />
               <Route path="/account"       element={<PortalAccount data={data} />} />
