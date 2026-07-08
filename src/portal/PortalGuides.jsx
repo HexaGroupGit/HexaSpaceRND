@@ -195,7 +195,7 @@ function PrintAccount({ member }) {
       <div className="grid sm:grid-cols-2 gap-x-10 gap-y-2">
         <PrintKV k="Sign-in" v={member?.email || 'your member email'} />
         <PrintKV k="Queue" v="Hexa-Secure" />
-        <PrintKV k="Portal" v="print.hexaspace.com.au" />
+        <PrintKV k="Portal" v={<a href="http://172.16.200.14:9191/app" target="_blank" rel="noreferrer" className="text-hexa-green">172.16.200.14:9191/app</a>} />
         <PrintKV k="Release" v="Tap your access pass at any printer" />
       </div>
     </div>

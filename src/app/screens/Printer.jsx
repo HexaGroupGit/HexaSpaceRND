@@ -52,7 +52,7 @@ export default function Printer() {
         <div className="border-t border-paper/15 my-4" />
         <div className="space-y-2">
           <KV k="Sign-in" v={email || 'your member email'} />
-          <KV k="Portal" v="print.hexaspace.com.au" />
+          <KV k="Portal" v="172.16.200.14:9191/app (on Hexa Wi-Fi)" />
           <KV k="Queue" v="Hexa-Secure" />
           <KV k="Release" v="Tap your access pass at any printer" />
         </div>
