@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Lock, Plus, FileText, X, Coins, Printer, KeyRound } from 'lucide-react'
+import { Lock, Plus, FileText, X, Coins, Printer, KeyRound, UserMinus } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { authHeaders } from '../lib/apiFetch.js'
 import { usePrintPin } from './usePrintPin.js'
@@ -200,12 +200,33 @@ function ChangePassword() {
 }
 
 // ── Team Members ─────────────────────────────────────────────────────────────
-function TeamTab({ company, members }) {
-  const team = members.filter(m => m.companyId === company.id).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+function TeamTab({ company, members, me }) {
+  const [removedIds, setRemovedIds] = useState([])
+  const team = members
+    .filter(m => m.companyId === company.id && m.status !== 'Former' && !removedIds.includes(m.id))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ name: '', email: '' })
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [removing, setRemoving] = useState(null) // member id in flight
+
+  async function remove(m) {
+    if (!window.confirm(`Remove ${m.name || m.email} from your team? Their portal login and door access will be revoked.`)) return
+    setRemoving(m.id); setMsg(null)
+    try {
+      const res = await fetch('/api/portal/remove-teammate', {
+        method: 'POST', headers: await authHeaders(),
+        body: JSON.stringify({ memberId: m.id }),
+      })
+      const b = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(b.error || 'Could not remove the team member.')
+      setRemovedIds(ids => [...ids, m.id])
+      setMsg({ type: 'success', text: `${m.name || m.email} removed — portal access revoked and door access removal is underway.` })
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message })
+    } finally { setRemoving(null) }
+  }
 
   async function invite(e) {
     e.preventDefault()
@@ -258,6 +279,12 @@ function TeamTab({ company, members }) {
                   <div className="hx-prose text-[13px] truncate">{m.email}</div>
                 </div>
                 <StatusBadge status={m.status === 'invited' ? 'pending' : 'active'} />
+                {(m.email || '').toLowerCase() !== (me?.email || '').toLowerCase() && !m.billingPerson && (
+                  <button onClick={() => remove(m)} disabled={removing === m.id} title="Remove from team"
+                    className="text-portal-muted hover:text-red-700 disabled:opacity-40 shrink-0">
+                    <UserMinus size={15} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -383,7 +410,7 @@ export default function PortalAccount({ data }) {
         onChange={setTab}
       />
       {tab === 'profile' && <ProfileTab company={company} member={member} />}
-      {tab === 'team' && <TeamTab company={company} members={members} />}
+      {tab === 'team' && <TeamTab company={company} members={members} me={member} />}
       {tab === 'bookings' && <BookingsTab bookings={bookings} spaces={spaces} />}
       {tab === 'allowance' && <AllowanceTab member={member} />}
       {tab === 'tickets' && <TicketsTab />}
