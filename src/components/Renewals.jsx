@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { differenceInDays, parseISO, format, addYears, addMonths, isValid } from 'date-fns'
+import { differenceInDays, differenceInMonths, parseISO, format, addDays, addMonths, isValid } from 'date-fns'
 import { FileText, RefreshCw, Mail, X } from 'lucide-react'
 import { sendEmail, brandShell, bKicker, bH1, bP, bSmall } from '../lib/sendEmail.js'
 import { billingEmailFor } from '../lib/credits.js'
@@ -94,11 +94,29 @@ export default function Renewals() {
   }
 
   function handleOpenRenew(lease) {
-    // Pre-fill a new contract based on this lease, starting from expiry date
-    // (fall back to today when the current lease has no valid end date).
-    const base = parse(lease.endDate) ?? today
-    const newStart = format(base, 'yyyy-MM-dd')
-    const newEnd = format(addYears(base, 1), 'yyyy-MM-dd')
+    // One-click renewal: reuse the SAME space(s) and the SAME term length,
+    // shifted to run for the following period (contiguous — starts the day after
+    // the current term ends). Nothing to re-select.
+    const start = parse(lease.startDate)
+    const end = parse(lease.endDate)
+    const newStartD = end ? addDays(end, 1) : today
+    // Preserve the original term length (in months); default to 12 if unknown.
+    const termMonths = (start && end) ? Math.max(1, differenceInMonths(addDays(end, 1), start)) : 12
+    const newEndD = addDays(addMonths(newStartD, termMonths), -1) // day before the anniversary
+    const newStart = format(newStartD, 'yyyy-MM-dd')
+    const newEnd = format(newEndD, 'yyyy-MM-dd')
+
+    // Always carry the space forward. Older leases keep the space at the top
+    // level with no items[] — build an item from it so the space is pre-selected.
+    const baseItems = (lease.items && lease.items.length)
+      ? lease.items
+      : [{ spaceId: lease.spaceId, deposit: lease.bondAmount ?? 0, steps: [{ listPrice: lease.monthlyRent ?? 0, discount: lease.discount ?? '' }] }]
+    const items = baseItems.map((item) => ({
+      ...item,
+      steps: (item.steps && item.steps.length ? item.steps : [{ listPrice: lease.monthlyRent ?? 0, discount: lease.discount ?? '' }])
+        .map((step) => ({ ...step, startDate: newStart, endDate: newEnd })),
+    }))
+
     setRenewLease({
       ...lease,
       id: null, // will get new id
@@ -108,14 +126,7 @@ export default function Renewals() {
       startDate: newStart,
       endDate: newEnd,
       contractNumber: null, // will auto-generate
-      items: (lease.items ?? []).map((item) => ({
-        ...item,
-        steps: (item.steps ?? []).map((step) => ({
-          ...step,
-          startDate: newStart,
-          endDate: newEnd,
-        })),
-      })),
+      items,
     })
   }
 
