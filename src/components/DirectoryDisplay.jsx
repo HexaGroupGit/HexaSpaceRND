@@ -35,9 +35,20 @@ export default function DirectoryDisplay({ level }) {
   const cols = [list.slice(0, per), list.slice(per, per * 2), list.slice(per * 2)]
 
   return (
-    <div className="min-h-screen w-full bg-[#0a0a0c] text-white font-sans flex justify-center overflow-x-hidden">
-      {/* subtle top-lit gradient like the PNG */}
-      <div className="fixed inset-0 pointer-events-none bg-gradient-to-b from-white/[0.05] via-transparent to-black/40" />
+    <div className="relative min-h-screen w-full bg-[#0a0a0c] text-white font-sans flex justify-center overflow-x-hidden">
+      {/* Layered background matching the reference boards: cool charcoal base with
+          a soft light glow behind the title, a faint diagonal pinstripe texture,
+          and a vignette that darkens the edges. Fixed so it stays anchored on a TV. */}
+      <div
+        className="fixed inset-0 pointer-events-none"
+        style={{
+          background: `
+            radial-gradient(115% 75% at 22% 6%, rgba(140,150,170,0.13), transparent 55%),
+            repeating-linear-gradient(135deg, rgba(255,255,255,0.016) 0px, rgba(255,255,255,0.016) 1px, transparent 1px, transparent 9px),
+            radial-gradient(125% 115% at 50% 26%, #1e2126 0%, #14151a 45%, #0a0a0c 100%)
+          `,
+        }}
+      />
 
       <div className="relative w-full max-w-[1100px] px-10 py-10 md:px-14 md:py-12">
         {/* address strip */}
