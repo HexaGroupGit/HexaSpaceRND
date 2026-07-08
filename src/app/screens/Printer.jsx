@@ -27,7 +27,7 @@ export default function Printer() {
           <div className="mt-5 border border-paper/20 bg-paper/5 px-4 py-3.5 flex items-end justify-between">
             <div>
               <span className="block font-heading uppercase tracking-label text-[10px] text-paper/50">Your print PIN</span>
-              <span className="block hx-prose text-[11px] text-paper/40 mt-1">Type at the keypad, or tap your pass</span>
+              <span className="block hx-prose text-[11px] text-paper/40 mt-1">Key in this ID at the printer</span>
             </div>
             <span className="font-mono text-3xl tracking-[0.3em] text-hexa-green leading-none">{pin}</span>
           </div>
@@ -54,7 +54,7 @@ export default function Printer() {
           <KV k="Sign-in" v={email || 'your member email'} />
           <KV k="Portal" v="172.16.200.14:9191/app (on Hexa Wi-Fi)" />
           <KV k="Queue" v="Hexa-Secure" />
-          <KV k="Release" v="Tap your access pass at any printer" />
+          <KV k="Release" v="Key in your ID on the printer" />
         </div>
       </div>
 
@@ -97,7 +97,7 @@ function PhoneSetup() {
           'Tap the button above and install the printer profile (Settings will ask you to confirm).',
           'On the “Hexa Space” Wi-Fi, open your document → Share → Print → “Hexa-Secure”.',
           'First time only: enter your Hexa Space email and password.',
-          'Release at any printer with your PIN above, or tap your pass.',
+          'Release at any printer by keying in your ID above.',
         ]} />
       </>
     )
@@ -110,7 +110,7 @@ function PhoneSetup() {
           'Tap the button above to install “Mobility Print” (already set to our server).',
           'On the “Hexa Space” Wi-Fi, print as usual and pick the “Hexa-Secure” printer.',
           'Enter your Hexa Space email and password when prompted.',
-          'Release at any printer with your PIN above, or tap your pass.',
+          'Release at any printer by keying in your ID above.',
         ]} />
       </>
     )
@@ -126,13 +126,13 @@ function PhoneSetup() {
         'Install the iPhone/iPad profile above.',
         'On the “Hexa Space” Wi-Fi, print → choose “Hexa-Secure”.',
         'First time only: enter your Hexa Space email and password.',
-        'Release with your PIN above, or tap your pass.',
+        'Release by keying in your ID above.',
       ]} />
       <Steps title="Android" items={[
         'Install the Android app above (already set to our server).',
         'Print as usual and pick “Hexa-Secure”.',
         'Enter your Hexa Space email and password when prompted.',
-        'Release with your PIN above, or tap your pass.',
+        'Release by keying in your ID above.',
       ]} />
     </>
   )

@@ -74,7 +74,7 @@ export default function PortalGuides({ member }) {
             'Download and run the installer above, then follow the prompts.',
             'The “Hexa-Secure” printer is added automatically — print to it like any other printer.',
             'The first time you print, sign in with your Hexa Space email and password (just once).',
-            'Release your job at any printer: tap your access pass, or type your print PIN on the keypad.',
+            'Release your job at any printer by keying in your ID (print PIN) on the keypad.',
           ]} />
         </MethodCard>
 
@@ -86,7 +86,7 @@ export default function PortalGuides({ member }) {
             'On your iPhone/iPad, download and install the printer profile above (Settings will ask you to confirm).',
             'On the “Hexa Spaces” Wi-Fi, open a document → Share → Print → choose “Hexa-Secure”.',
             'First time only: enter your Hexa Space email and password.',
-            'Release at any printer with your access pass or PIN.',
+            'Release at any printer by keying in your ID (print PIN).',
           ]} />
           <p className="hx-eyebrow mb-2 mt-6">Android</p>
           <a href="https://play.google.com/store/apps/details?id=com.papercut.projectbanksia&referrer=server=172.16.200.14" target="_blank" rel="noreferrer" className="hx-btn inline-flex items-center gap-2 mb-4"><ExternalLink size={13} /> Get the Android print app</a>
@@ -94,7 +94,7 @@ export default function PortalGuides({ member }) {
             'Install the app above (it comes pre-set to our print server), then connect to the “Hexa Spaces” Wi-Fi.',
             'Print as usual and pick the “Hexa-Secure” printer.',
             'Tap the sign-in prompt and enter your Hexa Space email and password.',
-            'Release at any printer with your access pass or PIN.',
+            'Release at any printer by keying in your ID (print PIN).',
           ]} />
         </MethodCard>
 

@@ -134,7 +134,7 @@ function PrintAccount({ member, account }) {
             <div className="bg-charcoal px-5 py-4 flex items-end justify-between gap-4">
               <div>
                 <span className="block font-heading uppercase tracking-label text-[10px] text-paper/50">Your print PIN</span>
-                <span className="block hx-prose text-[11px] text-paper/40 mt-1">Type at the keypad, or tap your pass</span>
+                <span className="block hx-prose text-[11px] text-paper/40 mt-1">Key in this ID at the printer</span>
               </div>
               <span className="font-mono text-3xl tracking-[0.3em] text-hexa-green leading-none shrink-0">{pin}</span>
             </div>
@@ -158,7 +158,7 @@ function PrintAccount({ member, account }) {
         <PrintKV k="Sign-in" v={member?.email || 'your member email'} />
         <PrintKV k="Queue" v="Hexa-Secure" />
         <PrintKV k="Portal" v={<a href="http://172.16.200.14:9191/app" target="_blank" rel="noreferrer" className="text-hexa-green">172.16.200.14:9191/app</a>} />
-        <PrintKV k="Release" v="Tap your access pass at any printer" />
+        <PrintKV k="Release" v="Key in your ID on the printer" />
       </div>
     </div>
   )
