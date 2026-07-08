@@ -23,6 +23,7 @@ export default function PortalCalendar({ resources, allBookings, member, company
   const [day, setDay] = useState(new Date())
   const [bookings, setBookings] = useState(allBookings ?? [])
   const [modal, setModal] = useState(null) // { resourceId, date, startTime, endTime }
+  const [amend, setAmend] = useState(null) // the member's own booking being edited
   // Live company credit balance (deducted as bookings are made this session).
   // On a new month the pool tops back up to the company's monthly allowance —
   // mirrors the admin app's monthly reset, keyed on creditsPeriod so the two agree.
@@ -102,6 +103,17 @@ export default function PortalCalendar({ resources, allBookings, member, company
                     const label = mine ? (b.title || 'Your booking')
                       : team ? (b.title || 'Team booking')
                       : 'Booked'
+                    // Own bookings are editable — click to amend times or cancel.
+                    if (mine) {
+                      return (
+                        <button key={b.id} onClick={() => setAmend(b)}
+                          className={`absolute left-1 right-1 px-2 py-1 text-[10px] overflow-hidden text-left cursor-pointer hover:ring-2 hover:ring-ink/30 transition-shadow ${cls}`}
+                          style={{ top, height }}>
+                          <div className="font-heading uppercase tracking-nav text-[9px] truncate">{label}</div>
+                          <div className="truncate opacity-80">{to12(b.startTime)} · tap to change</div>
+                        </button>
+                      )
+                    }
                     return (
                       <div key={b.id} className={`absolute left-1 right-1 px-2 py-1 text-[10px] overflow-hidden ${cls}`} style={{ top, height }}>
                         <div className="font-heading uppercase tracking-nav text-[9px] truncate">{label}</div>
@@ -122,6 +134,18 @@ export default function PortalCalendar({ resources, allBookings, member, company
       </div>
       <p className="hx-prose text-[12px] mt-2">Click any open slot to request a booking. Credits = A${CREDIT_VALUE} each · our team confirms portal requests.</p>
 
+      {amend && (
+        <AmendModal
+          booking={amend} resources={resources} bookings={bookings} company={company} remaining={remaining}
+          onClose={() => setAmend(null)}
+          onSaved={(updated, newRemaining) => {
+            setBookings((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+            if (newRemaining != null) setRemaining(newRemaining)
+            setAmend(null)
+          }}
+        />
+      )}
+
       {modal && (
         <BookingModal
           slot={modal} resources={resources} bookings={bookings} member={member} company={company} remaining={remaining}
@@ -133,8 +157,22 @@ export default function PortalCalendar({ resources, allBookings, member, company
   )
 }
 
+// "a@x.com, b@y.com" → deduped valid email list.
+const parseEmails = (s) => [...new Set(String(s || '').split(/[,;\s]+/).map((e) => e.trim().toLowerCase()).filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)))]
+
+// Fire-and-forget attendee notification via the member-authed endpoint.
+async function notifyAttendees(bookingId, mode, occurrences = 1) {
+  try {
+    const { authHeaders } = await import('../lib/apiFetch.js')
+    await fetch('/api/portal/booking-invite', {
+      method: 'POST', headers: await authHeaders(),
+      body: JSON.stringify({ bookingId, mode, occurrences }),
+    })
+  } catch { /* invitations are best-effort */ }
+}
+
 function BookingModal({ slot, resources, bookings, member, company, remaining, onClose, onBooked }) {
-  const [f, setF] = useState({ resourceId: slot.resourceId, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, title: '', repeat: 'none', occurrences: 4 })
+  const [f, setF] = useState({ resourceId: slot.resourceId, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, title: '', repeat: 'none', occurrences: 4, attendees: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
@@ -176,6 +214,8 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, o
         reference: `BKG-${Math.floor(100000 + Math.random() * 900000)}`,
         resourceId: f.resourceId, memberId: member?.id ?? '', companyId: company?.id ?? '',
         date, startTime: f.startTime, endTime: f.endTime, title: f.title,
+        memberName: member?.name || company?.contactName || '', companyName: company?.businessName || '',
+        attendees: parseEmails(f.attendees),
         status: 'Pending', source: 'Portal', repeat: f.repeat, createdBy: 'Member',
         createdAt: new Date().toISOString().split('T')[0],
       })
@@ -229,6 +269,8 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, o
     const dbErr = results.find((r) => r.error)?.error
     if (dbErr) return setError(dbErr.message)
     if (skipped.length) setError('')
+    // Email the invited attendees (covers the whole series in one invite).
+    if (created[0]?.attendees?.length) notifyAttendees(created[0].id, 'invite', created.length)
     onBooked(created, bal)
   }
 
@@ -257,6 +299,11 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, o
             <div><label className="hx-eyebrow block mb-1.5">Date</label><input type="date" value={f.date} onChange={up('date')} className="hx-input" /></div>
             <div><label className="hx-eyebrow block mb-1.5">From</label><input type="time" value={f.startTime} onChange={up('startTime')} className="hx-input" /></div>
             <div><label className="hx-eyebrow block mb-1.5">To</label><input type="time" value={f.endTime} onChange={up('endTime')} className="hx-input" /></div>
+          </div>
+          <div>
+            <label className="hx-eyebrow block mb-1.5">Invite people (optional)</label>
+            <input value={f.attendees} onChange={up('attendees')} className="hx-input" placeholder="guest@company.com, colleague@company.com" />
+            <p className="hx-prose text-[11px] mt-1.5">Each address gets an email invitation with the meeting details and a calendar file.</p>
           </div>
 
           {/* Recurring */}
@@ -293,6 +340,143 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, o
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-ink/10">
           <button onClick={onClose} className="hx-btn-ghost">Cancel</button>
           <button onClick={confirm} disabled={saving} className="hx-btn disabled:opacity-50"><Check size={13} /> {saving ? 'Booking…' : 'Confirm booking'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Amend / cancel the member's own booking ──────────────────────────────────
+// Changing times re-balances the company credit pool (old spend refunded, new
+// spend deducted; only NET overage beyond what was already fee'd raises a new
+// Booking Fee) and drops the booking back to Pending for team re-confirmation.
+// Cancelling refunds the credits that were drawn from the pool.
+function AmendModal({ booking, resources, bookings, company, remaining, onClose, onSaved }) {
+  const b = booking
+  const [f, setF] = useState({ date: b.date, startTime: b.startTime, endTime: b.endTime, attendees: (b.attendees ?? []).join(', ') })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
+
+  const room = resources.find((r) => r.id === b.resourceId)
+  const rate = room?.hourlyRate ?? room?.rate ?? 0
+  const round2c = (n) => Math.round(n * 100) / 100
+
+  const oldHrs = Math.max(0, toDec(b.endTime) - toDec(b.startTime))
+  const oldNeed = round2c(oldHrs * rate / CREDIT_VALUE)
+  const oldUsed = Number(b.creditsUsed || 0)
+  const oldShort = Math.max(0, round2c(oldNeed - oldUsed))
+
+  const newHrs = Math.max(0, toDec(f.endTime) - toDec(f.startTime))
+  const newNeed = round2c(newHrs * rate / CREDIT_VALUE)
+  const pool = round2c(Number(remaining ?? 0) + oldUsed) // refund the old spend first
+  const newUsed = Math.max(0, Math.min(pool, newNeed))
+  const newPool = round2c(pool - newUsed)
+  const extraFee = Math.max(0, round2c((newNeed - newUsed) - oldShort))
+  const monthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+  const nowIso = () => new Date().toISOString()
+
+  async function persist(updated, poolAfter, feeWrite) {
+    const writes = [supabase.from('bookings').update({ data: updated, updated_at: nowIso() }).eq('id', b.id)]
+    if (company?.id) {
+      writes.push(supabase.from('tenants').update({ data: { ...company, creditsRemaining: poolAfter, creditsPeriod: monthKey }, updated_at: nowIso() }).eq('id', company.id))
+    }
+    if (feeWrite) writes.push(feeWrite)
+    const results = await Promise.all(writes)
+    return results.find((r) => r.error)?.error
+  }
+
+  async function saveChanges() {
+    setError('')
+    if (newHrs <= 0) return setError('End time must be after start time.')
+    const clash = bookings.some((x) => x.id !== b.id && x.resourceId === b.resourceId && x.date === f.date &&
+      x.status !== 'Cancelled' && overlaps(f.startTime, f.endTime, x.startTime, x.endTime))
+    if (clash) return setError('That time is already booked — pick another slot.')
+    setSaving(true)
+    const attendees = parseEmails(f.attendees)
+    const updated = {
+      ...b, date: f.date, startTime: f.startTime, endTime: f.endTime, attendees,
+      creditsUsed: newUsed,
+      paidBy: newNeed > newUsed ? (newUsed > 0 ? 'part_credits' : 'fee') : 'credits',
+      status: 'Pending', amendedAt: nowIso(),
+    }
+    let feeWrite = null
+    if (extraFee > 0 && company?.id) {
+      const feeId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+      feeWrite = supabase.from('fees').upsert({ id: feeId, data: {
+        id: feeId,
+        name: bookingFeeName({ roomName: room?.unitNumber, rate, date: f.date, startTime: f.startTime, endTime: f.endTime, usedCredits: newUsed }),
+        type: 'Booking Fee', memberId: b.memberId ?? null, companyId: company.id,
+        date: new Date().toISOString().split('T')[0],
+        price: round2c(extraFee * CREDIT_VALUE), status: 'Not Paid',
+        notes: `Amended portal booking · ${extraFee} extra credits over allowance`,
+        createdAt: new Date().toISOString().split('T')[0],
+      }, updated_at: nowIso() })
+    }
+    const err = await persist(updated, newPool, feeWrite)
+    setSaving(false)
+    if (err) return setError(err.message)
+    if (attendees.length) notifyAttendees(b.id, 'update')
+    onSaved(updated, newPool)
+  }
+
+  async function cancelBooking() {
+    if (!window.confirm('Cancel this booking? Credits used will return to your allowance.')) return
+    setSaving(true)
+    const updated = { ...b, status: 'Cancelled', cancelledAt: nowIso(), creditsUsed: 0 }
+    const refundedPool = round2c(Number(remaining ?? 0) + oldUsed)
+    const err = await persist(updated, refundedPool, null)
+    setSaving(false)
+    if (err) return setError(err.message)
+    if ((b.attendees ?? []).length) notifyAttendees(b.id, 'cancelled')
+    onSaved(updated, refundedPool)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-ink/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-paper w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-ink/10">
+          <div>
+            <p className="hx-eyebrow">Your booking</p>
+            <h2 className="font-display font-extralight text-2xl mt-1">{room?.unitNumber}{b.title ? ` · ${b.title}` : ''}</h2>
+          </div>
+          <button onClick={onClose} className="text-portal-muted hover:text-ink"><X size={18} /></button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div><label className="hx-eyebrow block mb-1.5">Date</label><input type="date" value={f.date} onChange={up('date')} className="hx-input" /></div>
+            <div><label className="hx-eyebrow block mb-1.5">From</label><input type="time" value={f.startTime} onChange={up('startTime')} className="hx-input" /></div>
+            <div><label className="hx-eyebrow block mb-1.5">To</label><input type="time" value={f.endTime} onChange={up('endTime')} className="hx-input" /></div>
+          </div>
+          <div>
+            <label className="hx-eyebrow block mb-1.5">Invited people</label>
+            <input value={f.attendees} onChange={up('attendees')} className="hx-input" placeholder="guest@company.com, colleague@company.com" />
+            <p className="hx-prose text-[11px] mt-1.5">Attendees are emailed the updated details when you save.</p>
+          </div>
+          <div className="bg-bone border border-ink/10 p-4 text-[13px] space-y-1.5">
+            <div className="flex justify-between"><span className="hx-prose text-[13px]">{newHrs} hour{newHrs !== 1 ? 's' : ''} × A${rate}/hr</span>
+              <span className="font-heading uppercase tracking-nav text-[11px]">{newNeed ? `${newNeed} cr` : 'Free'}</span></div>
+            <div className="flex justify-between"><span className="hx-prose text-[13px]">Allowance after change</span>
+              <span className="font-heading uppercase tracking-nav text-[11px] text-hexa-green">{newPool} cr</span></div>
+            {extraFee > 0 && (
+              <div className="flex justify-between"><span className="hx-prose text-[13px]">Extra over allowance</span>
+                <span className="font-heading uppercase tracking-nav text-[11px] text-amber-700">{extraFee} cr · billed as a fee</span></div>
+            )}
+          </div>
+          <p className="hx-prose text-[12px]">Changed bookings return to <strong>Pending</strong> until our team re-confirms the new time.</p>
+          {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>}
+        </div>
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-ink/10">
+          <button onClick={cancelBooking} disabled={saving}
+            className="font-heading uppercase tracking-nav text-[11px] text-red-700 border-b border-red-300 pb-0.5 hover:border-red-700 disabled:opacity-50">
+            Cancel booking
+          </button>
+          <div className="flex gap-3">
+            <button onClick={onClose} className="hx-btn-ghost">Close</button>
+            <button onClick={saveChanges} disabled={saving} className="hx-btn disabled:opacity-50">
+              <Check size={13} /> {saving ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
