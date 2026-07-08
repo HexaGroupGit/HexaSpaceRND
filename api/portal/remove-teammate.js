@@ -3,7 +3,8 @@
 // full offboard in one call: the member record is marked Former with portal
 // access off, their Supabase login is banned, and Salto door access is revoked
 // (Zapier remove_user hook, or an ops-task email when the hook isn't wired).
-// Guardrails: you can't remove yourself, and the billing person can only be
+// Guardrails: only the company's contact person or billing person may remove
+// teammates, you can't remove yourself, and the billing person can only be
 // removed by an admin (so companies can't orphan their own billing contact).
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH1, bP, bSmall, bTable } from '../_brand.js'
@@ -83,6 +84,16 @@ export default async function handler(req, res) {
 
     if (!isAdmin && member.companyId !== auth.companyId) {
       return res.status(403).json({ error: 'You can only remove teammates from your own company.' })
+    }
+    if (!isAdmin) {
+      // Only the company's contact person or billing person may remove teammates.
+      const { data: mineRows } = await sb.from('members').select('data')
+      const caller = (mineRows ?? []).map((r) => r.data).find(
+        (m) => m.companyId === auth.companyId && (m.email || '').toLowerCase() === auth.user.email,
+      )
+      if (!caller?.contactPerson && !caller?.billingPerson) {
+        return res.status(403).json({ error: 'Only your company\'s contact or billing person can remove team members.' })
+      }
     }
     if ((member.email || '').toLowerCase() === auth.user.email) {
       return res.status(400).json({ error: "You can't remove yourself. Ask a teammate, or contact us." })

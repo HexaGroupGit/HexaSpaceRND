@@ -210,6 +210,8 @@ function TeamTab({ company, members, me }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
   const [removing, setRemoving] = useState(null) // member id in flight
+  // Removal is reserved for the company's contact or billing person (server-enforced too).
+  const canRemove = !!(me?.contactPerson || me?.billingPerson)
 
   async function remove(m) {
     if (!window.confirm(`Remove ${m.name || m.email} from your team? Their portal login and door access will be revoked.`)) return
@@ -279,7 +281,7 @@ function TeamTab({ company, members, me }) {
                   <div className="hx-prose text-[13px] truncate">{m.email}</div>
                 </div>
                 <StatusBadge status={m.status === 'invited' ? 'pending' : 'active'} />
-                {(m.email || '').toLowerCase() !== (me?.email || '').toLowerCase() && !m.billingPerson && (
+                {canRemove && (m.email || '').toLowerCase() !== (me?.email || '').toLowerCase() && !m.billingPerson && (
                   <button onClick={() => remove(m)} disabled={removing === m.id} title="Remove from team"
                     className="text-portal-muted hover:text-red-700 disabled:opacity-40 shrink-0">
                     <UserMinus size={15} />
