@@ -2,14 +2,15 @@ import { useState } from 'react'
 import { formatDistanceToNow, parseISO, format } from 'date-fns'
 import {
   X, Mail, StickyNote, Activity as ActivityIcon, User, Phone, Building2, Tag, DollarSign,
-  UserPlus, CheckCircle2, Send, Loader2, ArrowRight, Sparkles, Trash2, FileText, FileDown,
+  UserPlus, CheckCircle2, Send, Loader2, ArrowRight, Sparkles, Trash2, FileText, FileDown, CalendarClock,
 } from 'lucide-react'
-import { sendEmail, renderProposalTemplate, messageEmailHtml, brandShell, PORTAL_URL } from '../lib/sendEmail.js'
+import { sendEmail, renderProposalTemplate, messageEmailHtml, brandShell, bKicker, bH1, bP, bBtn, bSmall, PORTAL_URL } from '../lib/sendEmail.js'
 import { randomToken } from '../lib/token.js'
 import { buildProposalPdf, buildDeskBrochurePdf, buildVirtualBrochurePdf } from '../lib/proposalPdf.js'
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: User },
+  { key: 'tour', label: 'Tour', icon: CalendarClock },
   { key: 'proposal', label: 'Proposal', icon: FileText },
   { key: 'email', label: 'Email', icon: Mail },
   { key: 'notes', label: 'Notes', icon: StickyNote },
@@ -103,6 +104,64 @@ export default function LeadDetail({ lead, store, onClose }) {
 
   // Notes
   const [note, setNote] = useState('')
+
+  // ── Tour invite ───────────────────────────────────────────────────────────
+  // Personal "come and see the space" email with the book-a-tour link. Logs to
+  // the activity feed and marks nurture done so the automated follow-ups (and
+  // the auto-Lost move) don't fire on top of a personal invitation.
+  const [tourWhen, setTourWhen] = useState('')
+  const [tourMsg, setTourMsg] = useState('')
+  const [sendingTour, setSendingTour] = useState(false)
+  const [tourResult, setTourResult] = useState('')
+
+  const tourLink = (() => {
+    if (settings?.leads?.tourUrl) return settings.leads.tourUrl
+    let site = (settings?.company?.website || 'hexaspace.com.au').replace(/^https?:\/\//, '').replace(/\/+$/, '')
+    if (!site.startsWith('www.')) site = `www.${site}`
+    return `https://${site}/book-a-tour`
+  })()
+
+  async function sendTourInvite() {
+    if (!lead.email) { setTourResult('No email address on this lead.'); return }
+    setSendingTour(true); setTourResult('')
+    try {
+      const firstName = (lead.name || '').trim().split(/\s+/)[0] || 'there'
+      const companyName = settings?.company?.name || 'Hexa Space'
+      const vars = {
+        name: lead.name || 'there', businessName: lead.businessName || '',
+        tourLink, suggestedTime: tourWhen.trim(), message: tourMsg.trim(),
+        company: companyName, website: settings?.company?.website || 'hexaspace.com.au',
+      }
+      const fill = (s) => String(s ?? '').replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => String(vars[k] ?? ''))
+      const tpl = (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'tour_invite' && t.content)
+      let subject, html
+      if (tpl) {
+        subject = fill(tpl.subject || `Come and tour ${companyName}`)
+        html = brandShell(fill(tpl.content), { company: companyName, website: vars.website })
+      } else {
+        subject = `Come and see the space, ${firstName} — tour ${companyName}`
+        html = brandShell(
+          bKicker('Come See The Space') +
+          bH1('The best way to decide is to visit') +
+          bP(`Hi ${firstName},`) +
+          bP(`Thanks for your enquiry${lead.enquiryType ? ` about a ${String(lead.enquiryType).toLowerCase()}` : ''} — photos only tell half the story. Come in for a quick tour: see the offices, meet the team, and get a feel for the community over a coffee.`) +
+          (tourMsg.trim() ? bP(tourMsg.trim()) : '') +
+          (tourWhen.trim() ? bP(`<strong>Would ${tourWhen.trim()} suit?</strong> Pick any time that works on the booking page and we'll confirm right away.`) : '') +
+          bBtn('Book your tour', tourLink) +
+          bSmall('Level 4, 402/830 Whitehorse Road, Box Hill VIC 3128 — two minutes from Box Hill Central, parking available.'),
+          { company: companyName, website: vars.website },
+        )
+      }
+      await sendEmail({ to: lead.email, subject, html, settings, emailType: 'tour_invite' })
+      const today = new Date().toISOString().split('T')[0]
+      updateLead(lead.id, {
+        tourInvitedAt: new Date().toISOString(),
+        nurture: { ...(lead.nurture ?? {}), done: true, lastAt: today },
+      })
+      appendLeadActivity(lead.id, { type: 'email', text: `Tour invite sent${tourWhen.trim() ? ` — suggested ${tourWhen.trim()}` : ''}` })
+      setTourResult('Sent ✓'); setTourWhen(''); setTourMsg(''); setTab('activity')
+    } catch (e) { setTourResult(e.message) } finally { setSendingTour(false) }
+  }
 
   // ── Proposal ──────────────────────────────────────────────────────────────
   const officeHasOccupant = (s) => !!(s.occupantTenantId || s.occupantName || leases.some((l) => l.spaceId === s.id && (l.status === 'active' || l.status === 'pending')))
@@ -489,6 +548,37 @@ export default function LeadDetail({ lead, store, onClose }) {
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {tab === 'tour' && (
+            <div className="space-y-4">
+              <div className="bg-card border border-border rounded-xl shadow-sm p-4">
+                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-1">Invite to tour</h3>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Sends a personal "come and see the space" email with the book-a-tour link, logs it to the
+                  activity feed, and pauses the automated follow-up sequence so they aren't double-contacted.
+                  {lead.tourInvitedAt && <span className="block mt-1 text-amber-600">Tour invite already sent {rel(lead.tourInvitedAt)}.</span>}
+                  {(lead.tourBookedAt || lead.source === 'book-tour') && <span className="block mt-1 text-green-600">This lead has already requested a tour.</span>}
+                </p>
+                <div className="text-xs text-muted-foreground mb-3">To: <span className="text-foreground font-medium">{lead.email || '— no email on file —'}</span></div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Suggest a time <span className="font-normal">(optional — e.g. "Thursday afternoon")</span></label>
+                <input value={tourWhen} onChange={(e) => setTourWhen(e.target.value)} placeholder="Thursday afternoon this week" className={`${input} mb-3`} />
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Personal note <span className="font-normal">(optional — appears in the email)</span></label>
+                <textarea value={tourMsg} onChange={(e) => setTourMsg(e.target.value)} rows={3}
+                  placeholder="We've got two offices that would suit your team of 4 — happy to show you both." className={`${input} resize-none mb-3`} />
+                <div className="flex items-center gap-3">
+                  <button onClick={sendTourInvite} disabled={sendingTour || !lead.email}
+                    className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
+                    {sendingTour ? <Loader2 size={14} className="animate-spin" /> : <CalendarClock size={14} />} Send tour invite
+                  </button>
+                  {tourResult && <span className={`text-sm ${tourResult === 'Sent ✓' ? 'text-green-600' : 'text-red-600'}`}>{tourResult}</span>}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-3">
+                  Booking link: <a href={tourLink} target="_blank" rel="noreferrer" className="underline">{tourLink}</a> ·
+                  wording is editable under Templates → Emails → "Lead — Tour invite".
+                </p>
+              </div>
             </div>
           )}
 
