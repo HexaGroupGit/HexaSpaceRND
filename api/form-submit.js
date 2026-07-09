@@ -9,7 +9,7 @@
 //   `website` is a honeypot — if filled, we treat it as a bot and no-op.
 
 import { createClient } from '@supabase/supabase-js'
-import { leadTypeFor, findEmailTemplate, renderLead, sendResend, sendFunctionBrochure } from './_leads.js'
+import { LEAD_NOTIFY, leadTypeFor, findEmailTemplate, renderLead, sendResend, sendFunctionBrochure } from './_leads.js'
 import { sendResendEmail } from './_email.js'
 import { brandFrame, bH2, bP, bTable, bSmall } from './_brand.js'
 
@@ -158,7 +158,7 @@ async function notifyFunctionAdmin(supabase, b) {
   if (!resendKey) return
   const { data: settRows } = await supabase.from('settings').select('data').eq('id', 'global')
   const settings = settRows?.[0]?.data ?? {}
-  const to = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
+  const to = [...new Set([...LEAD_NOTIFY, settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
   if (!to.length) return
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
   const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'
@@ -182,7 +182,7 @@ async function notifyAdmin(supabase, lead, space) {
   if (!resendKey) return
   const { data: settRows } = await supabase.from('settings').select('data').eq('id', 'global')
   const settings = settRows?.[0]?.data ?? {}
-  const to = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
+  const to = [...new Set([...LEAD_NOTIFY, settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
   if (!to.length) return
 
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'

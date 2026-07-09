@@ -1,3 +1,4 @@
+import { LEAD_NOTIFY } from './_leads.js'
 // Vercel serverless — POST /api/function-request  (public, CORS *)
 // The branded "Book a time" page on www.hexaspace.com.au posts here. Moves an
 // existing enquiry (matched by ref = requestToken from the brochure link) — or
@@ -77,7 +78,7 @@ export default async function handler(req, res) {
 async function notifyAdmin(supabase, b) {
   const { data: settRows } = await supabase.from('settings').select('data').eq('id', 'global')
   const settings = settRows?.[0]?.data ?? {}
-  const to = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
+  const to = [...new Set([...LEAD_NOTIFY, settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
   if (!to.length) return
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
   const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'

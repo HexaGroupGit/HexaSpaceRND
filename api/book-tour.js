@@ -3,7 +3,7 @@
 // existing) lead in the CRM with source 'book-tour', which also stops the
 // nurture sequence. Requires SUPABASE_SERVICE_ROLE_KEY; RESEND_API_KEY optional.
 import { createClient } from '@supabase/supabase-js'
-import { fillVars, findEmailTemplate, sendResend } from './_leads.js'
+import { LEAD_NOTIFY, fillVars, findEmailTemplate, sendResend } from './_leads.js'
 import { sendResendEmail } from './_email.js'
 import { brandFrame, bH2, bTable, bSmall } from './_brand.js'
 
@@ -88,7 +88,7 @@ async function notifyAdmin(supabase, lead) {
   if (!resendKey) return
   const { data: settRows } = await supabase.from('settings').select('data').eq('id', 'global')
   const settings = settRows?.[0]?.data ?? {}
-  const to = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
+  const to = [...new Set([...LEAD_NOTIFY, settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
   if (!to.length) return
   const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
   const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'

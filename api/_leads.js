@@ -3,6 +3,10 @@
 // NOTE: never import ../src/lib/sendEmail.js here — it pulls in the browser
 // Supabase client (import.meta.env) and breaks in the serverless runtime.
 
+// Every new-lead notification (website enquiry, tour request, function space,
+// private office — anything) goes to the whole leasing team.
+export const LEAD_NOTIFY = ['eric@hexaspace.com.au', 'brittany@hexaspace.com.au', 'scarlett@hexaspace.com.au', 'info@hexaspace.com.au']
+
 export function fillVars(str, vars) {
   return String(str || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vars ? (vars[k] ?? '') : m))
 }
