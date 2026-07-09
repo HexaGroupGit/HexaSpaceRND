@@ -15,6 +15,8 @@ export default function MigrationPanel() {
   const [result, setResult] = useState(null)
   const [open, setOpen] = useState(false)
   const [view, setView] = useState('all') // all | signed | awaiting | notinvited
+  const [resending, setResending] = useState(null) // member email in flight
+  const [resent, setResent] = useState({}) // email -> 'ok' | error message
 
   useEffect(() => { load() }, [])
   async function load() {
@@ -42,6 +44,23 @@ export default function MigrationPanel() {
     } catch (e) {
       setResult({ error: e.message })
     } finally { setBusy(null) }
+  }
+
+  // One-off resend for a single member — a fresh set-password link (links are
+  // single-use and expire after 24h, so anyone who missed theirs needs this).
+  async function resendOne(r) {
+    setResending(r.email)
+    try {
+      const res = await fetch('/api/auth/invite', {
+        method: 'POST', headers: await authHeaders(),
+        body: JSON.stringify({ email: r.email }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error ?? 'Send failed.')
+      setResent((m) => ({ ...m, [r.email]: 'ok' }))
+    } catch (e) {
+      setResent((m) => ({ ...m, [r.email]: e.message }))
+    } finally { setResending(null) }
   }
 
   if (loading && !data) return null
@@ -129,11 +148,11 @@ export default function MigrationPanel() {
           <div className="border border-border rounded-md overflow-hidden max-h-96 overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="bg-muted/60 text-muted-foreground sticky top-0">
-                <tr>{['Member', 'Company', 'Invited', 'Signed up', 'Status'].map((h) => <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>)}</tr>
+                <tr>{['Member', 'Company', 'Invited', 'Signed up', 'Status', ''].map((h, i) => <th key={i} className="text-left px-3 py-2 font-medium">{h}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {roster.length === 0 && (
-                  <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Nobody in this group.</td></tr>
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">Nobody in this group.</td></tr>
                 )}
                 {roster.map((r) => {
                   const st = statusOf(r)
@@ -145,6 +164,24 @@ export default function MigrationPanel() {
                       <td className="px-3 py-2 text-muted-foreground">{r.signedInAt ? r.signedInAt.slice(0, 10) : '—'}</td>
                       <td className="px-3 py-2">
                         <span className={`px-2 py-0.5 rounded-full font-semibold ${PILL[st]}`}>{LABEL[st]}</span>
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {!r.signedInAt && r.email && (
+                          resent[r.email] === 'ok' ? (
+                            <span className="inline-flex items-center gap-1 text-green-700"><CheckCircle2 size={12} /> Sent</span>
+                          ) : (
+                            <>
+                              <button onClick={() => resendOne(r)} disabled={resending === r.email}
+                                title="Send this member a fresh set-password link (links are single-use, valid 24h)"
+                                className="inline-flex items-center gap-1 border border-input px-2 py-1 rounded-md font-medium text-foreground hover:bg-muted/50 disabled:opacity-40">
+                                <Send size={11} /> {resending === r.email ? 'Sending…' : 'Resend'}
+                              </button>
+                              {resent[r.email] && resent[r.email] !== 'ok' && (
+                                <div className="text-red-600 mt-0.5">{resent[r.email]}</div>
+                              )}
+                            </>
+                          )
+                        )}
                       </td>
                     </tr>
                   )
