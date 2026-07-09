@@ -75,11 +75,9 @@ export default function Memberships() {
 
   // Private Office column mirrors Spaces → Private Offices exactly: occupant is the
   // explicit space assignment (occupantTenantId / occupantName); otherwise the
-  // active-or-pending lease on the unit. Status follows occupancy; rate & dates
-  // come from the space + its lease so this matches the Spaces view 1:1.
+  // ACTIVE lease on the unit — pending (sent, unsigned) contracts don't occupy.
   const activeLeaseForSpace = (spaceId) =>
-    leases.find((l) => l.spaceId === spaceId && l.status === 'active') ||
-    leases.find((l) => l.spaceId === spaceId && l.status === 'pending') || null
+    leases.find((l) => l.spaceId === spaceId && l.status === 'active') || null
   const officeItems = spaces
     .filter((s) => s.type === 'office')
     .sort((a, b) => (floorRank[a.floor] ?? 9) - (floorRank[b.floor] ?? 9) || String(a.unitNumber).localeCompare(String(b.unitNumber), undefined, { numeric: true }))

@@ -30,9 +30,10 @@ export default function PrivateOfficesTab({ ctx }) {
   const isSuperAdmin = currentUserRole === 'super_admin'
 
   const offices = spaces.filter((s) => s.type === 'office')
+  // Active contracts only — a pending (sent, unsigned) agreement doesn't
+  // occupy the office; it activates on signing + payment.
   const activeLeaseFor = (spaceId) =>
-    leases.find((l) => l.spaceId === spaceId && l.status === 'active') ||
-    leases.find((l) => l.spaceId === spaceId && l.status === 'pending')
+    leases.find((l) => l.spaceId === spaceId && l.status === 'active')
   const companyName = (tenantId) => tenants.find((t) => t.id === tenantId)?.businessName ?? '—'
   const fmtDate = (d) => { if (!d) return '—'; try { return format(parseISO(d), 'dd/MM/yyyy') } catch { return '—' } }
   // Explicit floorplan occupant on the space wins; otherwise fall back to a lease.

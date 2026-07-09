@@ -46,7 +46,7 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, updateSp
   // Derived marker state: vacant (no occupant) → green; occupied with a lease
   // ending within 3 months → yellow; otherwise occupied → dark.
   const spaceState = (s) => {
-    const lease = leases.find((l) => l.spaceId === s.id && (l.status === 'active' || l.status === 'pending'))
+    const lease = leases.find((l) => l.spaceId === s.id && l.status === 'active')
     const occupied = !!(s.occupantTenantId || s.occupantName || lease)
     if (!occupied) return 'vacant'
     // Use the effective move-out date so a served-notice / scheduled termination

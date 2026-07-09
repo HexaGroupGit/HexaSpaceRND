@@ -10,11 +10,11 @@ export default function LocationsTab({ ctx }) {
   const [view, setView] = useState('floors') // 'floors' | 'plan'
 
   const typeLabel = (t) => SPACE_TABS.find((x) => x.type === t)?.label ?? t
-  // An office is occupied if it has an occupant or an active/pending lease —
-  // same rule as the Spaces, Memberships and Dashboard views.
+  // An office is occupied only by an ACTIVE contract or an explicit occupant —
+  // pending (sent, unsigned) contracts don't occupy. Same rule everywhere.
   const officeOccupied = (s) =>
     !!(s.occupantTenantId || s.occupantName ||
-      leases.some((l) => l.spaceId === s.id && (l.status === 'active' || l.status === 'pending')))
+      leases.some((l) => l.spaceId === s.id && l.status === 'active'))
 
   return (
     <div>

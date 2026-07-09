@@ -52,9 +52,11 @@ export default function Dashboard() {
   const monthEnd = endOfMonth(today)
 
   const activeLeases = leases.filter((l) => l.status === 'active')
+  // Only an ACTIVE (activated) contract occupies an office — a sent/unsigned
+  // pending contract holds it as reserved but doesn't count as occupied.
   const officeHasOccupant = (s) =>
     !!(s.occupantTenantId || s.occupantName ||
-      leases.some((l) => l.spaceId === s.id && (l.status === 'active' || l.status === 'pending')))
+      leases.some((l) => l.spaceId === s.id && l.status === 'active'))
   const occupiedSpaces = spaces.filter((s) => s.status === 'occupied')
   const vacantSpaces = spaces.filter((s) => s.status === 'vacant')
   const vacantOffices = spaces.filter((s) => s.type === 'office' && !officeHasOccupant(s))
