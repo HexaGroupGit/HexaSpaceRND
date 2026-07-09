@@ -214,8 +214,41 @@ export default async function handler(req, res) {
       out.bondOverdue.push(`${inv.number ?? inv.id} — ${tenant?.businessName ?? inv.tenantId} (approved ${String(inv.approvedAt).split('T')[0]}; T&C promises refund within 60 days)`)
     }
 
+    // ── 5. Salto access sweep (safety net) ──────────────────────────────────
+    // The offboard cascade fires revoke zaps from the ADMIN APP; if nobody
+    // opened it (or a zap call failed silently), an ex-member keeps door
+    // access. This sweep catches stragglers server-side: any member still
+    // flagged saltoAccess whose company holds no live contract — or who is
+    // Former/archived — gets the remove_user zap re-fired and the flag
+    // cleared. With no webhook configured they're listed for manual removal.
+    out.saltoSwept = []
+    const liveCompanyIds = new Set(
+      leases.filter((l) => ['active', 'pending'].includes(String(l.status))).map((l) => l.tenantId)
+    )
+    const revokeHook = process.env.SALTO_REVOKE_WEBHOOK
+    for (const m of members) {
+      if (m.saltoAccess !== true) continue
+      const memberGone = ['Former', 'archived'].includes(String(m.status))
+      const companyGone = !m.companyId || !liveCompanyIds.has(m.companyId)
+      if (!memberGone && !companyGone) continue
+      const label = `${m.name ?? m.email ?? m.id} (${tenants.find((t) => t.id === m.companyId)?.businessName ?? 'no company'}) — ${memberGone ? 'member removed' : 'no live contract'}`
+      if (!revokeHook) { out.saltoSwept.push(`${label} — NO WEBHOOK, remove manually in KS`); continue }
+      try {
+        if (!dryRun) {
+          const r = await fetch(revokeHook, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'remove_user', email: m.email ?? null, saltoUserId: m.saltoUserId ?? null, source: 'hexaspace-platform-sweep' }),
+          })
+          if (!r.ok) throw new Error(`revoke hook ${r.status}`)
+          await saveRow('members', m.id, { ...m, saltoAccess: false, saltoSweptAt: new Date().toISOString() })
+        }
+        out.saltoSwept.push(label)
+      } catch (e) { out.errors.push(`salto sweep ${label}: ${e.message}`) }
+    }
+
     // ── Admin digest (only when something happened or needs attention) ──────
-    const anything = out.occupied.length + out.onboarded.length + out.expired.length + out.bondOverdue.length + out.errors.length > 0
+    const anything = out.occupied.length + out.onboarded.length + out.expired.length + out.bondOverdue.length + out.saltoSwept.length + (out.cardReminders?.length ?? 0) + out.errors.length > 0
     if (anything && resendKey && !dryRun) {
       const list = (items) => bPanel(items.map((i) => `<div style="font-family:${SANS};font-size:13px;color:${INK};padding:4px 0">${i}</div>`).join(''))
       const section = (title, items) => items.length ? bH2(title) + list(items) : ''
@@ -227,6 +260,8 @@ export default async function handler(req, res) {
         section(`— ${out.onboardedSuppressed.length} onboarding(s) suppressed (already moved in)`, out.onboardedSuppressed) +
         section(`⚠ ${out.expired.length} lease(s) expired on served notice`, out.expired) +
         section(`⚠ ${out.bondOverdue.length} bond refund(s) overdue`, out.bondOverdue) +
+        section(`🔑 ${out.saltoSwept.length} door access revocation(s) swept`, out.saltoSwept) +
+        section(`💳 ${(out.cardReminders ?? []).length} card-on-file reminder(s) sent`, out.cardReminders ?? []) +
         section(`✗ ${out.errors.length} error(s)`, out.errors) +
         bBtn('Open the admin portal', 'https://portal.hexaspace.com.au')
       const adminTo = [...new Set(['info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
