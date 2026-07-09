@@ -7,7 +7,7 @@ import { Page, PageHeader, Card, Eyebrow } from './ui.jsx'
 const IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent)
 
 const GUIDES = [
-  { icon: CalendarClock, title: 'Book a meeting room', body: 'Browse rooms under Meeting Rooms, request your time, and our team confirms availability — usually within the hour.' },
+  { icon: CalendarClock, title: 'Book a meeting room', body: 'Browse rooms under Meeting Rooms and book your time — it confirms instantly, and door access activates 15 minutes before you start.' },
   { icon: Receipt, title: 'View & download invoices', body: 'Every invoice lives under Billing → Invoices. Download a PDF any time, and check your next bill under Membership.' },
   { icon: KeyRound, title: '24/7 access', body: 'Your access pass works around the clock. Lost your pass? Submit a ticket and reception will reissue one.' },
   { icon: Wifi, title: 'Wi-Fi & printing', body: 'WIFI_BODY_PLACEHOLDER' },

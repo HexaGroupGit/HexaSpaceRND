@@ -41,7 +41,7 @@ export default async function handler(req, res) {
 
     const copy = {
       new: { kicker: 'New Booking', h1: 'Meeting room booked 📅', lead: 'A member just booked a meeting room from the portal/app.' },
-      amended: { kicker: 'Booking Changed', h1: 'Booking amended ✏️', lead: 'A member changed their booking — it is back to Pending for re-confirmation.' },
+      amended: { kicker: 'Booking Changed', h1: 'Booking amended ✏️', lead: 'A member changed their booking — door access re-queues for the new time automatically.' },
       cancelled: { kicker: 'Booking Cancelled', h1: 'Booking cancelled ✖️', lead: 'A member cancelled their booking; their credits were returned.' },
     }[kind] ?? {}
 

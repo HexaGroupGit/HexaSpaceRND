@@ -39,9 +39,15 @@ function melLocal(ms, offset) {
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end()
-  const { requireCronOrAdmin } = await import('../_auth.js')
+  // Cron, admin, OR member: members trigger a sweep when they book (their
+  // bookings auto-confirm). The sweep only reads CONFIRMED bookings from the
+  // DB, so the caller can't influence what gets granted.
+  const { requireCronOrAdmin, requireMember } = await import('../_auth.js')
   const _g = await requireCronOrAdmin(req)
-  if (!_g.ok) return res.status(_g.status).json({ error: _g.error })
+  if (!_g.ok) {
+    const m = await requireMember(req)
+    if (m.error) return res.status(m.status).json({ error: m.error })
+  }
 
   const hook = process.env.SALTO_ROOM_ACCESS_WEBHOOK
   if (!hook) return res.status(200).json({ skipped: 'SALTO_ROOM_ACCESS_WEBHOOK not set' })

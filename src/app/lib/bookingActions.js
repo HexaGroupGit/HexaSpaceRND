@@ -80,7 +80,7 @@ export async function createBooking({ room, date, startTime, endTime, title, mem
     reference: `BKG-${Math.floor(100000 + Math.random() * 900000)}`,
     resourceId: room.id, memberId: member?.id ?? '', companyId: company?.id ?? '',
     date, startTime, endTime, title: title || '',
-    status: 'Pending', source: 'Portal', repeat: 'none', createdBy: 'Member',
+    status: 'Confirmed', source: 'Portal', repeat: 'none', createdBy: 'Member',
     createdAt: new Date().toISOString().split('T')[0],
     creditsUsed: used,
     paidBy: isPerk ? 'included' : (shortfall > 0 ? (used > 0 ? 'part_credits' : 'fee') : 'credits'),
@@ -118,15 +118,19 @@ export async function createBooking({ room, date, startTime, endTime, title, mem
   const dbErr = results.find((r) => r.error)?.error
   if (dbErr) throw new Error(dbErr.message)
 
-  // Fire-and-forget ops notification — info@ hears about every member booking.
+  // Fire-and-forget: ops notification + queue the Salto room-access zap
+  // (bookings are auto-confirmed, so access schedules immediately).
   ;(async () => {
     try {
       const { authHeaders } = await import('../../lib/apiFetch.js')
+      const headers = await authHeaders()
       await fetch(apiUrl('/api/portal/notify-booking'), {
-        method: 'POST', headers: await authHeaders(),
+        method: 'POST', headers,
         body: JSON.stringify({ bookingId: booking.id, kind: 'new' }),
       })
-    } catch { /* best-effort */ }
+      await new Promise((r) => setTimeout(r, 1500))
+      await fetch(apiUrl('/api/salto/room-access'), { method: 'POST', headers })
+    } catch { /* best-effort; hourly cron catches up */ }
   })()
 
   return { booking, company: updatedCompany, fee }

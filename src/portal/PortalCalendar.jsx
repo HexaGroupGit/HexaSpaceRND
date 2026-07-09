@@ -207,6 +207,16 @@ async function notifyAttendees(bookingId, mode, occurrences = 1) {
 
 // Fire-and-forget ops notification — info@ hears about every member booking
 // action (new / amended / cancelled) via the member-authed endpoint.
+// Ask the server to queue Salto room access for freshly confirmed bookings.
+// Fire-and-forget; idempotent server-side, hourly cron is the safety net.
+async function queueRoomAccess() {
+  try {
+    const { authHeaders } = await import('../lib/apiFetch.js')
+    await new Promise((r) => setTimeout(r, 2000)) // let the booking upsert land
+    await fetch('/api/salto/room-access', { method: 'POST', headers: await authHeaders() })
+  } catch { /* cron will catch up */ }
+}
+
 async function notifyOps(bookingId, kind, occurrences = 1) {
   try {
     const { authHeaders } = await import('../lib/apiFetch.js')
@@ -289,7 +299,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
         date, startTime: f.startTime, endTime: f.endTime, title: f.title,
         memberName: member?.name || company?.contactName || '', companyName: company?.businessName || '',
         attendees: parseEmails(f.attendees),
-        status: 'Pending', source: 'Portal', repeat: f.repeat, createdBy: 'Member',
+        status: 'Confirmed', source: 'Portal', repeat: f.repeat, createdBy: 'Member',
         createdAt: new Date().toISOString().split('T')[0],
       })
     }
@@ -354,6 +364,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
     // Email the invited attendees (covers the whole series in one invite).
     if (created[0]?.attendees?.length) notifyAttendees(created[0].id, 'invite', created.length)
     if (created[0]) notifyOps(created[0].id, 'new', created.length)
+    queueRoomAccess()
     onBooked(created, bal)
   }
 
@@ -442,7 +453,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
 // ── Amend / cancel the member's own booking ──────────────────────────────────
 // Changing times re-balances the company credit pool (old spend refunded, new
 // spend deducted; only NET overage beyond what was already fee'd raises a new
-// Booking Fee) and drops the booking back to Pending for team re-confirmation.
+// Booking Fee) and the new time re-queues door access automatically.
 // Cancelling refunds the credits that were drawn from the pool.
 function AmendModal({ booking, resources, bookings, company, remaining, leases, settings, allSpaces, onClose, onSaved }) {
   const b = booking
@@ -510,7 +521,7 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
       ...b, date: f.date, startTime: f.startTime, endTime: f.endTime, attendees,
       creditsUsed: isPerk ? 0 : newUsed,
       paidBy: isPerk ? 'included' : (newNeed > newUsed ? (newUsed > 0 ? 'part_credits' : 'fee') : 'credits'),
-      status: 'Pending', amendedAt: nowIso(),
+      status: 'Confirmed', amendedAt: nowIso(),
       // Times changed — the door-access window must be re-queued when the
       // team re-confirms, so clear the sent stamp.
       roomAccessSentAt: null,
@@ -534,6 +545,7 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
     if (err) return setError(err.message)
     if (attendees.length) notifyAttendees(b.id, 'update')
     notifyOps(b.id, 'amended')
+    queueRoomAccess()
     onSaved(updated, poolAfter)
   }
 
@@ -591,7 +603,7 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
               )}
             </div>
           )}
-          <p className="hx-prose text-[12px]">Changed bookings return to <strong>Pending</strong> until our team re-confirms the new time.</p>
+          <p className="hx-prose text-[12px]">Your booking updates instantly — room access follows the new time automatically.</p>
           {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>}
         </div>
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-ink/10">
