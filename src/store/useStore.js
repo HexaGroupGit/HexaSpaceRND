@@ -1317,6 +1317,7 @@ export function useStore() {
     setBookings((prev) => [...prev, item])
     syncRow('bookings', item.id, item)
     logAudit('create', 'booking', item.id, item.reference)
+    if (/confirmed|approved/i.test(String(item.status ?? ''))) queueRoomAccess()
     return item
   }, [])
 
@@ -1325,9 +1326,27 @@ export function useStore() {
       const next = prev.map((b) => (b.id === id ? { ...b, ...updates } : b))
       const updated = next.find((b) => b.id === id)
       if (updated) syncRow('bookings', id, updated)
+      // Booking just became confirmed → queue Salto room access immediately
+      // (the zap holds it until 15 min before the start, so early is safe).
+      if (updated && /confirmed|approved/i.test(String(updates.status ?? ''))) queueRoomAccess()
       return next
     })
   }, [])
+
+  // Fire-and-forget: asks the room-access endpoint to sweep confirmed bookings
+  // that haven't had their door-access zap sent yet. Idempotent server-side
+  // (roomAccessSentAt), so calling it on every confirmation is safe. The
+  // hourly cron stays as the safety net for anything this misses.
+  function queueRoomAccess() {
+    ;(async () => {
+      try {
+        // Small pause so the booking upsert lands in the DB before the
+        // endpoint (which reads from the DB) sweeps for it.
+        await new Promise((r) => setTimeout(r, 2000))
+        await fetch('/api/salto/room-access', { method: 'POST', headers: await authHeaders() })
+      } catch { /* cron will catch up */ }
+    })()
+  }
 
   const deleteBooking = useCallback((id) => {
     setBookings((prev) => prev.filter((x) => x.id !== id))

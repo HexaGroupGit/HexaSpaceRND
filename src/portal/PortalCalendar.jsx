@@ -511,6 +511,9 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
       creditsUsed: isPerk ? 0 : newUsed,
       paidBy: isPerk ? 'included' : (newNeed > newUsed ? (newUsed > 0 ? 'part_credits' : 'fee') : 'credits'),
       status: 'Pending', amendedAt: nowIso(),
+      // Times changed — the door-access window must be re-queued when the
+      // team re-confirms, so clear the sent stamp.
+      roomAccessSentAt: null,
     }
     let feeWrite = null
     if (!isPerk && extraFee > 0 && company?.id) {

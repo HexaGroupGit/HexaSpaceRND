@@ -64,7 +64,11 @@ export default async function handler(req, res) {
   const groupIds = settRes.data?.data?.salto?.accessGroupIds ?? {}
 
   const now = Date.now()
-  const horizon = now + 24 * 3600 * 1000
+  // The zap holds each grant at a Delay Until (accessFrom), so we can send as
+  // soon as a booking is confirmed — capped at 27 days (Zapier delays max out
+  // at one month). The admin app pings this endpoint on every confirmation;
+  // the hourly cron is the safety net.
+  const horizon = now + 27 * 24 * 3600 * 1000
   const sent = [], skippedNoMembers = []
 
   for (const b of bookings) {
