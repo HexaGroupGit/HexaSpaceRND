@@ -59,8 +59,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ request: reqOut, lease, tenant });
     }
 
+    // All spaces the contract's items reference (multi-office contracts),
+    // not just the primary — the fee table names each item's own unit.
+    const itemSpaceIds = [...new Set([lease.spaceId, ...(lease.items ?? []).map((it) => it.spaceId)].filter(Boolean))]
     const [{ data: sRows }, { data: settRows }, { data: tmplRows }] = await Promise.all([
-      supabase.from('spaces').select('data').eq('id', lease.spaceId),
+      supabase.from('spaces').select('id, data').in('id', itemSpaceIds),
       supabase.from('settings').select('data').eq('id', 'global'),
       supabase.from('templates').select('id,data'),
     ]);
@@ -72,7 +75,8 @@ export default async function handler(req, res) {
       lease,
       tenant,
       members,
-      space: sRows?.[0]?.data ?? null,
+      space: (sRows ?? []).map((r) => r.data).find((sp) => sp.id === lease.spaceId) ?? sRows?.[0]?.data ?? null,
+      spaces: (sRows ?? []).map((r) => ({ id: r.data.id ?? r.id, unitNumber: r.data.unitNumber, size: r.data.size, type: r.data.type })),
       settings: publicSettings(settRows?.[0]?.data),
       templates,
     });

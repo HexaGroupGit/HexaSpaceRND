@@ -43,9 +43,13 @@ function getStageBadges(lease) {
 }
 
 export default function ContractDetail({
-  lease, tenant, space, templates = [], allLeases = [], settings, members = [],
+  lease, tenant, space, spaces = [], templates = [], allLeases = [], settings, members = [],
   onEdit, onBack, onRenew, onDelete, onUpdateLease,
 }) {
+  const unitFor = (spaceId) =>
+    spaces.find((sp) => sp.id === spaceId)?.unitNumber
+      ?? (spaceId && spaceId === lease.spaceId ? space?.unitNumber : null)
+      ?? space?.unitNumber ?? '—'
   const primaryContact = resolvePrimaryContact(lease, tenant, members)
   const navigate = useNavigate()
   const [showMenu, setShowMenu] = useState(false)
@@ -283,7 +287,7 @@ export default function ContractDetail({
           const monthly = stepMonthly(step) // charged amount — list less the step's discount
           if (rowIdx % 2 === 0) { doc.setFillColor(248, 248, 248); doc.rect(ml, y - 2, mr - ml, 7, 'F') }
           doc.setTextColor(0)
-          doc.text(space?.unitNumber ?? '—', cols.office, y + 3)
+          doc.text(unitFor(item.spaceId), cols.office, y + 3)
           doc.text(step.startDate ? format(parseISO(step.startDate), 'dd/MM/yyyy') : '—', cols.start, y + 3)
           doc.text(step.endDate ? format(parseISO(step.endDate), 'dd/MM/yyyy') : '—', cols.end, y + 3)
           doc.setFont('helvetica', 'bold')
@@ -1022,7 +1026,7 @@ export default function ContractDetail({
           {/* ── Template View ── */}
           {view === 'template' && (
             <div className="overflow-auto bg-muted flex-1">
-              <ContractTemplate lease={lease} tenant={tenant} space={space} templates={templates} settings={settings} members={members} />
+              <ContractTemplate lease={lease} tenant={tenant} space={space} spaces={spaces} templates={templates} settings={settings} members={members} />
               {contractDocs.map((tmpl) => (
                 <div key={tmpl.id} className="bg-card max-w-4xl mx-auto mb-6 px-12 py-10 text-sm text-foreground font-sans shadow-sm">
                   <h2 className="text-base font-bold uppercase tracking-widest text-foreground mb-3">{tmpl.name}</h2>
@@ -1081,7 +1085,7 @@ export default function ContractDetail({
                 </thead>
                 <tbody>
                   {items.map((item, idx) => {
-                    const itemSpace = item.spaceId ? [space, ...[]].find((s) => s?.id === item.spaceId) : null
+                    const itemSpace = item.spaceId ? (spaces.find((sp) => sp.id === item.spaceId) ?? (space?.id === item.spaceId ? space : null)) : null
                     const resourceName = itemSpace?.unitNumber ?? space?.unitNumber ?? `Resource ${idx + 1}`
                     const resourceSub = itemSpace?.size ?? space?.size ?? ''
                     return (

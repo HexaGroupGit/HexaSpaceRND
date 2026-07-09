@@ -38,7 +38,13 @@ function SigBlock({ party, name }) {
   )
 }
 
-export default function ContractTemplate({ lease, tenant, space, settings, members = [] }) {
+export default function ContractTemplate({ lease, tenant, space, spaces = [], settings, members = [] }) {
+  // Multi-office contracts: each item names its own space; `space` (the
+  // lease's primary space) is only the fallback.
+  const unitFor = (spaceId) =>
+    spaces.find((sp) => sp.id === spaceId)?.unitNumber
+      ?? (spaceId && spaceId === lease.spaceId ? space?.unitNumber : null)
+      ?? space?.unitNumber ?? '—'
   const contact = resolvePrimaryContact(lease, tenant, members)
   const BUSINESS_ADDRESS = getBusinessAddress(settings)
   const contractNum = lease.contractNumber ?? `CON-${lease.id?.slice(-3).toUpperCase()}`
@@ -131,7 +137,7 @@ export default function ContractTemplate({ lease, tenant, space, settings, membe
               const discounted = monthly < list
               return (
                 <tr key={`${item.spaceId}-${si}`} className="border-b border-gray-200 last:border-b-0">
-                  <td className="px-3 py-2 border-r border-gray-200">{space?.unitNumber ?? '—'}</td>
+                  <td className="px-3 py-2 border-r border-gray-200">{unitFor(item.spaceId)}</td>
                   <td className="px-3 py-2 border-r border-gray-200">
                     {step.startDate ? format(parseISO(step.startDate), 'dd/MM/yyyy') : '—'}
                   </td>
