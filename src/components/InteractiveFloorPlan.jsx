@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { format, parseISO, isValid, differenceInDays } from 'date-fns'
 import { X, MapPin, Crosshair, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
+import { moveOutDate } from './spaces/shared.jsx'
 
 // Image-based interactive floorplan: your real plan as the backdrop, with each
 // space pinned on it as a status-coloured marker. Positions persist on the space
@@ -48,7 +49,10 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, updateSp
     const lease = leases.find((l) => l.spaceId === s.id && (l.status === 'active' || l.status === 'pending'))
     const occupied = !!(s.occupantTenantId || s.occupantName || lease)
     if (!occupied) return 'vacant'
-    const end = lease?.endDate ? parseISO(lease.endDate) : null
+    // Use the effective move-out date so a served-notice / scheduled termination
+    // (which sets a vacate date, not a new end date) still flags yellow.
+    const out = moveOutDate(lease)
+    const end = out ? parseISO(out) : null
     if (end && isValid(end)) {
       const days = differenceInDays(end, new Date())
       if (days >= 0 && days <= 90) return 'ending'

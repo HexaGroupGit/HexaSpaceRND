@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2, FileText, DoorClosed, KeyRound } from 'lucide-rea
 import ContractForm from '../ContractForm.jsx'
 import {
   FLOORS, floorLabel, StatusPill, money, Field, Modal, ic,
-  officeRate, ppRate, revenueAccountFor, accountCode,
+  officeRate, ppRate, revenueAccountFor, accountCode, isVacating, moveOutDate,
 } from './shared.jsx'
 
 const PLACEMENTS = [['external', 'External'], ['internal', 'Internal']]
@@ -149,8 +149,11 @@ export default function PrivateOfficesTab({ ctx }) {
             {sorted.map((o) => {
               const occ = occupantOf(o)
               const lease = activeLeaseFor(o.id)
-              // Status follows occupancy: occupied when someone's in it, available when not.
-              const derivedStatus = occ ? 'occupied' : 'vacant'
+              const vacating = isVacating(lease)
+              // Status follows occupancy: occupied when someone's in it, vacating
+              // when they've given notice / are scheduled to leave, available when empty.
+              const derivedStatus = occ ? (vacating ? 'vacating' : 'occupied') : 'vacant'
+              const leavingOn = vacating ? moveOutDate(lease) : null
               return (
                 <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted/50">
                   <td className="px-4 py-2.5 font-medium text-foreground">{o.unitNumber}</td>
@@ -198,6 +201,7 @@ export default function PrivateOfficesTab({ ctx }) {
                       <button onClick={() => navigate('/leases')} className="text-left group">
                         <div className="text-foreground group-hover:underline">{occ.name}</div>
                         {occ.contract && <div className="text-xs text-muted-foreground flex items-center gap-1"><FileText size={11} /> {occ.contract}</div>}
+                        {leavingOn && <div className="text-xs text-yellow-700 font-medium">Leaving {fmtDate(leavingOn)}</div>}
                       </button>
                     ) : <span className="text-muted-foreground">Vacant</span>}
                   </td>
@@ -209,9 +213,9 @@ export default function PrivateOfficesTab({ ctx }) {
                   <td className="px-4 py-2.5"><StatusPill status={derivedStatus} /></td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center justify-end gap-1">
-                      {derivedStatus === 'vacant' && (
+                      {(derivedStatus === 'vacant' || derivedStatus === 'vacating') && (
                         <button onClick={() => setContractSpace(o)} className="flex items-center gap-1 text-xs text-primary-foreground bg-primary hover:bg-primary/90 px-2.5 py-1.5 rounded-md font-medium">
-                          <FileText size={12} /> Contract
+                          <FileText size={12} /> {derivedStatus === 'vacating' ? 'Pre-lease' : 'Contract'}
                         </button>
                       )}
                       <button onClick={() => openEdit(o)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"><Pencil size={14} /></button>

@@ -34,16 +34,31 @@ export const STATUS_STYLE = {
   vacant:    'bg-green-50 text-green-700 border border-green-200',
   available: 'bg-green-50 text-green-700 border border-green-200',
   reserved:  'bg-amber-50 text-amber-800 border border-amber-200',
+  vacating:  'bg-yellow-100 text-yellow-800 border border-yellow-300',
 }
 
 export function StatusPill({ status }) {
   const s = status === 'vacant' ? 'available' : status
-  const label = s === 'reserved' ? 'Under offer' : s
+  const label = s === 'reserved' ? 'Under offer' : s === 'vacating' ? 'Vacating soon' : s
   return (
     <span className={`text-xs font-semibold px-2 py-0.5 rounded capitalize ${STATUS_STYLE[s] || 'bg-muted text-muted-foreground'}`}>
       {label}
     </span>
   )
+}
+
+// A lease that's been given notice / scheduled to terminate but is still live —
+// the occupant is on their way out, so the space is "vacating soon", not simply
+// occupied. Used to flag offices (yellow) and to offer them to new leads early.
+export function isVacating(lease) {
+  return !!(lease && ['active', 'pending'].includes(lease.status) &&
+    (lease.noticeGiven || lease.terminationScheduledFor || lease.vacateDate))
+}
+
+// The date the occupant actually moves out: a served-notice / scheduled
+// termination vacates on its vacate date; otherwise the contract's own end date.
+export function moveOutDate(lease) {
+  return lease?.vacateDate || lease?.terminationScheduledFor || lease?.endDate || null
 }
 
 export const money = (n) => `$${Number(n || 0).toLocaleString('en-AU')}`

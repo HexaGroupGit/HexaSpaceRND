@@ -7,6 +7,7 @@ import {
 import { sendEmail, renderProposalTemplate, messageEmailHtml, brandShell, bKicker, bH1, bP, bBtn, bSmall, PORTAL_URL } from '../lib/sendEmail.js'
 import { randomToken } from '../lib/token.js'
 import { buildProposalPdf, buildDeskBrochurePdf, buildVirtualBrochurePdf } from '../lib/proposalPdf.js'
+import { moveOutDate } from './spaces/shared.jsx'
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: User },
@@ -167,15 +168,19 @@ export default function LeadDetail({ lead, store, onClose }) {
   const officeHasOccupant = (s) => !!(s.occupantTenantId || s.occupantName || leases.some((l) => l.spaceId === s.id && (l.status === 'active' || l.status === 'pending')))
   const daysTo = (d) => { try { return Math.ceil((parseISO(d) - new Date()) / 86400000) } catch { return null } }
   const floorLabel = { l2: 'Level 2', l4: 'Level 4', l5: 'Level 5' }
-  // Offices to offer: vacant now, plus occupied ones whose lease ends within 90 days.
+  // Offices to offer: vacant now, plus occupied ones whose occupant is leaving
+  // within 90 days — using the effective move-out date, so a served-notice /
+  // scheduled termination (which sets a vacate date, not a new end date) surfaces
+  // the office to offer to the next tenant.
   const officeOptions = spaces
     .filter((s) => s.type === 'office')
     .map((s) => {
       const occupied = officeHasOccupant(s)
       const l = leases.find((x) => x.spaceId === s.id && x.status === 'active')
-      const endDays = l?.endDate ? daysTo(l.endDate) : null
-      const becoming = occupied && endDays != null && endDays >= 0 && endDays <= 90
-      return { space: s, occupied, becoming, availableFrom: becoming ? l.endDate : null }
+      const outDate = moveOutDate(l)
+      const outDays = outDate ? daysTo(outDate) : null
+      const becoming = occupied && outDays != null && outDays >= 0 && outDays <= 90
+      return { space: s, occupied, becoming, availableFrom: becoming ? outDate : null }
     })
     .filter((o) => !o.occupied || o.becoming)
     .sort((a, b) => (a.occupied === b.occupied ? 0 : a.occupied ? 1 : -1) || String(a.space.unitNumber).localeCompare(String(b.space.unitNumber), undefined, { numeric: true }))

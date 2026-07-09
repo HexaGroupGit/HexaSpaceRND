@@ -2,6 +2,7 @@ import { useOutletContext, useNavigate } from 'react-router-dom'
 import { differenceInDays, parseISO, format, startOfMonth, endOfMonth } from 'date-fns'
 import { Building2, Users, TrendingUp, AlertTriangle, DollarSign, Clock, CheckCircle, PenLine } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card.jsx'
+import { moveOutDate } from './spaces/shared.jsx'
 
 function KPICard({ icon: Icon, label, value, sub, color = 'gray' }) {
   const tones = {
@@ -90,15 +91,19 @@ export default function Dashboard() {
     return days >= 0 && days <= 60
   }).sort((a, b) => differenceInDays(parseISO(a.endDate), today) - differenceInDays(parseISO(b.endDate), today))
 
+  // Spaces freeing up within 90 days — by effective move-out date, so an office
+  // whose occupant has given notice / been scheduled to terminate shows here even
+  // though the contract's own end date hasn't changed.
   const becomingAvailable = activeLeases
-    .filter((l) => {
-      const days = differenceInDays(parseISO(l.endDate), today)
-      return days >= 0 && days <= 90
-    })
     .map((l) => {
+      const out = moveOutDate(l)
+      const days = out ? differenceInDays(parseISO(out), today) : null
+      return { lease: l, days }
+    })
+    .filter((x) => x.days !== null && x.days >= 0 && x.days <= 90)
+    .map(({ lease: l, days }) => {
       const space = spaces.find((s) => s.id === l.spaceId)
       const tenant = tenants.find((t) => t.id === l.tenantId)
-      const days = differenceInDays(parseISO(l.endDate), today)
       return { lease: l, space, tenant, days }
     })
     .sort((a, b) => a.days - b.days)
