@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase.js'
 import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, bookingWindow } from '../../lib/credits.js'
+import { apiUrl } from './native.js'
 
 // Booking writes for the app — mirrors the portal's PortalCalendar confirm()
 // exactly (same bookings/fees/tenants writes, same credit model) so the two
@@ -116,6 +117,17 @@ export async function createBooking({ room, date, startTime, endTime, title, mem
   const results = await Promise.all(writes)
   const dbErr = results.find((r) => r.error)?.error
   if (dbErr) throw new Error(dbErr.message)
+
+  // Fire-and-forget ops notification — info@ hears about every member booking.
+  ;(async () => {
+    try {
+      const { authHeaders } = await import('../../lib/apiFetch.js')
+      await fetch(apiUrl('/api/portal/notify-booking'), {
+        method: 'POST', headers: await authHeaders(),
+        body: JSON.stringify({ bookingId: booking.id, kind: 'new' }),
+      })
+    } catch { /* best-effort */ }
+  })()
 
   return { booking, company: updatedCompany, fee }
 }

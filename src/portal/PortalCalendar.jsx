@@ -205,6 +205,18 @@ async function notifyAttendees(bookingId, mode, occurrences = 1) {
   } catch { /* invitations are best-effort */ }
 }
 
+// Fire-and-forget ops notification — info@ hears about every member booking
+// action (new / amended / cancelled) via the member-authed endpoint.
+async function notifyOps(bookingId, kind, occurrences = 1) {
+  try {
+    const { authHeaders } = await import('../lib/apiFetch.js')
+    await fetch('/api/portal/notify-booking', {
+      method: 'POST', headers: await authHeaders(),
+      body: JSON.stringify({ bookingId, kind, occurrences }),
+    })
+  } catch { /* notifications are best-effort */ }
+}
+
 function BookingModal({ slot, resources, bookings, member, company, remaining, leases, settings, allSpaces, onClose, onBooked }) {
   const [f, setF] = useState({ resourceId: slot.resourceId, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, title: '', repeat: 'none', occurrences: 4, attendees: '' })
   const [saving, setSaving] = useState(false)
@@ -341,6 +353,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
     if (skipped.length) setError('')
     // Email the invited attendees (covers the whole series in one invite).
     if (created[0]?.attendees?.length) notifyAttendees(created[0].id, 'invite', created.length)
+    if (created[0]) notifyOps(created[0].id, 'new', created.length)
     onBooked(created, bal)
   }
 
@@ -517,6 +530,7 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
     setSaving(false)
     if (err) return setError(err.message)
     if (attendees.length) notifyAttendees(b.id, 'update')
+    notifyOps(b.id, 'amended')
     onSaved(updated, poolAfter)
   }
 
@@ -529,6 +543,7 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
     setSaving(false)
     if (err) return setError(err.message)
     if ((b.attendees ?? []).length) notifyAttendees(b.id, 'cancelled')
+    notifyOps(b.id, 'cancelled')
     onSaved(updated, refundedPool)
   }
 
