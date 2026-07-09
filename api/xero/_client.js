@@ -69,6 +69,14 @@ export async function getAccessToken(supabase) {
   })
   const tok = await r.json()
   if (!r.ok || !tok.access_token) {
+    // Benign race: a concurrent invocation may have rotated the token and saved
+    // a fresh one after we loaded ours. Re-read once — if the store now holds a
+    // different, live token, use it instead of declaring the connection dead.
+    const latest = await loadConnection(supabase)
+    if (latest?.refreshToken && latest.refreshToken !== conn.refreshToken &&
+        latest.accessToken && latest.expiresAt && Date.now() < latest.expiresAt - 60_000) {
+      return { accessToken: latest.accessToken, tenantId: latest.tenantId, conn: latest }
+    }
     console.error('Xero token refresh failed:', tok)
     throw new Error('Xero token refresh failed — reconnect from Settings → Integrations → Xero.')
   }
@@ -81,6 +89,17 @@ export async function getAccessToken(supabase) {
   }
   await saveConnection(supabase, next)
   return { accessToken: next.accessToken, tenantId: next.tenantId, conn: next }
+}
+
+// Merge a small patch (e.g. lastPull stamp) onto the CURRENT stored connection.
+// Never spread a connection object you loaded earlier into saveConnection —
+// getAccessToken may have rotated the refresh token since, and writing the old
+// object back re-installs a consumed token. Xero treats replaying a consumed
+// refresh token as theft and revokes the whole grant → "reconnect" purgatory.
+export async function stampConnection(supabase, patch) {
+  const fresh = await loadConnection(supabase)
+  if (!fresh) return
+  await saveConnection(supabase, { ...fresh, ...patch })
 }
 
 export async function xeroFetch(supabase, path, { method = 'GET', body } = {}) {

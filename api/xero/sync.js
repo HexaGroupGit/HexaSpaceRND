@@ -7,7 +7,7 @@
 // 2026-09-01). A dry run is allowed while sync is off — it reports what
 // WOULD be pushed without writing anything to Xero or the platform.
 
-import { getSupabase, loadConnection, saveConnection, xeroFetch, parseXeroDate } from './_client.js'
+import { getSupabase, loadConnection, stampConnection, xeroFetch, parseXeroDate } from './_client.js'
 import { selectAllRows } from '../_db.js'
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH1, bP, bSmall } from '../_brand.js'
@@ -217,7 +217,10 @@ export default async function handler(req, res) {
         }).catch(() => {})
       }
 
-      if (!dryRun) await saveConnection(supabase, { ...conn, lastPull: new Date().toISOString() })
+      // stampConnection, NOT saveConnection({...conn}): getAccessToken rotated
+      // the refresh token during this run — writing the stale conn back would
+      // re-install the consumed token and kill the connection (forced reconnect).
+      if (!dryRun) await stampConnection(supabase, { lastPull: new Date().toISOString() })
       return res.status(200).json({ action, dryRun, checked: candidates.length, paidMarked, receipted: receipts.length, partial, voidedInXero })
     }
 
@@ -319,7 +322,7 @@ export default async function handler(req, res) {
       }
     }
 
-    await saveConnection(supabase, { ...conn, lastPush: new Date().toISOString() })
+    await stampConnection(supabase, { lastPush: new Date().toISOString() })
     return res.status(200).json({ action, dryRun: false, ...results })
   } catch (err) {
     console.error('Xero sync error:', err)
