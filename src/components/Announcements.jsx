@@ -157,7 +157,7 @@ function ComposeModal({ members, onClose, onSent }) {
                 </label>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground mt-2">{recipientCount} unique email{recipientCount === 1 ? '' : 's'} will receive this (BCC — members never see each other).</p>
+            <p className="text-xs text-muted-foreground mt-2">{recipientCount} unique email{recipientCount === 1 ? '' : 's'} will receive this — each member gets their own copy (they never see each other).</p>
           </div>
           {/* AI draft */}
           <div className="border border-dashed border-border rounded-lg p-3 bg-muted/30">

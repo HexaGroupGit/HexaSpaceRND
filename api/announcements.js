@@ -10,12 +10,12 @@
 // Every send goes through sendResendEmail, so safe mode still guards it.
 import { createClient } from '@supabase/supabase-js'
 import { requireAdmin } from './_auth.js'
-import { sendResendEmail } from './_email.js'
+import { sendResendEmail, sendResendBatch } from './_email.js'
 import { brandFrame, bKicker, bH1, bSmall, SANS } from './_brand.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const TEST_TO = 'info@hexaspace.com.au'
-const BCC_CHUNK = 45 // Resend caps recipients per email at 50
+const BATCH_SIZE = 100 // Resend caps the batch endpoint at 100 messages/request
 
 export const config = { maxDuration: 60 }
 
@@ -79,15 +79,17 @@ export default async function handler(req, res) {
     )]
     if (!emails.length) return res.status(400).json({ error: 'No members with emails match that filter.' })
 
-    // BCC in chunks so each member sees only themselves.
+    // Send each member their OWN email (proper To:, so it actually lands in
+    // their inbox) via Resend's batch endpoint, in chunks of 100.
     let sent = 0
     const failures = []
-    for (let i = 0; i < emails.length; i += BCC_CHUNK) {
-      const chunk = emails.slice(i, i + BCC_CHUNK)
-      const r = await sendResendEmail({ from, to: fromEmail, bcc: chunk, replyTo, subject, html })
-      if (r.ok) sent += chunk.length
-      else failures.push(`chunk ${i / BCC_CHUNK + 1}: ${r.status ?? r.error ?? 'failed'}`)
-      await new Promise((r2) => setTimeout(r2, 400))
+    for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+      const chunk = emails.slice(i, i + BATCH_SIZE)
+      const messages = chunk.map((to) => ({ from, to, replyTo, subject, html }))
+      const r = await sendResendBatch(messages)
+      if (r.ok) sent += r.sent
+      else failures.push(`batch ${Math.floor(i / BATCH_SIZE) + 1}: ${r.status ?? r.error ?? 'failed'}`)
+      await new Promise((r2) => setTimeout(r2, 500))
     }
 
     const id = `ann_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`

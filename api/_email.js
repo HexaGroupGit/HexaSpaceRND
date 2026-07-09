@@ -79,6 +79,57 @@ export async function sendResendEmail(payload = {}) {
   }
 }
 
+// Send many INDIVIDUALLY-addressed emails in one request (Resend batch, max 100
+// per call). Each recipient gets their own email with a proper `To:` — no shared
+// BCC, which mail providers spam-filter or drop when the envelope `to` is a
+// no-reply address. Safe mode still applies: the whole batch collapses to a
+// single email to the safe recipient so a broadcast can never escape in test.
+// messages: [{ from, to, subject, html, replyTo? }]. Returns { ok, status, sent }.
+export async function sendResendBatch(messages = []) {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) return { ok: false, skipped: true, reason: 'no_key', sent: 0 }
+  if (!messages.length) return { ok: true, sent: 0 }
+
+  const safe = await getSafeConfig()
+
+  let batch = messages.map((m) => {
+    const p = { from: m.from, to: Array.isArray(m.to) ? m.to : [m.to], subject: m.subject, html: m.html }
+    const replyTo = m.replyTo ?? m.reply_to
+    if (replyTo) p.reply_to = replyTo
+    return p
+  })
+
+  if (safe.mode) {
+    // Collapse the entire batch to ONE email to the safe recipient.
+    const first = messages[0] ?? {}
+    const origCount = messages.length
+    batch = [{
+      from: first.from,
+      to: [safe.to],
+      ...(first.replyTo || first.reply_to ? { reply_to: first.replyTo ?? first.reply_to } : {}),
+      subject: `[TEST → ${safe.to}] ${first.subject || ''}`.trim(),
+      html: `<div style="background:#fff3cd;border:1px solid #ffe69c;color:#664d03;padding:10px 14px;font-family:Arial,sans-serif;font-size:12px;margin-bottom:12px">
+        <strong>Safe mode is ON.</strong> This would normally go individually to ${origCount} recipient${origCount === 1 ? '' : 's'}. All outbound email is redirected to ${safe.to} until safe mode is turned off in Settings.
+      </div>${first.html || ''}`,
+    }]
+  }
+
+  try {
+    const res = await fetch('https://api.resend.com/emails/batch', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(batch),
+    })
+    let data = null
+    try { data = await res.json() } catch { /* ignore */ }
+    // In safe mode the real recipients got nothing (only the safe address did).
+    return { ok: res.ok, status: res.status, data, sent: res.ok ? (safe.mode ? 0 : batch.length) : 0 }
+  } catch (err) {
+    console.error('sendResendBatch error:', err)
+    return { ok: false, error: String(err), sent: 0 }
+  }
+}
+
 // Where to email a company: its own email, else the member flagged Billing
 // Person, else the Contact Person, else any member with an email. Client
 // twin: src/lib/credits.js billingEmailFor.
