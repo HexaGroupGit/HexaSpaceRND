@@ -14,13 +14,20 @@
 //      load. The flag keeps legacy ended leases out of the cascade.
 //   4. Bond-refund SLA — approved refunds older than 45 days with no payout
 //      recorded are flagged (T&C promises refund within 60 days).
+//   4b. Overdue auto-cancellation (opt-in) — a company whose OLDEST unpaid
+//      invoice is 90+ days past due gets escalating cancellation warnings, then
+//      its memberships are terminated (needsOffboard) and step 5 revokes KS
+//      access. Paying off clears the state. OFF unless Settings → Billing Rules.
+//   5. Salto sweep — revokes door access for anyone whose company holds no live
+//      contract (also the safety net for step 4b terminations, same run).
 //
 // ?dryRun=1 reports what WOULD happen without writing or emailing anything.
 // One admin digest email is sent when anything was done or found.
 
+import { randomUUID } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
-import { sendResendEmail } from './_email.js'
-import { brandFrame, bKicker, bH1, bH2, bPanel, bBtn, SANS, INK, MUTE } from './_brand.js'
+import { sendResendEmail, billingEmailFor } from './_email.js'
+import { brandFrame, bKicker, bH1, bH2, bP, bSmall, bPanel, bBtn, SANS, INK, MUTE } from './_brand.js'
 import {
   requiresAccessGate, accessGateMet, shouldOnboard, requiresCardOnFile,
   renderOnboardingTemplate, resolveOnboardingCopy, onboardingEmailHtml,
@@ -32,6 +39,77 @@ const SUPABASE_URL = process.env.SUPABASE_URL
 function pickPrimaryContact(tenant, members) {
   const mine = (members ?? []).filter((m) => m.companyId === tenant?.id)
   return mine.find((m) => m.contactPerson) ?? mine.find((m) => m.billingPerson) ?? mine[0] ?? null
+}
+
+const money = (n) => `$${Number(n || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD`
+
+// Outstanding total for an invoice — same computation as the overdue-reminders
+// email (subtotal from line items + GST), falling back to a stored total.
+function invoiceTotal(inv) {
+  const sub = (inv.lineItems ?? []).reduce(
+    (s, l) => s + Math.round((l.unitPrice ?? 0) * (l.qty ?? 0) * (1 - (l.discountPct ?? 0) / 100) * 100) / 100, 0)
+  const gst = inv.vatEnabled !== false ? Math.round(sub * 0.1 * 100) / 100 : 0
+  return inv.total ?? Math.round((sub + gst) * 100) / 100
+}
+
+// Render an overdue email. Prefers the admin-editable template (Templates →
+// emailType 'overdue_final_warning' / 'membership_cancelled'); falls back to a
+// built-in. `v` is the placeholder map. Returns { subject, html }.
+function renderOverdueEmail(kind, v, templates) {
+  const type = kind === 'cancelled' ? 'membership_cancelled' : 'overdue_final_warning'
+  const fill = (s) => String(s || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in v ? String(v[k]) : m))
+  const tpl = (templates ?? []).find((t) => t.category === 'email' && t.emailType === type && t.content)
+  if (tpl) {
+    const subject = fill(tpl.subject) || (kind === 'cancelled'
+      ? `Membership cancelled — overdue account (${v.company})`
+      : `Action required — membership cancels ${v.cancelDate} unless paid (${v.company})`)
+    return { subject, html: brandFrame(fill(tpl.content), { footerLabel: 'Accounts' }) }
+  }
+  if (kind === 'cancelled') {
+    const inner =
+      bKicker('Membership Cancelled') +
+      bH1('Your membership has been cancelled') +
+      bP(`Hi ${v.tenantName},`) +
+      bP(`As the outstanding balance of <strong>${v.amountOwing}</strong> on ${v.company}'s account remained unpaid for more than ${v.daysOverdue} days, your membership has been cancelled in line with your licence agreement, and your team's door access has been revoked.`) +
+      bP('The outstanding balance remains payable. To discuss settling the account or reinstating your membership, please reply to this email.') +
+      bSmall('Automated account notice from Hexa Space.')
+    return { subject: `Membership cancelled — overdue account (${v.company})`, html: brandFrame(inner, { footerLabel: 'Accounts' }) }
+  }
+  const inner =
+    bKicker('Final Notice') +
+    bH1('Your membership is at risk') +
+    bP(`Hi ${v.tenantName},`) +
+    bP(`Our records show ${v.company} has an outstanding balance of <strong>${v.amountOwing}</strong>, with the oldest invoice now <strong>${v.daysOverdue} days</strong> overdue.`) +
+    bP(`Under your licence agreement, if this balance isn't cleared your membership will be <strong>cancelled on ${v.cancelDate}</strong> — ${v.daysUntilCancel} day(s) from now — and your team's door access permanently revoked.`) +
+    bP('Please pay the outstanding invoice(s) in the member portal, or reply to this email to arrange a payment plan.') +
+    bBtn('View & pay in the portal', v.portalUrl) +
+    bSmall('Automated account notice from Hexa Space.')
+  return { subject: `Action required — membership cancels ${v.cancelDate} unless paid (${v.company})`, html: brandFrame(inner, { footerLabel: 'Accounts' }) }
+}
+
+const dmy = (iso) => (iso ? String(iso).split('-').reverse().join('/') : '')
+
+// Renewal confirmation email — editable template 'renewal_confirmation' with a
+// built-in fallback. `v` is the placeholder map. Returns { subject, html }.
+function renderRenewalEmail(v, templates) {
+  const fill = (s) => String(s || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in v ? String(v[k]) : m))
+  const tpl = (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'renewal_confirmation' && t.content)
+  if (tpl) {
+    return {
+      subject: fill(tpl.subject) || `Your membership has renewed — ${v.contract}`,
+      html: brandFrame(fill(tpl.content), { footerLabel: 'Memberships' }),
+    }
+  }
+  const inner =
+    bKicker('Membership Renewed') +
+    bH1('Your membership has renewed') +
+    bP(`Hi ${v.tenantName},`) +
+    bP(`As no notice was given, your membership for <strong>${v.unit}</strong> (${v.contract}) has automatically renewed on the same terms — there's nothing you need to do.`) +
+    bP(`It now runs through <strong>${v.newEndDate}</strong>${v.monthlyRent ? ` at ${v.monthlyRent}/month + GST` : ''}.`) +
+    (v.giveNoticeUrl ? bP(`Not planning to continue? You can <a href="${v.giveNoticeUrl}" style="color:#1a1a1a;font-weight:600;text-decoration:underline">give notice here</a> — your membership runs until the end of your committed term.`) : '') +
+    bP('If you\'d like to make any changes or discuss your membership, just reply to this email.') +
+    bSmall('Automated renewal confirmation from Hexa Space.')
+  return { subject: `Your membership has renewed — ${v.contract} (through ${v.newEndDate})`, html: brandFrame(inner, { footerLabel: 'Memberships' }) }
 }
 
 async function loadTable(supabase, table) {
@@ -199,8 +277,35 @@ export default async function handler(req, res) {
       if (lease.vacateDate > todayISO) continue
       try {
         await saveRow('leases', lease.id, { ...lease, status: 'expired', needsOffboard: true })
+        lease.status = 'expired'; lease.needsOffboard = true // step 5 sweep revokes this run
         const tenant = tenants.find((t) => t.id === lease.tenantId)
         out.expired.push(`${tenant?.businessName ?? lease.tenantId} (${lease.contractNumber ?? lease.id}) — vacate date ${lease.vacateDate}`)
+      } catch (e) { out.errors.push(e.message) }
+    }
+
+    // ── 3b. Term-end expiry (fixed term ended, NOT renewing) ────────────────
+    // A lease past its end date that is explicitly non-renewing — autoRenew
+    // === false or renewalDeclined — never lapses on its own: the admin app's
+    // auto-renew loop skips it, and step 3 only covers served notice. Left as
+    // is, the company keeps counting as "live" so the step-5 Salto sweep never
+    // revokes. We expire it here (→ needsOffboard → offboard cascade + revoke).
+    //
+    // RENEWING leases (the default: autoRenew !== false, not declined) are
+    // deliberately untouched — the admin app rolls their term forward and bills
+    // the new period on load. We don't duplicate that roll-forward server-side
+    // because it's coupled to the bill run; mirroring it here risks double
+    // renewals / unbilled periods. A renewing membership simply continues.
+    for (const lease of leases) {
+      if (lease.status !== 'active') continue
+      if (!(lease.autoRenew === false || lease.renewalDeclined)) continue // only non-renewing
+      if (lease.pendingRenewalApproval || lease.noticeGiven) continue // renewal / notice paths own these
+      if (lease.needsOffboard || lease.offboardedAt) continue
+      if (!lease.endDate || lease.endDate >= todayISO) continue
+      try {
+        await saveRow('leases', lease.id, { ...lease, status: 'expired', needsOffboard: true, expiredReason: 'term_ended_no_renewal' })
+        lease.status = 'expired'; lease.needsOffboard = true // step 5 sweep revokes this run
+        const tenant = tenants.find((t) => t.id === lease.tenantId)
+        out.expired.push(`${tenant?.businessName ?? lease.tenantId} (${lease.contractNumber ?? lease.id}) — term ended ${lease.endDate}, not renewing`)
       } catch (e) { out.errors.push(e.message) }
     }
 
@@ -212,6 +317,183 @@ export default async function handler(req, res) {
       if (!inv.approvedAt || new Date(inv.approvedAt) > cutoff) continue
       const tenant = tenants.find((t) => t.id === inv.tenantId)
       out.bondOverdue.push(`${inv.number ?? inv.id} — ${tenant?.businessName ?? inv.tenantId} (approved ${String(inv.approvedAt).split('T')[0]}; T&C promises refund within 60 days)`)
+    }
+
+    // ── 4b. Overdue auto-cancellation (opt-in, destructive) ─────────────────
+    // Oldest-invoice clock: a company whose OLDEST unpaid past-due invoice is
+    // `cancelDays` (default 90) days old gets escalating cancellation warnings,
+    // then — if still unpaid — every active/pending lease is terminated with
+    // needsOffboard (the admin app runs the full offboard cascade on next load;
+    // step 5 below revokes KS access this run). Paying off clears the warning
+    // state. Opt-in + per-tenant exemptable (tenant.autoCancelExempt) + dry-run
+    // aware because it cancels memberships and revokes access.
+    out.overdueWarned = []; out.overdueCancelled = []
+    const acOn = settings?.billingRules?.autoCancelOverdue === true
+    if (acOn) {
+      const cancelDays = Number(settings?.billingRules?.autoCancelDays) > 0
+        ? Number(settings.billingRules.autoCancelDays) : 90
+      const warnBefore = (Array.isArray(settings?.billingRules?.autoCancelWarnDaysBefore)
+        && settings.billingRules.autoCancelWarnDaysBefore.length
+        ? settings.billingRules.autoCancelWarnDaysBefore : [30, 14, 3])
+        .map(Number).filter((n) => n > 0 && n < cancelDays)
+      // Days-overdue thresholds at which each warning fires, e.g. [60, 76, 87].
+      const warnThresholds = [...new Set(warnBefore.map((d) => cancelDays - d))].sort((a, b) => a - b)
+      const firstWarn = warnThresholds[0] ?? cancelDays
+
+      const daysSince = (iso) =>
+        Math.floor((new Date(`${todayISO}T00:00:00Z`) - new Date(`${iso}T00:00:00Z`)) / 86400000)
+      const addDaysISO = (iso, n) => {
+        const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().split('T')[0]
+      }
+      const isUnpaidDue = (inv) =>
+        inv.invoiceType !== 'bond_refund' && inv.voided !== true &&
+        !['paid', 'void', 'cancelled', 'draft'].includes(String(inv.status)) &&
+        inv.dueDate && inv.dueDate < todayISO
+
+      const fromName = settings?.emails?.fromName || 'Hexa Space'
+      const fromEmail = settings?.emails?.fromEmail || 'info@hexaspace.com.au'
+      const from = `${fromName} <${fromEmail}>`
+      const portalUrl = 'https://portal.hexaspace.com.au'
+      const website = settings?.company?.website || 'hexaspace.com.au'
+
+      for (const tenant of tenants) {
+        if (tenant.autoCancelExempt === true || tenant.overdueCancelledAt) continue
+        const overdue = invoices.filter((inv) => inv.tenantId === tenant.id && isUnpaidDue(inv))
+        const warned = Array.isArray(tenant.overdueCancelWarned) ? tenant.overdueCancelWarned : []
+
+        // Paid off (or never overdue) → clear any warning state and move on.
+        if (overdue.length === 0) {
+          if (warned.length) await saveRow('tenants', tenant.id, { ...tenant, overdueCancelWarned: [] })
+          continue
+        }
+
+        const oldestDue = overdue.reduce((min, inv) => (inv.dueDate < min ? inv.dueDate : min), overdue[0].dueDate)
+        const daysOverdue = daysSince(oldestDue)
+        if (daysOverdue < firstWarn) continue // not yet in warning territory
+
+        const amountOwing = money(Math.round(overdue.reduce((s, inv) => s + invoiceTotal(inv), 0) * 100) / 100)
+        const cancelDate = addDaysISO(oldestDue, cancelDays)
+        const to = billingEmailFor(tenant, members)
+        const label = `${tenant.businessName ?? tenant.id} — ${daysOverdue}d overdue, ${amountOwing}`
+        const vars = {
+          company: tenant.businessName ?? '', tenantName: tenant.contactName ?? tenant.businessName ?? 'there',
+          amountOwing, daysOverdue, daysUntilCancel: Math.max(0, cancelDays - daysOverdue),
+          cancelDate, oldestDueDate: oldestDue, portalUrl, website,
+        }
+
+        // TERMINATE at/after the cutoff.
+        if (daysOverdue >= cancelDays) {
+          const live = leases.filter((l) => l.tenantId === tenant.id
+            && ['active', 'pending'].includes(String(l.status)) && !l.offboardedAt)
+          if (!dryRun) {
+            for (const l of live) {
+              await saveRow('leases', l.id, {
+                ...l, status: 'terminated', needsOffboard: true,
+                terminatedAt: new Date().toISOString(), terminationReason: 'overdue_auto',
+              })
+              l.status = 'terminated'; l.needsOffboard = true // step 5 must see no live lease
+            }
+            await saveRow('tenants', tenant.id, { ...tenant, overdueCancelledAt: todayISO })
+          }
+          if (resendKey && to) {
+            const em = renderOverdueEmail('cancelled', vars, templates)
+            await sendResendEmail({ from, to, subject: em.subject, html: em.html })
+              .catch((e) => out.errors.push(`cancel email ${label}: ${e.message}`))
+          }
+          out.overdueCancelled.push(`${label}${live.length ? '' : ' (no live lease)'}`)
+          continue
+        }
+
+        // WARN: fire the highest unsent threshold at or below daysOverdue, and
+        // mark every threshold ≤ daysOverdue as sent so a mid-cycle appearance
+        // can't backfill a burst of lower-stage warnings.
+        const unsent = warnThresholds.filter((t) => t <= daysOverdue && !warned.includes(t))
+        if (unsent.length === 0) continue
+        if (resendKey && to) {
+          const em = renderOverdueEmail('warning', vars, templates)
+          await sendResendEmail({ from, to, subject: em.subject, html: em.html })
+            .catch((e) => out.errors.push(`warn email ${label}: ${e.message}`))
+        }
+        if (!dryRun) {
+          const nextWarned = [...new Set([...warned, ...warnThresholds.filter((t) => t <= daysOverdue)])]
+          await saveRow('tenants', tenant.id, { ...tenant, overdueCancelWarned: nextWarned })
+        }
+        out.overdueWarned.push(`${label} → cancels in ${vars.daysUntilCancel}d`)
+      }
+    }
+
+    // ── 4c. Auto-renew roll-forward + confirmation ──────────────────────────
+    // Server-side mirror of the admin app's auto-renew (useStore ~L900), so a
+    // membership renews on its PREVIOUS terms even if nobody opens the app.
+    // Runs AFTER overdue auto-cancel so a company being cancelled for non-payment
+    // (its leases flipped 'terminated' in-memory above) is skipped by the
+    // status guard — you don't renew a membership you're cancelling.
+    //   (a)  roll the term forward for active, non-declining leases past endDate
+    //   (a2) auto-approve if Settings → Billing Rules → autoApproveRenewals
+    //   (b)  send the tenant a one-time renewal-confirmation email once approved
+    // Billing stays with the admin-app bill run (endDate is rolled here so it
+    // bills the new period on next load); we don't invoice from the cron.
+    out.renewed = []; out.renewalEmailed = []
+    const autoApproveRenewals = settings?.billingRules?.autoApproveRenewals === true
+    for (const lease of leases) {
+      if (lease.status !== 'active') continue
+
+      // (a) roll-forward when the term has ended and the lease isn't opting out.
+      const canRoll = lease.autoRenew !== false && !lease.renewalDeclined
+        && !lease.pendingRenewalApproval && !lease.needsOffboard && !lease.offboardedAt
+        && lease.endDate && lease.endDate < todayISO && !lease.noticeGiven
+      if (canRoll) {
+        const end = new Date(`${lease.endDate}T00:00:00Z`)
+        const start = new Date(`${lease.startDate ?? lease.endDate}T00:00:00Z`)
+        const termMs = end - start
+        const newEnd = new Date(end.getTime() + (termMs > 0 ? termMs : 365 * 86400000)).toISOString().split('T')[0]
+        const patch = {
+          previousEndDate: lease.endDate, endDate: newEnd,
+          autoRenewedAt: new Date().toISOString(), renewalCount: (lease.renewalCount ?? 0) + 1,
+          pendingRenewalApproval: !autoApproveRenewals,
+          ...(autoApproveRenewals ? { renewalApprovedAt: new Date().toISOString() } : {}),
+        }
+        if (!dryRun) await saveRow('leases', lease.id, { ...lease, ...patch })
+        Object.assign(lease, patch)
+        const tenant = tenants.find((t) => t.id === lease.tenantId)
+        out.renewed.push(`${tenant?.businessName ?? lease.tenantId} (${lease.contractNumber ?? lease.id}) → ${newEnd}${autoApproveRenewals ? ' (auto-approved)' : ' (pending approval)'}`)
+      }
+
+      // (a2) auto-approve an already-rolled-but-pending lease when the setting is on
+      // (e.g. the admin app rolled it before this setting was turned on).
+      if (autoApproveRenewals && lease.pendingRenewalApproval && lease.autoRenewedAt) {
+        const patch = { pendingRenewalApproval: false, renewalApprovedAt: new Date().toISOString() }
+        if (!dryRun) await saveRow('leases', lease.id, { ...lease, ...patch })
+        Object.assign(lease, patch)
+      }
+
+      // (b) one-time confirmation email once an auto-renewal is approved.
+      const approved = lease.autoRenewedAt && !lease.pendingRenewalApproval
+      const notYetEmailed = !lease.renewalConfirmSentAt || lease.renewalConfirmSentAt < lease.autoRenewedAt
+      if (approved && notYetEmailed) {
+        const tenant = tenants.find((t) => t.id === lease.tenantId)
+        const to = billingEmailFor(tenant, members)
+        if (resendKey && to) {
+          const space = spaces.find((s) => s.id === lease.spaceId)
+          // Per-lease token behind the self-serve "give notice" link.
+          if (!lease.noticeToken) Object.assign(lease, { noticeToken: randomUUID() })
+          const em = renderRenewalEmail({
+            company: tenant?.businessName ?? '', tenantName: tenant?.contactName ?? tenant?.businessName ?? 'there',
+            unit: space?.unitNumber ?? 'your space', contract: lease.contractNumber ?? lease.id,
+            newEndDate: dmy(lease.endDate), previousEndDate: dmy(lease.previousEndDate),
+            monthlyRent: lease.monthlyRent ? money(lease.monthlyRent) : '',
+            giveNoticeUrl: `https://portal.hexaspace.com.au/give-notice/${lease.noticeToken}`,
+            portalUrl: 'https://portal.hexaspace.com.au', website: settings?.company?.website || 'hexaspace.com.au',
+          }, templates)
+          await sendResendEmail({
+            from: `${settings?.emails?.fromName || 'Hexa Space'} <${settings?.emails?.fromEmail || 'info@hexaspace.com.au'}>`,
+            to, subject: em.subject, html: em.html,
+          }).catch((e) => out.errors.push(`renewal email ${lease.contractNumber ?? lease.id}: ${e.message}`))
+        }
+        if (!dryRun) await saveRow('leases', lease.id, { ...lease, renewalConfirmSentAt: new Date().toISOString() })
+        Object.assign(lease, { renewalConfirmSentAt: new Date().toISOString() })
+        out.renewalEmailed.push(`${tenant?.businessName ?? lease.tenantId} (${lease.contractNumber ?? lease.id})`)
+      }
     }
 
     // ── 5. Salto access sweep (safety net) ──────────────────────────────────
@@ -248,7 +530,7 @@ export default async function handler(req, res) {
     }
 
     // ── Admin digest (only when something happened or needs attention) ──────
-    const anything = out.occupied.length + out.onboarded.length + out.expired.length + out.bondOverdue.length + out.saltoSwept.length + (out.cardReminders?.length ?? 0) + out.errors.length > 0
+    const anything = out.occupied.length + out.onboarded.length + out.expired.length + out.bondOverdue.length + out.saltoSwept.length + (out.cardReminders?.length ?? 0) + out.overdueWarned.length + out.overdueCancelled.length + out.renewed.length + out.renewalEmailed.length + out.errors.length > 0
     if (anything && resendKey && !dryRun) {
       const list = (items) => bPanel(items.map((i) => `<div style="font-family:${SANS};font-size:13px;color:${INK};padding:4px 0">${i}</div>`).join(''))
       const section = (title, items) => items.length ? bH2(title) + list(items) : ''
@@ -258,13 +540,16 @@ export default async function handler(req, res) {
         section(`✓ ${out.occupied.length} space(s) flipped to occupied`, out.occupied) +
         section(`✓ ${out.onboarded.length} member(s) onboarded`, out.onboarded) +
         section(`— ${out.onboardedSuppressed.length} onboarding(s) suppressed (already moved in)`, out.onboardedSuppressed) +
-        section(`⚠ ${out.expired.length} lease(s) expired on served notice`, out.expired) +
+        section(`⚠ ${out.expired.length} lease(s) expired (notice served or term ended)`, out.expired) +
+        section(`🔄 ${out.renewed.length} lease(s) auto-renewed`, out.renewed) +
         section(`⚠ ${out.bondOverdue.length} bond refund(s) overdue`, out.bondOverdue) +
+        section(`⏳ ${out.overdueWarned.length} cancellation warning(s) sent`, out.overdueWarned) +
+        section(`⛔ ${out.overdueCancelled.length} membership(s) auto-cancelled (90d overdue)`, out.overdueCancelled) +
         section(`🔑 ${out.saltoSwept.length} door access revocation(s) swept`, out.saltoSwept) +
         section(`💳 ${(out.cardReminders ?? []).length} card-on-file reminder(s) sent`, out.cardReminders ?? []) +
         section(`✗ ${out.errors.length} error(s)`, out.errors) +
         bBtn('Open the admin portal', 'https://portal.hexaspace.com.au')
-      const adminTo = [...new Set(['info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
+      const adminTo = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
       await sendResendEmail({
         from: 'Hexa Space <info@hexaspace.com.au>',
         to: adminTo,

@@ -4,7 +4,7 @@ import { Plus, Pencil, Trash2, CalendarPlus } from 'lucide-react'
 import { FLOORS, floorLabel, StatusPill, money, Field, Modal, ic, memberOptions } from './shared.jsx'
 
 const today = () => new Date().toISOString().split('T')[0]
-const EMPTY_ROOM = { unitNumber: '', floor: 'l4', capacity: '', hourlyRate: '', attributes: '' }
+const EMPTY_ROOM = { unitNumber: '', floor: 'l4', capacity: '', hourlyRate: '', attributes: '', saltoLockId: '', saltoDoors: '' }
 const EMPTY_BOOK = { date: today(), startTime: '09:00', endTime: '10:00', memberId: '', status: 'Confirmed' }
 
 function hoursBetween(s, e) {
@@ -34,6 +34,8 @@ export default function MeetingRoomsTab({ ctx }) {
       capacity: r.capacity ?? '',
       hourlyRate: r.hourlyRate ?? '',
       attributes: r.attributes ?? '',
+      saltoLockId: r.saltoLockId ?? '',
+      saltoDoors: r.saltoDoors ?? '',
     })
   }
   function saveRoom() {
@@ -43,6 +45,12 @@ export default function MeetingRoomsTab({ ctx }) {
       type: 'meeting',
       capacity: form.capacity !== '' ? Number(form.capacity) : undefined,
       hourlyRate: form.hourlyRate !== '' ? Number(form.hourlyRate) : 0,
+      // Salto KS: lock id enables lock-centric room access (add the lock to a
+      // private-office company's group for the booking, remove after). Left
+      // blank → those bookings fall back to per-member access. saltoDoors
+      // overrides the umbrella "Meeting Room" group for the user-centric path.
+      saltoLockId: form.saltoLockId.trim() || undefined,
+      saltoDoors: form.saltoDoors.trim() || undefined,
       monthlyRate: 0,
       status: 'vacant',
       location: 'whitehorse',
@@ -153,6 +161,14 @@ export default function MeetingRoomsTab({ ctx }) {
             <Field label="Notes">
               <textarea rows={2} value={form.attributes} onChange={(e) => setForm({ ...form, attributes: e.target.value })} className={`${ic} resize-none`} />
             </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Salto lock ID">
+                <input value={form.saltoLockId} onChange={(e) => setForm({ ...form, saltoLockId: e.target.value })} placeholder="KS lock id" className={ic} />
+              </Field>
+              <Field label="Access group override">
+                <input value={form.saltoDoors} onChange={(e) => setForm({ ...form, saltoDoors: e.target.value })} placeholder="Meeting Room" className={ic} />
+              </Field>
+            </div>
             <div className="flex justify-end gap-3 pt-1">
               <button onClick={() => setEditId(undefined)} className="px-4 py-2 text-sm text-foreground border border-input rounded-md hover:bg-muted/50">Cancel</button>
               <button onClick={saveRoom} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">{editId ? 'Save' : 'Add Room'}</button>

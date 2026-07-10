@@ -856,6 +856,33 @@ function BillingRulesSection({ settings, updateSettings }) {
           <span className="text-xs text-muted-foreground">days after due date</span>
         </div>
       </FormRow>
+      <FormRow
+        label="Auto-cancel memberships when 3 months overdue"
+        description="When a company's OLDEST unpaid invoice passes the cut-off below, escalating cancellation warnings are emailed; if still unpaid at the cut-off, its memberships are terminated and door access permanently revoked. Paying off stops it. Exempt a company via its profile. Test with the reconcile dry-run first."
+      >
+        <Toggle checked={form.autoCancelOverdue === true} onChange={set('autoCancelOverdue')} />
+      </FormRow>
+      {form.autoCancelOverdue === true && (
+        <FormRow label="Cancellation cut-off" description="Days past the oldest invoice's due date before the membership is auto-cancelled">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={30}
+              max={365}
+              value={form.autoCancelDays ?? 90}
+              onChange={(e) => setForm((p) => ({ ...p, autoCancelDays: Math.min(365, Math.max(30, Number(e.target.value))) }))}
+              className="w-20 border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+            />
+            <span className="text-xs text-muted-foreground">days overdue (warnings at 30 / 14 / 3 days before)</span>
+          </div>
+        </FormRow>
+      )}
+      <FormRow
+        label="Auto-approve renewals (no notice = auto-renew)"
+        description="When a term ends and no non-renewal notice was given, the membership rolls forward on its PREVIOUS terms automatically — no manual 'Approve renewal' step — and the tenant gets a renewal-confirmation email. Runs server-side daily, so it renews even if nobody opens the admin app. Off = renewals still roll forward but wait in Renewals for a one-click approval."
+      >
+        <Toggle checked={form.autoApproveRenewals === true} onChange={set('autoApproveRenewals')} />
+      </FormRow>
       <FormRow label="Tax Rate (%)" description="GST rate applied to taxable line items">
         <div className="flex items-center gap-2">
           <input

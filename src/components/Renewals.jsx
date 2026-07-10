@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { differenceInDays, differenceInMonths, parseISO, format, addDays, addMonths, isValid } from 'date-fns'
 import { FileText, RefreshCw, Mail, X } from 'lucide-react'
-import { sendEmail, brandShell, bKicker, bH1, bP, bSmall } from '../lib/sendEmail.js'
+import { sendEmail, brandShell, bKicker, bH1, bP, bSmall, bBtn } from '../lib/sendEmail.js'
 import { billingEmailFor } from '../lib/credits.js'
 import { sendLeaseForSigning, shouldAutoSendForSigning } from '../lib/esign.js'
 import ContractForm from './ContractForm.jsx'
@@ -58,6 +58,16 @@ export default function Renewals() {
     })
     .sort((a, b) => (daysTo(b.endDate) ?? -9e9) - (daysTo(a.endDate) ?? -9e9))
 
+  // Notice given / scheduled to leave — still active but on the way out (a tenant
+  // self-served notice via the renewal email, or an admin scheduled a future
+  // termination). Otherwise these vanish from the tab entirely.
+  const autoApprove = settings?.billingRules?.autoApproveRenewals === true
+  const leaveDay = (l) => l.vacateDate ?? l.terminationScheduledFor ?? l.endDate
+  const bySelfServe = (l) => l.noticeSource === 'renewal-email'
+  const leavingSoon = leases
+    .filter((l) => l.status === 'active' && leaving(l))
+    .sort((a, b) => String(leaveDay(a) ?? '9999').localeCompare(String(leaveDay(b) ?? '9999')))
+
   function urgencyBadge(days) {
     if (days <= 14) return 'bg-red-100 text-red-800 border border-red-200'
     if (days <= 30) return 'bg-orange-100 text-orange-800 border border-orange-200'
@@ -74,6 +84,10 @@ export default function Renewals() {
       const companyName = settings?.company?.name ?? 'Hexa Space'
       const contractNum = lease.contractNumber ?? `CON-${lease.id.slice(-3).toUpperCase()}`
       const expiryDate = parse(lease.endDate) ? format(parse(lease.endDate), 'dd MMM yyyy') : 'the end of your term'
+      // Ensure a per-lease token behind the self-serve "give notice" link.
+      let noticeToken = lease.noticeToken
+      if (!noticeToken) { noticeToken = crypto.randomUUID(); updateLease(lease.id, { noticeToken }) }
+      const giveNoticeUrl = `https://portal.hexaspace.com.au/give-notice/${noticeToken}`
       await sendEmail({
         to: email,
         subject: `Renewal notice — ${contractNum} expires ${expiryDate}`,
@@ -82,10 +96,11 @@ export default function Renewals() {
           bKicker('Renewal notice') +
           bH1('Time to renew.') +
           bP(`Hi ${tenant.contactName ?? tenant.businessName},`) +
-          bP(`Your licence agreement for <strong style="color:#1a1a1a">${space?.unitNumber ?? 'your unit'}</strong> (${contractNum}) is due to expire on <strong style="color:#1a1a1a">${expiryDate}</strong>.`) +
-          bP('We would love to continue our arrangement with you. Please get in touch to discuss renewal terms at your earliest convenience.') +
+          bP(`Your licence agreement for <strong style="color:#1a1a1a">${space?.unitNumber ?? 'your unit'}</strong> (${contractNum}) is due to expire on <strong style="color:#1a1a1a">${expiryDate}</strong>. Unless you give notice, it will renew automatically on the same terms.`) +
+          bP('We would love to continue our arrangement with you — there\'s nothing you need to do to stay. Have a question about your renewal? Just reply to this email.') +
           bP(`Current monthly licence fee: <strong style="color:#1a1a1a">$${Number(lease.monthlyRent).toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD + GST</strong>`) +
-          bSmall('If you do not intend to renew, please provide written notice as per your agreement terms.'),
+          bBtn("I don't wish to renew — give notice", giveNoticeUrl) +
+          bSmall('Giving notice keeps your membership active until the end of your committed term — you won\'t be billed beyond it.'),
           { company: companyName, website: settings?.company?.website || 'hexaspace.com.au' },
         ),
         settings,
@@ -177,9 +192,57 @@ export default function Renewals() {
         <p className="text-sm text-muted-foreground mt-1">Leases expiring within 60 days — action required.</p>
       </div>
 
-      {expiring.length === 0 && expired.length === 0 && pendingRenewal.length === 0 && (
+      {autoApprove && (
+        <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-md px-4 py-2.5 text-sm text-emerald-800">
+          <strong>Auto-approve renewals is on</strong> — memberships renew automatically on their previous terms and confirm without approval. Nothing to action here unless a tenant gives notice.
+        </div>
+      )}
+
+      {expiring.length === 0 && expired.length === 0 && pendingRenewal.length === 0 && leavingSoon.length === 0 && (
         <div className="bg-green-50 border border-green-200 rounded-md p-6 text-center text-green-800 text-sm font-medium">
           No leases expiring in the next 60 days.
+        </div>
+      )}
+
+      {leavingSoon.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">
+            Notice Given — Leaving Soon ({leavingSoon.length})
+          </h2>
+          <p className="text-xs text-muted-foreground mb-3">
+            These memberships are scheduled to end — a tenant gave notice via the renewal email, or an admin scheduled a termination. They stay active until their last day, then the daily reconcile ends and offboards them (space freed, access revoked, bond refund raised).
+          </p>
+          <div className="bg-card border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  {['Tenant', 'Space', 'Last Day', 'Reason', 'Source'].map((h) => (
+                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {leavingSoon.map((lease) => {
+                  const tenant = tenants.find((t) => t.id === lease.tenantId)
+                  const space = spaces.find((s) => s.id === lease.spaceId)
+                  const self = bySelfServe(lease)
+                  return (
+                    <tr key={lease.id} className="border-b border-border last:border-0 hover:bg-muted/50">
+                      <td className="px-4 py-3 font-medium text-foreground">{tenant?.businessName ?? '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{space?.unitNumber ?? '—'}</td>
+                      <td className="px-4 py-3 font-medium text-foreground">{fmt(leaveDay(lease))}</td>
+                      <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">{lease.terminationReason ?? (lease.renewalDeclined ? 'Not renewing' : '—')}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded border ${self ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                          {self ? 'Tenant (self-serve)' : 'Admin'}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

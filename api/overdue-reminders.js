@@ -178,7 +178,7 @@ export default async function handler(req, res) {
 
       // Admin heads-up whenever enforcement acted.
       if (resendKey && (blocked.length || unblocked.length)) {
-        const notif = settings?.emails?.notificationEmail || 'info@hexaspace.com.au'
+        const notif = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
         const inner =
           bKicker('Access Enforcement') +
           bH1(`${blocked.length} suspended · ${unblocked.length} restored`) +

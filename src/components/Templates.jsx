@@ -38,6 +38,9 @@ const EMAIL_TYPES = [
   { value: 'function_confirmed', label: 'Function — Booking confirmed' },
   { value: 'function_followup', label: 'Function — Nurture follow-up' },
   { value: 'function_final', label: 'Function — Nurture final' },
+  { value: 'overdue_final_warning', label: 'Overdue — Cancellation warning' },
+  { value: 'membership_cancelled', label: 'Overdue — Membership cancelled' },
+  { value: 'renewal_confirmation', label: 'Renewal — Auto-renew confirmation' },
   { value: 'custom', label: 'Custom' },
 ]
 const EMAIL_TYPE_BADGE = {
@@ -55,6 +58,9 @@ const EMAIL_TYPE_BADGE = {
   function_confirmed: 'bg-purple-50 text-purple-700 border-purple-200',
   function_followup: 'bg-purple-50 text-purple-700 border-purple-200',
   function_final: 'bg-purple-50 text-purple-700 border-purple-200',
+  overdue_final_warning: 'bg-red-50 text-red-700 border-red-200',
+  membership_cancelled: 'bg-red-100 text-red-800 border-red-300',
+  renewal_confirmation: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   custom: 'bg-gray-100 text-gray-600 border-gray-200',
 }
 // Placeholders available per email type (filled at send time).
@@ -75,6 +81,9 @@ const VARS_BY_TYPE = {
   function_confirmed: ['{{company}}', '{{name}}', '{{eventName}}', '{{eventDate}}', '{{startTime}}', '{{endTime}}', '{{guests}}', '{{total}}', '{{dueNow}}', '{{balanceDue}}', '{{website}}'],
   function_followup: ['{{company}}', '{{name}}', '{{eventName}}', '{{bookLink}}', '{{website}}'],
   function_final: ['{{company}}', '{{name}}', '{{eventName}}', '{{bookLink}}', '{{website}}'],
+  overdue_final_warning: ['{{company}}', '{{tenantName}}', '{{amountOwing}}', '{{daysOverdue}}', '{{daysUntilCancel}}', '{{cancelDate}}', '{{oldestDueDate}}', '{{portalUrl}}', '{{website}}'],
+  membership_cancelled: ['{{company}}', '{{tenantName}}', '{{amountOwing}}', '{{daysOverdue}}', '{{oldestDueDate}}', '{{portalUrl}}', '{{website}}'],
+  renewal_confirmation: ['{{company}}', '{{tenantName}}', '{{unit}}', '{{contract}}', '{{newEndDate}}', '{{previousEndDate}}', '{{monthlyRent}}', '{{giveNoticeUrl}}', '{{portalUrl}}', '{{website}}'],
 }
 const varsFor = (emailType) => VARS_BY_TYPE[emailType] || ['{{company}}', '{{tenantName}}', '{{website}}']
 const PREVIEW_VARS = {
@@ -91,6 +100,10 @@ const PREVIEW_VARS = {
   eventDate: '15 Aug 2026', startTime: '18:00', endTime: '22:00', guests: '60',
   total: '$2,145.00', dueNow: '$850.00', balanceDue: '$1,295.00',
   bookLink: 'https://www.hexaspace.com.au/book-function',
+  tenantName: 'Jane Smith', amountOwing: '$1,240.00 AUD', daysOverdue: '62',
+  daysUntilCancel: '28', cancelDate: '1 September 2026', oldestDueDate: '3 June 2026',
+  newEndDate: '30/06/2027', previousEndDate: '30/06/2026', monthlyRent: '$1,200.00 AUD',
+  giveNoticeUrl: 'https://portal.hexaspace.com.au/give-notice/sample-token',
 }
 const fillPreview = (html) => String(html || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in PREVIEW_VARS ? PREVIEW_VARS[k] : m))
 
