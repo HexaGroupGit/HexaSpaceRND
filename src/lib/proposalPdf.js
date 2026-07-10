@@ -64,7 +64,7 @@ function injectStyles() {
 }
 
 // ── Static brochure pages ────────────────────────────────────────────────────
-function coverPage(ctx) {
+function coverPage(ctx, label = 'Workspace Proposal') {
   const who = ctx.client || ctx.business || ''
   return `<div class="page" style="display:flex;">
     <div style="position:relative;width:54%;height:100%;">${bgFill(PHOTO + 'hero-main.jpg')}</div>
@@ -76,7 +76,7 @@ function coverPage(ctx) {
       </div>
       <div style="position:absolute;left:.8in;right:.8in;bottom:.8in;">
         <hr class="ruleThin" style="margin-bottom:16px;">
-        <div class="label" style="color:var(--olive);margin-bottom:6px;">Workspace Proposal</div>
+        <div class="label" style="color:var(--olive);margin-bottom:6px;">${esc(label)}</div>
         ${who ? `<div class="label" style="margin-bottom:10px;">Prepared for ${esc(who)}${ctx.dateStr ? ` &nbsp;·&nbsp; ${esc(ctx.dateStr)}` : ''}</div>` : ''}
         <div class="body" style="font-size:11px;line-height:1.7;">
           ${esc(ctx.addr)}<br>
@@ -404,6 +404,26 @@ export async function buildProposalPdf({ offices = [], coverMsg = '', validityDa
   return renderPagesToPdf(pagesHtml, { compress })
 }
 
+// ── General overview brochure (all products + pricing; no suite selection) ────
+// For leads who aren't sure what they want — reuses the static brochure pages
+// (Ways to Work has headline pricing for every plan; Meeting Rooms has the rate
+// table). No personalised offer/floor-plan pages, so it needs no office input.
+export async function buildOverviewBrochurePdf({ lead = {}, settings = {}, dateStr = '', compress = false } = {}) {
+  const ctx = makeCtx(lead, settings, dateStr)
+  const pagesHtml = [
+    coverPage(ctx, 'Workspace Overview'),
+    statementPage(),
+    theSpacePage(),
+    waysToWorkPage(),     // all five plans, headline pricing
+    meetingRoomsPage(),   // per-room hourly rate table + plan credits
+    inclusionsPage(),
+    advantagePage(),
+    communityPage(),
+    closingPage(ctx),
+  ]
+  return renderPagesToPdf(pagesHtml, { compress })
+}
+
 // ── Membership desk brochures (Dedicated Desk / Flexible Desk) ────────────────
 const DESK = {
   dedicated: {
@@ -696,10 +716,10 @@ function voPackagesPage(offer) {
           <div class="label" style="color:var(--olive);">Virtual Office</div>${baseTag}
         </div>
         <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px;">
-          <div class="display" style="font-size:52px;">$75</div>
+          <div class="display" style="font-size:52px;line-height:1.05;">$75</div>
           <div class="label" style="color:var(--soft);font-size:8.5px;">/ month +GST</div>
         </div>
-        <div class="body" style="font-size:9.5px;color:var(--soft);margin-top:2px;">Minimum 12-month term</div>
+        <div class="body" style="font-size:9.5px;color:var(--soft);margin-top:8px;">Minimum 12-month term</div>
         <hr class="ruleThin" style="margin:16px 0;">
         <ul class="bullets">
           ${bl('Registered business address · Box Hill')}
@@ -715,10 +735,10 @@ function voPackagesPage(offer) {
         <div class="eyebrow" style="position:absolute;top:.42in;right:.44in;color:#cfd69a;">${isPlus ? 'Your selection' : 'Most popular'}</div>
         <div class="label" style="color:#cfd69a;">Virtual Office Plus</div>
         <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px;">
-          <div class="display" style="font-size:52px;color:#fff;">$150</div>
+          <div class="display" style="font-size:52px;color:#fff;line-height:1.05;">$150</div>
           <div class="label" style="color:#a9a7ac;font-size:8.5px;">/ month +GST</div>
         </div>
-        <div class="body" style="font-size:9.5px;color:#a9a7ac;margin-top:2px;">Everything in Virtual Office, plus —</div>
+        <div class="body" style="font-size:9.5px;color:#a9a7ac;margin-top:8px;">Everything in Virtual Office, plus —</div>
         <hr style="height:1px;background:#3a3a34;border:0;margin:16px 0;">
         <ul class="bullets">
           ${bl('9am–5pm lounge access', true)}

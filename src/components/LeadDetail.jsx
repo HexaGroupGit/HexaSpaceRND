@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { sendEmail, renderProposalTemplate, messageEmailHtml, brandShell, bKicker, bH1, bP, bBtn, bSmall, PORTAL_URL } from '../lib/sendEmail.js'
 import { randomToken } from '../lib/token.js'
-import { buildProposalPdf, buildDeskBrochurePdf, buildVirtualBrochurePdf } from '../lib/proposalPdf.js'
+import { buildProposalPdf, buildDeskBrochurePdf, buildVirtualBrochurePdf, buildOverviewBrochurePdf } from '../lib/proposalPdf.js'
 import { moveOutDate } from './spaces/shared.jsx'
 
 const TABS = [
@@ -28,6 +28,7 @@ function pdfToBase64(doc) {
 }
 
 const MEMBERSHIP_TYPES = [
+  { key: 'overview', label: 'Not sure yet' },
   { key: 'office', label: 'Private Office' },
   { key: 'virtual', label: 'Virtual Office' },
   { key: 'flexi', label: 'Flexible Desk' },
@@ -232,6 +233,38 @@ export default function LeadDetail({ lead, store, onClose }) {
       const doc = await buildMembershipBrochure(mOffer())
       doc.save(`${mOffer().typeLabel.replace(/\s+/g, '_')}_${(lead.name || lead.businessName || 'lead').replace(/\s+/g, '_')}.pdf`)
     } catch (e) { setProposalResult(e.message) } finally { setDownloadingProposal(false) }
+  }
+
+  // General overview brochure — all products + pricing, no suite selection. For
+  // leads who aren't sure what they want. Just an info send: no proposal record.
+  const overviewArgs = () => ({ lead, settings, dateStr: format(new Date(), 'd MMMM yyyy'), compress: compressPdf })
+  const overviewFilename = () => `Hexa_Space_Overview_${(lead.businessName || lead.name || 'lead').replace(/\s+/g, '_')}.pdf`
+  const defaultOverviewBody = () => {
+    const first = (lead.name || '').trim().split(/\s+/)[0]
+    return `Hi${first ? ` ${first}` : ''},\n\nThanks for your interest in Hexa Space. I've attached our workspace overview — it covers our private offices, dedicated and flexible desks, virtual offices and meeting rooms, with pricing for each.\n\nHave a look and let me know which options suit you best — I'd be glad to arrange a tour of the centre.\n\nBest regards`
+  }
+
+  async function downloadOverviewBrochure() {
+    setDownloadingProposal(true); setProposalResult('')
+    try {
+      const doc = await buildOverviewBrochurePdf(overviewArgs())
+      doc.save(overviewFilename())
+    } catch (e) { setProposalResult(e.message) } finally { setDownloadingProposal(false) }
+  }
+
+  async function sendOverviewBrochure() {
+    if (!lead.email) { setProposalResult('No email address on this lead.'); return }
+    setSendingProposal(true); setProposalResult('')
+    try {
+      const doc = await buildOverviewBrochurePdf(overviewArgs())
+      const pdfBase64 = pdfToBase64(doc)
+      if (!pdfBase64) { setProposalResult('Could not generate the PDF — try again.'); setSendingProposal(false); return }
+      const html = messageEmailHtml({ body: proposalMsg.trim() || defaultOverviewBody(), company: settings?.company?.name, website: settings?.company?.website })
+      const subject = `${settings?.company?.name || 'Hexa Space'} — workspace overview & pricing`
+      await sendEmail({ to: lead.email, subject, html, settings, emailType: 'lead', attachments: [{ filename: overviewFilename(), content: pdfBase64 }] })
+      appendLeadActivity(lead.id, { type: 'email', text: 'Overview brochure sent — all products & pricing' })
+      setProposalResult('Sent ✓'); setTab('activity')
+    } catch (e) { setProposalResult(e.message) } finally { setSendingProposal(false) }
   }
 
   async function sendMembershipProposal() {
@@ -526,7 +559,24 @@ export default function LeadDetail({ lead, store, onClose }) {
               </div>
               </>)}
 
-              {propType !== 'office' && (
+              {propType === 'overview' && (
+                <div className="bg-card border border-border rounded-xl shadow-sm p-4 space-y-3">
+                  <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide">Overview brochure</h3>
+                  <p className="text-xs text-muted-foreground">A broad brochure for leads who aren't sure yet — every plan (private offices, desks, virtual office, meeting rooms) with headline pricing. No suite selection needed.</p>
+                  <label className="block"><span className="block text-xs text-muted-foreground mb-1">Email note (optional — leave blank for a friendly default)</span><textarea rows={4} value={proposalMsg} onChange={(e) => setProposalMsg(e.target.value)} className={`${input} resize-none`} placeholder={defaultOverviewBody()} /></label>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                    <input type="checkbox" checked={compressPdf} onChange={(e) => setCompressPdf(e.target.checked)} className="h-3.5 w-3.5 rounded border-gray-300" />
+                    Compress PDF — smaller file, best for emailing
+                  </label>
+                  <div className="flex items-center gap-3 pt-1">
+                    <button onClick={downloadOverviewBrochure} disabled={downloadingProposal} className="flex items-center gap-1.5 border border-input text-foreground px-3 py-2 rounded-md text-sm hover:bg-muted/50 disabled:opacity-40">{downloadingProposal ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />} Preview PDF</button>
+                    <button onClick={sendOverviewBrochure} disabled={sendingProposal || !lead.email} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">{sendingProposal ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send brochure</button>
+                    {proposalResult && <span className={`text-xs ${proposalResult.includes('✓') ? 'text-green-600' : 'text-red-600'}`}>{proposalResult}</span>}
+                  </div>
+                </div>
+              )}
+
+              {propType !== 'office' && propType !== 'overview' && (
                 <MembershipProposal type={propType} m={m} setM={setM} offer={mOffer()} proposalMsg={proposalMsg} setProposalMsg={setProposalMsg} validityDays={validityDays} setValidityDays={setValidityDays} onSend={sendMembershipProposal} sending={sendingProposal} result={proposalResult} hasEmail={!!lead.email} input={input} onPreview={downloadMembershipBrochure} downloading={downloadingProposal} />
               )}
 
