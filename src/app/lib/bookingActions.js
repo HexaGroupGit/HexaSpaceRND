@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase.js'
-import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, bookingWindow } from '../../lib/credits.js'
+import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow } from '../../lib/credits.js'
+import { blockingResourceIds } from '../../lib/roomConflicts.js'
 import { apiUrl } from './native.js'
 
 // Booking writes for the app — mirrors the portal's PortalCalendar confirm()
@@ -13,9 +14,13 @@ export const toDec = (t) => { const [h, m] = (t || '0:0').split(':').map(Number)
 export const fromDec = (d) => `${String(Math.floor(d)).padStart(2, '0')}:${String(Math.round((d % 1) * 60)).padStart(2, '0')}`
 export const overlaps = (aS, aE, bS, bE) => toDec(aS) < toDec(bE) && toDec(bS) < toDec(aE)
 
-export function isFree(allBookings, resourceId, date, startTime, endTime) {
+// `spaces` (optional) enables physical-conflict awareness: a booking on a
+// resource that shares floor space (e.g. the Function Space vs North/South/West)
+// counts as occupying this slot too. Omit spaces for plain same-resource checks.
+export function isFree(allBookings, resourceId, date, startTime, endTime, spaces) {
+  const ids = new Set(blockingResourceIds(resourceId, spaces))
   return !(allBookings ?? []).some((b) =>
-    b.resourceId === resourceId && b.date === date && b.status !== 'Cancelled' &&
+    ids.has(b.resourceId) && b.date === date && b.status !== 'Cancelled' &&
     overlaps(startTime, endTime, b.startTime, b.endTime))
 }
 
@@ -37,21 +42,24 @@ export function creditBalance(company) {
  * Returns { booking, company: updatedCompany, fee } — throws on clash/db error.
  */
 export async function createBooking({ room, date, startTime, endTime, title, member, company, allBookings, leases, spaces, settings }) {
-  if (!isFree(allBookings, room.id, date, startTime, endTime)) {
+  if (!isFree(allBookings, room.id, date, startTime, endTime, spaces)) {
     throw new Error('That time was just taken — please choose another slot.')
   }
 
   const hrs = Math.max(0, toDec(endTime) - toDec(startTime))
 
   // Booking window: everyone gets core hours; only 24/7 memberships reach the
-  // extended (after-hours) window. Reject anything outside the company's band.
+  // extended (after-hours) window — except studios, which gate to business
+  // hours for all members, same as external bookings.
   const canAfterHours = companyCanAfterHours(company?.id, leases, spaces, settings)
-  const win = bookingWindow(canAfterHours, settings)
+  const win = resourceBookingWindow(room, canAfterHours, settings)
   const hLabel = (h) => `${(h % 12) || 12}${h >= 12 ? 'pm' : 'am'}`
   if (toDec(startTime) < win.start || toDec(endTime) > win.end) {
-    throw new Error(canAfterHours
-      ? `Bookings are available from ${hLabel(win.start)} to ${hLabel(win.end)}.`
-      : `That's outside business hours (${hLabel(win.start)}–${hLabel(win.end)}). After-hours booking is included with Private Office & Dedicated Desk memberships.`)
+    throw new Error(win.studioGated
+      ? `Studios can be booked between ${hLabel(win.start)} and ${hLabel(win.end)} — the same hours as external bookings.`
+      : canAfterHours
+        ? `Bookings are available from ${hLabel(win.start)} to ${hLabel(win.end)}.`
+        : `That's outside business hours (${hLabel(win.start)}–${hLabel(win.end)}). After-hours booking is included with Private Office & Dedicated Desk memberships.`)
   }
 
   // Office perk: private-office (suite) companies book Sky/Earth/Sun/Moon free,

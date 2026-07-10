@@ -4,7 +4,8 @@ import { Check, Users, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useApp } from '../context.js'
 import { Screen, BackHeader, Label, Rule, Chip, Sheet, BigButton, RoomPhoto, fmt, to12, money0 } from '../ui.jsx'
 import { toDec, fromDec, isFree, creditBalance, createBooking, CREDIT_VALUE } from '../lib/bookingActions.js'
-import { isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, bookingWindow, afterHoursConfig } from '../../lib/credits.js'
+import { blockingResourceIds } from '../../lib/roomConflicts.js'
+import { isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow, afterHoursConfig } from '../../lib/credits.js'
 
 // Single-room day calendar — the app's version of the website's booking grid:
 // scrollable date strip on top, an hour column below with existing bookings
@@ -30,7 +31,8 @@ export default function RoomDetail({ room, onBack }) {
   const DAY_END = ahCfg.extendedEnd
   const GRID_H = (DAY_END - DAY_START) * HOUR_H
   const canAfterHours = companyCanAfterHours(company?.id, leases, spaces, settings)
-  const win = bookingWindow(canAfterHours, settings)
+  // Studios gate to business hours for everyone (same as external bookings).
+  const win = resourceBookingWindow(room, canAfterHours, settings)
 
   const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [slot, setSlot] = useState(null) // "HH:mm" start tapped
@@ -39,11 +41,14 @@ export default function RoomDetail({ room, onBack }) {
   const todayStr = format(new Date(), 'yyyy-MM-dd')
   const nowDec = new Date().getHours() + new Date().getMinutes() / 60
 
-  const dayBookings = useMemo(() =>
-    (allBookings ?? [])
-      .filter((b) => b.resourceId === room.id && b.date === date && b.status !== 'Cancelled')
-      .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')),
-    [allBookings, room.id, date])
+  // Include bookings on rooms that physically share this space (Function Space
+  // vs North/South/West) so a hold on one blocks out the others.
+  const dayBookings = useMemo(() => {
+    const ids = new Set(blockingResourceIds(room.id, spaces))
+    return (allBookings ?? [])
+      .filter((b) => ids.has(b.resourceId) && b.date === date && b.status !== 'Cancelled')
+      .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''))
+  }, [allBookings, room.id, date, spaces])
 
   const rate = room.hourlyRate ?? room.rate ?? 0
   const balance = creditBalance(company)
@@ -108,7 +113,7 @@ export default function RoomDetail({ room, onBack }) {
                 className={`absolute inset-x-0 border-b ${Number.isInteger(d) ? 'border-ink/10' : 'border-ink/5'} ${
                   past || afterHours ? 'bg-bone/70' : open ? 'active:bg-hexa-green/10' : ''
                 }`}
-                aria-label={open ? `Book from ${to12(fromDec(d))}` : afterHours ? 'After-hours — needs 24/7 access' : undefined}
+                aria-label={open ? `Book from ${to12(fromDec(d))}` : afterHours ? (win.studioGated ? `Studios are bookable ${to12(fromDec(win.start))} – ${to12(fromDec(win.end))}` : 'After-hours — needs 24/7 access') : undefined}
               />
             )
           })}
@@ -129,9 +134,11 @@ export default function RoomDetail({ room, onBack }) {
         </div>
       </div>
       <p className="hx-prose text-[11px] mt-3">
-        Open {to12(fromDec(win.start))} – {to12(fromDec(win.end))} · {canAfterHours
-          ? 'after-hours booking is on for your membership.'
-          : 'after-hours is included with Private Office & Dedicated Desk memberships.'} Requests confirmed usually within the hour.
+        Open {to12(fromDec(win.start))} – {to12(fromDec(win.end))} · {win.studioGated
+          ? 'studios keep business hours for all bookings.'
+          : canAfterHours
+            ? 'after-hours booking is on for your membership.'
+            : 'after-hours is included with Private Office & Dedicated Desk memberships.'} Requests confirmed usually within the hour.
       </p>
 
       {slot && (
@@ -217,11 +224,11 @@ function SlotSheet({ room, date, start, member, company, allBookings, balance, l
   const isPerk = isPerkRoom(room, perk)
   const perkUsedToday = isPerk ? perkHoursUsed({ companyId: company?.id, date, bookings: allBookings, perk, spaces }) : 0
   const canAfterHours = companyCanAfterHours(company?.id, leases, spaces, settings)
-  const win = bookingWindow(canAfterHours, settings)
+  const win = resourceBookingWindow(room, canAfterHours, settings)
 
   const fits = (min) => {
     const end = toDec(start) + min / 60
-    if (toDec(start) < win.start || end > win.end || !isFree(allBookings, room.id, date, start, fromDec(end))) return false
+    if (toDec(start) < win.start || end > win.end || !isFree(allBookings, room.id, date, start, fromDec(end), spaces)) return false
     if (isPerk && (min / 60 > perk.maxHoursPerBooking || perkUsedToday + min / 60 > perk.maxHoursPerDay)) return false
     return true
   }

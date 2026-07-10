@@ -173,6 +173,22 @@ export function bookingWindow(canAfterHours, settings) {
     : { start: c.coreStart, end: c.coreEnd }
 }
 
+// Media & podcast studios are gated to business hours for member bookings —
+// the same window external/website bookings get — regardless of the company's
+// after-hours membership.
+export const isStudioSpace = (space) => ['studio', 'podcast'].includes(space?.type)
+
+// Per-resource bookable window: studios always get core hours (flagged
+// studioGated so UIs word the message right); everything else follows the
+// company's bookingWindow.
+export function resourceBookingWindow(space, canAfterHours, settings) {
+  if (isStudioSpace(space)) {
+    const c = afterHoursConfig(settings)
+    return { start: c.coreStart, end: c.coreEnd, studioGated: true }
+  }
+  return bookingWindow(canAfterHours, settings)
+}
+
 // Where to email a company: its own email, else the member flagged Billing
 // Person, else the Contact Person, else any member with an email. Used by
 // EVERY company-facing send (invoices, reminders, mail alerts, renewals) so

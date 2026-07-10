@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight, X, Repeat, Check, User } from 'lucide-react'
 import { format, addDays, addMonths } from 'date-fns'
 import { supabase } from '../lib/supabase.js'
-import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, afterHoursConfig } from '../lib/credits.js'
+import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig } from '../lib/credits.js'
+import { blockingResourceIds } from '../lib/roomConflicts.js'
 import { Card } from './ui.jsx'
 
 // Mirrors the admin Calendar so the portal reads/writes the SAME bookings table.
@@ -85,7 +86,8 @@ export default function PortalCalendar({ resources, allBookings, member, company
           </div>
           {/* resource columns */}
           {resources.map((room) => {
-            const roomBookings = dayBookings.filter((b) => b.resourceId === room.id)
+            const blockIds = new Set(blockingResourceIds(room.id, allSpaces ?? resources))
+            const roomBookings = dayBookings.filter((b) => blockIds.has(b.resourceId))
             const rate = room.hourlyRate ?? room.rate
             const cap = capacityOf(room)
             return (
@@ -103,12 +105,17 @@ export default function PortalCalendar({ resources, allBookings, member, company
                 </div>
                 <div className="relative" style={{ height: (HOURS.length + 1) * HOUR_H }}>
                   {HOURS.map((h) => {
-                    // Outside the company's bookable band → after-hours: shown but
-                    // not clickable unless the membership has 24/7 access.
-                    const bookable = h >= win.start && h + 1 <= win.end
+                    // Outside the resource's bookable band → not clickable.
+                    // Studios gate to business hours for everyone (same as
+                    // external bookings); other rooms follow the company's
+                    // window (24/7 memberships get the extended band).
+                    const roomWin = resourceBookingWindow(room, canAfterHours, settings)
+                    const bookable = h >= roomWin.start && h + 1 <= roomWin.end
                     return (
                       <div key={h} onClick={bookable ? () => openSlot(room.id, h) : undefined} style={{ height: HOUR_H }}
-                        title={bookable ? undefined : 'After-hours — available to members with 24/7 access'}
+                        title={bookable ? undefined : (roomWin.studioGated
+                          ? `Studios are bookable ${t12(roomWin.start)}–${t12(roomWin.end)}`
+                          : 'After-hours — available to members with 24/7 access')}
                         className={`border-b border-ink/5 transition-colors ${bookable ? 'hover:bg-hexa-green/5 cursor-pointer' : 'bg-bone/40 cursor-not-allowed'}`} />
                     )
                   })}
@@ -162,9 +169,11 @@ export default function PortalCalendar({ resources, allBookings, member, company
         <span className="inline-flex items-center gap-1.5 hx-prose text-[11px]"><span className="h-2.5 w-2.5 bg-charcoal inline-block" /> Booked</span>
       </div>
       <p className="hx-prose text-[12px] mt-2">Click any open slot to request a booking. Credits = A${CREDIT_VALUE} each · our team confirms portal requests.</p>
-      <p className="hx-prose text-[12px] mt-1">{canAfterHours
-        ? `After-hours booking is on for your membership — book any time from ${t12(win.start)} to ${t12(win.end)}.`
-        : `Bookable ${t12(win.start)}–${t12(win.end)}. After-hours (evenings & early mornings) is included with Private Office & Dedicated Desk memberships.`}</p>
+      <p className="hx-prose text-[12px] mt-1">{resources.every(isStudioSpace)
+        ? `Studios are bookable ${t12(afterHoursConfig(settings).coreStart)}–${t12(afterHoursConfig(settings).coreEnd)} — the same hours as external bookings.`
+        : canAfterHours
+          ? `After-hours booking is on for your membership — book any time from ${t12(win.start)} to ${t12(win.end)}.`
+          : `Bookable ${t12(win.start)}–${t12(win.end)}. After-hours (evenings & early mornings) is included with Private Office & Dedicated Desk memberships.`}</p>
 
       {amend && (
         <AmendModal
@@ -241,7 +250,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
   const perk = companyPerk(company?.id, leases, allSpaces ?? resources, settings)
   const isPerk = isPerkRoom(room, perk)
   const canAfterHours = companyCanAfterHours(company?.id, leases, allSpaces ?? resources, settings)
-  const win = bookingWindow(canAfterHours, settings)
+  const win = resourceBookingWindow(room, canAfterHours, settings)
   const perkHoursToday = isPerk ? perkHoursUsed({ companyId: company?.id, date: f.date, bookings, perk, spaces: allSpaces ?? resources }) : 0
   const perkLeftToday = isPerk ? Math.max(0, perk.maxHoursPerDay - perkHoursToday) : 0
   const perCost = isPerk ? 0 : hrs * rate
@@ -268,11 +277,14 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
     setError('')
     if (hrs <= 0) return setError('End time must be after start time.')
     // Booking window: everyone gets core hours; 24/7 memberships get the extended
-    // window (evenings/early mornings). Reject anything outside the company's band.
+    // window (evenings/early mornings) — except studios, which gate to business
+    // hours for all members, same as external bookings.
     if (toDec(f.startTime) < win.start || toDec(f.endTime) > win.end) {
-      return setError(canAfterHours
-        ? `Bookings are available from ${t12(win.start)} to ${t12(win.end)}.`
-        : `That's outside business hours (${t12(win.start)}–${t12(win.end)}). After-hours booking is included with Private Office & Dedicated Desk memberships.`)
+      return setError(win.studioGated
+        ? `Studios can be booked between ${t12(win.start)} and ${t12(win.end)} — the same hours as external bookings.`
+        : canAfterHours
+          ? `Bookings are available from ${t12(win.start)} to ${t12(win.end)}.`
+          : `That's outside business hours (${t12(win.start)}–${t12(win.end)}). After-hours booking is included with Private Office & Dedicated Desk memberships.`)
     }
     // Office-perk cap: max hours PER BOOKING (checked once — same length for a series).
     if (isPerk && hrs > perk.maxHoursPerBooking) {
@@ -284,7 +296,8 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
     const dayCapped = []            // dates skipped by the per-day perk cap
     const perkAddedByDate = {}      // running perk hours this session, per date
     for (const date of dates) {
-      const clash = bookings.some((b) => b.resourceId === f.resourceId && b.date === date && b.status !== 'Cancelled' && overlaps(f.startTime, f.endTime, b.startTime, b.endTime))
+      const blockIds = new Set(blockingResourceIds(f.resourceId, allSpaces ?? resources))
+      const clash = bookings.some((b) => blockIds.has(b.resourceId) && b.date === date && b.status !== 'Cancelled' && overlaps(f.startTime, f.endTime, b.startTime, b.endTime))
       if (clash) { skipped.push(date); continue }
       // Office-perk cap: max hours PER DAY per company across the free rooms.
       if (isPerk) {
@@ -468,7 +481,7 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
   const perk = companyPerk(company?.id, leases, allSpaces ?? resources, settings)
   const isPerk = isPerkRoom(room, perk)
   const canAfterHours = companyCanAfterHours(company?.id, leases, allSpaces ?? resources, settings)
-  const win = bookingWindow(canAfterHours, settings)
+  const win = resourceBookingWindow(room, canAfterHours, settings)
 
   const oldHrs = Math.max(0, toDec(b.endTime) - toDec(b.startTime))
   const oldNeed = round2c(oldHrs * rate / CREDIT_VALUE)
@@ -498,14 +511,17 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
     setError('')
     if (newHrs <= 0) return setError('End time must be after start time.')
     if (toDec(f.startTime) < win.start || toDec(f.endTime) > win.end) {
-      return setError(canAfterHours
-        ? `Bookings are available from ${t12(win.start)} to ${t12(win.end)}.`
-        : `That's outside business hours (${t12(win.start)}–${t12(win.end)}). After-hours booking is included with Private Office & Dedicated Desk memberships.`)
+      return setError(win.studioGated
+        ? `Studios can be booked between ${t12(win.start)} and ${t12(win.end)} — the same hours as external bookings.`
+        : canAfterHours
+          ? `Bookings are available from ${t12(win.start)} to ${t12(win.end)}.`
+          : `That's outside business hours (${t12(win.start)}–${t12(win.end)}). After-hours booking is included with Private Office & Dedicated Desk memberships.`)
     }
     if (isPerk && newHrs > perk.maxHoursPerBooking) {
       return setError(`${room?.unitNumber || 'This room'} is included with your membership — up to ${perk.maxHoursPerBooking}h per booking.`)
     }
-    const clash = bookings.some((x) => x.id !== b.id && x.resourceId === b.resourceId && x.date === f.date &&
+    const blockIds = new Set(blockingResourceIds(b.resourceId, allSpaces ?? resources))
+    const clash = bookings.some((x) => x.id !== b.id && blockIds.has(x.resourceId) && x.date === f.date &&
       x.status !== 'Cancelled' && overlaps(f.startTime, f.endTime, x.startTime, x.endTime))
     if (clash) return setError('That time is already booked — pick another slot.')
     if (isPerk) {
