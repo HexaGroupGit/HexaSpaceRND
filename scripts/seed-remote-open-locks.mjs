@@ -57,8 +57,8 @@ const OFFICE_SUITE = {
 const ENTRY_DOORS = [
   { label: 'L2 Front Entry', lockId: '5f4bc650-4173-493d-8d82-32ae8dd49c2e', floors: [2] },
   { label: 'L2 Rear Entry', lockId: '134dda97-e2cf-48dd-a909-0892b9505c71', floors: [2] },
-  { label: 'L4/5 Reception', lockId: '46693618-f861-47af-aa86-6ed5cbe6ff45', floors: [4, 5] },
-  { label: 'L5 Breakout Collaboration', lockId: '27b12b69-31cf-4556-a0fb-9d5c68b65bb6', floors: [5] },
+  { label: 'Level 4 Reception', lockId: '46693618-f861-47af-aa86-6ed5cbe6ff45', floors: [4, 5] },
+  { label: 'L5 Front Entrance', lockId: '27b12b69-31cf-4556-a0fb-9d5c68b65bb6', floors: [5] },
 ]
 
 // Meeting-room / studio locks. Media Studios is unambiguous; the rest are fuzzy.

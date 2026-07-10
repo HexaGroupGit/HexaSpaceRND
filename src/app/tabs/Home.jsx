@@ -10,7 +10,6 @@ import { fetchSanityEvents } from '../../lib/sanity.js'
 import { useApp } from '../context.js'
 import { Screen, Label, Display, Rule, Card, Chip, Sheet, fmt, to12, money, bookingName } from '../ui.jsx'
 import { invoiceTotal, unpaidInvoices } from '../lib/invoiceTotal.js'
-import { accessSummary } from '../lib/doorAccess.js'
 import { buildNotifications } from '../lib/notifications.js'
 import PaySheet from '../screens/PaySheet.jsx'
 
@@ -60,7 +59,6 @@ export default function Home() {
 
   const unpaid = unpaidInvoices(invoices)
   const owing = unpaid.reduce((s, i) => s + invoiceTotal(i), 0)
-  const doorActive = accessSummary(data).status === 'active'
   const notifications = buildNotifications(data)
 
   // "My key" → the dedicated tap-to-unlock screen (own office door +
@@ -137,7 +135,7 @@ export default function Home() {
 
       {/* Quick actions — Eclat tile row + full-width drinks */}
       <div className="grid grid-cols-3 gap-px bg-ink/10 mt-6 border border-ink/10">
-        <Tile icon={KeyRound} label="My key" onClick={openKey} chip={doorActive ? null : 'soon'} />
+        <Tile icon={KeyRound} label="My key" onClick={openKey} />
         <Tile icon={Mailbox} label={`${awaitingMail.length} ${awaitingMail.length === 1 ? 'Delivery' : 'Deliveries'}`}
           onClick={() => nav('/mail')} highlight={awaitingMail.length > 0} />
         <Tile icon={Printer} label="Printer" onClick={() => nav('/printer')} />

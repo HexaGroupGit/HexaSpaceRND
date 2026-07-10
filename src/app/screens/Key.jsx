@@ -98,7 +98,8 @@ export default function Key() {
         <Card className="p-6 mt-6 text-center">
           <KeyRound size={20} strokeWidth={1.4} className="mx-auto text-portal-muted" />
           <p className="hx-prose text-[13px] mt-3">
-            In-app unlock isn’t set up for your membership yet — your key lives in the Salto app below.
+            No doors to open right now. Book a meeting room and it’ll appear here to unlock during your session.
+            Building and office access is always on your pass or the Salto app below.
           </p>
         </Card>
       )}
@@ -162,7 +163,8 @@ function DoorTile({ door, onUnlock }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className="font-display font-extralight text-xl leading-tight block truncate">{door.label}</span>
-        <span className={`hx-prose text-[12px] block truncate ${open || unlocking ? 'text-paper/80' : isErr ? 'text-red-700' : 'text-portal-muted'}`}>
+        <span className="hx-prose text-[12px] block truncate"
+          style={{ color: open || unlocking ? 'var(--color-paper)' : isErr ? '#b91c1c' : undefined }}>
           {open ? 'Unlocked — give it a few seconds, then push.'
             : unlocking ? 'Unlocking…'
             : isErr ? error

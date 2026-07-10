@@ -19,7 +19,7 @@ export default function TabBar() {
 
   return (
     <nav className="app-tabbar">
-      <div className="grid grid-cols-4">
+      <div className="grid" style={{ gridTemplateColumns: `repeat(${TABS.length}, minmax(0, 1fr))` }}>
         {TABS.map(({ to, label, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end}
             className="flex flex-col items-center justify-center gap-1 min-h-[58px] active:opacity-60">
