@@ -1339,6 +1339,24 @@ export function useStore() {
     syncRow('bookings', item.id, item)
     logAudit('create', 'booking', item.id, item.reference)
     if (/confirmed|approved/i.test(String(item.status ?? ''))) queueRoomAccess()
+    // Admin books a meeting room FOR a member → email the member their
+    // confirmation (cc info@). Member-made bookings notify via the portal
+    // flow instead; the endpoint skips non-meeting rooms itself.
+    if (item.createdBy === 'Admin' && item.memberId && item.type !== 'function' &&
+        /confirmed/i.test(String(item.status ?? ''))) {
+      ;(async () => {
+        try {
+          // Same pause as queueRoomAccess: let the booking upsert land in the
+          // DB before the endpoint (which reads from the DB) loads it.
+          await new Promise((r) => setTimeout(r, 2500))
+          await fetch('/api/booking-confirmation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+            body: JSON.stringify({ bookingId: item.id }),
+          })
+        } catch { /* email is best-effort — the booking itself already saved */ }
+      })()
+    }
     return item
   }, [])
 
