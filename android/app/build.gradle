@@ -12,7 +12,7 @@ android {
     namespace = "au.com.hexaspace.member"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "www.hexaspace.com.au"
+        applicationId "au.com.hexaspace.member"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 5
