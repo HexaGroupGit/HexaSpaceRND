@@ -1,3 +1,5 @@
+import { blockingResourceIds } from './roomConflicts.js'
+
 // ── Function Space Hire — shared pricing engine, constants & terms ────────────
 // Single source of truth used by the admin hub (FunctionBookings.jsx), the public
 // agreement/sign page (FunctionSignPage.jsx) and the members portal
@@ -277,10 +279,10 @@ export function seriesDateClashes(rows, booking) {
   return out
 }
 
-export function seriesCalendarClashes(bookings, resourceId, booking) {
+export function seriesCalendarClashes(bookings, resourceId, booking, spaces) {
   const out = []
   for (const s of bookingSessions(booking)) {
-    for (const hit of calendarClashes(bookings, resourceId, s.date, s.startTime, s.endTime, booking.ref)) {
+    for (const hit of calendarClashes(bookings, resourceId, s.date, s.startTime, s.endTime, booking.ref, spaces)) {
       out.push({ ...hit, clashDate: s.date })
     }
   }
@@ -295,11 +297,14 @@ export function timeOverlaps(aStart, aEnd, bStart, bEnd) {
 // Real calendar bookings that overlap this event's time window (incl. the 30-min
 // buffer each side) on the function space resource — catches ANY hold on the
 // venue that day (meeting/studio/function), not just other function requests.
-export function calendarClashes(bookings, resourceId, eventDate, startTime, endTime, exceptFunctionRef) {
+// `spaces` (optional) makes this catch holds on rooms that physically share the
+// venue — booking the Function Space also clashes with North/South/West meetings.
+export function calendarClashes(bookings, resourceId, eventDate, startTime, endTime, exceptFunctionRef, spaces) {
   if (!resourceId || !eventDate || !startTime || !endTime) return []
   const { blockStart, blockEnd } = bufferedWindow(startTime, endTime)
+  const blockIds = new Set(blockingResourceIds(resourceId, spaces))
   return (bookings || []).filter((bk) =>
-    bk.resourceId === resourceId &&
+    blockIds.has(bk.resourceId) &&
     bk.date === eventDate &&
     bk.status !== 'Cancelled' &&
     !(exceptFunctionRef && bk.functionRef === exceptFunctionRef) &&

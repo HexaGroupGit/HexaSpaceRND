@@ -4,8 +4,9 @@ import { ChevronRight, Users } from 'lucide-react'
 import { useApp } from '../context.js'
 import { isFunctionSpace } from '../../portal/functionSpace.js'
 import { Screen, Label, Display, Rule, Chip, RoomPhoto, to12, money0, bookingName } from '../ui.jsx'
-import { creditBalance, CREDIT_VALUE } from '../lib/bookingActions.js'
+import { creditBalance, CREDIT_VALUE, bookingPhase } from '../lib/bookingActions.js'
 import RoomDetail from '../screens/RoomDetail.jsx'
+import BookingSheet from '../screens/BookingSheet.jsx'
 
 // Book tab: rooms grouped by capacity (4 pax · 8 pax · 12 pax · other spaces),
 // tap a room for its own day calendar with live availability — the same model
@@ -24,6 +25,7 @@ export default function Book() {
 
   const [kind, setKind] = useState('rooms')
   const [selected, setSelected] = useState(null)
+  const [sheetBooking, setSheetBooking] = useState(null)
 
   if (selected) return <RoomDetail room={selected} onBack={() => setSelected(null)} />
 
@@ -88,7 +90,9 @@ export default function Book() {
         ))
       )}
 
-      <UpcomingList bookings={bookings} spaces={spaces} />
+      <UpcomingList bookings={bookings} spaces={spaces} onOpen={setSheetBooking} />
+
+      {sheetBooking && <BookingSheet booking={sheetBooking} onClose={() => setSheetBooking(null)} />}
     </Screen>
   )
 }
@@ -111,10 +115,9 @@ function RoomRow({ room, onOpen }) {
   )
 }
 
-function UpcomingList({ bookings, spaces }) {
-  const todayStr = format(new Date(), 'yyyy-MM-dd')
+function UpcomingList({ bookings, spaces, onOpen }) {
   const upcoming = [...(bookings ?? [])]
-    .filter((b) => b.date && b.date >= todayStr && b.status !== 'Cancelled')
+    .filter((b) => b.status !== 'Cancelled' && bookingPhase(b) !== 'past')
     .sort((a, b) => (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || '')))
     .slice(0, 6)
 
@@ -128,27 +131,30 @@ function UpcomingList({ bookings, spaces }) {
         </>
       ) : (
         <div className="divide-y divide-ink/5 border-y border-ink/10">
-          {upcoming.map((b) => (
-            <div key={b.id} className="flex items-center gap-4 py-4">
-              <div className="bg-paper border border-ink/10 h-12 w-12 shrink-0 flex flex-col items-center justify-center">
-                <span className="font-display font-extralight text-lg leading-none">{b.date.slice(8, 10)}</span>
-                <span className="font-heading uppercase tracking-label text-[8px] text-portal-muted mt-0.5">
-                  {format(new Date(b.date + 'T00:00:00'), 'MMM')}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-heading uppercase tracking-nav text-[11px] text-ink truncate">{bookingName(spaces, b)}</div>
-                <div className="hx-prose text-[12px] mt-0.5">
-                  {to12(b.startTime)} – {to12(b.endTime)}{b.title ? ` · ${b.title}` : ''}
+          {upcoming.map((b) => {
+            const live = bookingPhase(b) === 'active'
+            return (
+              <button key={b.id} onClick={() => onOpen(b)} className="w-full flex items-center gap-4 py-4 text-left active:opacity-60">
+                <div className={`h-12 w-12 shrink-0 flex flex-col items-center justify-center ${live ? 'bg-hexa-green text-paper' : 'bg-paper border border-ink/10'}`}>
+                  <span className="font-display font-extralight text-lg leading-none">{b.date.slice(8, 10)}</span>
+                  <span className={`font-heading uppercase tracking-label text-[8px] mt-0.5 ${live ? 'text-paper/70' : 'text-portal-muted'}`}>
+                    {format(new Date(b.date + 'T00:00:00'), 'MMM')}
+                  </span>
                 </div>
-              </div>
-              <Chip tone={b.status === 'Confirmed' ? 'green' : 'ink'}>{b.status}</Chip>
-            </div>
-          ))}
+                <div className="flex-1 min-w-0">
+                  <div className="font-heading uppercase tracking-nav text-[11px] text-ink truncate">{bookingName(spaces, b)}</div>
+                  <div className="hx-prose text-[12px] mt-0.5">
+                    {to12(b.startTime)} – {to12(b.endTime)}{live ? ' · tap to unlock' : b.title ? ` · ${b.title}` : ''}
+                  </div>
+                </div>
+                <Chip tone={live || b.status === 'Confirmed' ? 'green' : 'ink'}>{live ? 'Key live' : b.status}</Chip>
+              </button>
+            )
+          })}
         </div>
       )}
       <p className="hx-prose text-[11px] mt-4">
-        Requests are confirmed by our team — usually within the hour. Credits are a company pool;
+        Tap a booking to unlock the door, change its time, or cancel. Credits are a company pool;
         anything over the allowance is billed as a fee at month end.
       </p>
     </div>

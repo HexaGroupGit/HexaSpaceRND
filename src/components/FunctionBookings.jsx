@@ -699,7 +699,7 @@ export default function FunctionBookings() {
       {selected && (
         <Detail booking={selected} onClose={() => setSelected(null)} onEdit={() => { setEditData(selected); setShowForm(true) }} onDelete={() => handleDelete(selected)} actions={actions} busy={busy}
           clash={seriesDateClashes(rows, selected)}
-          calClash={seriesCalendarClashes(calendarBookings, findFunctionSpace(spaces)?.id, selected)} />
+          calClash={seriesCalendarClashes(calendarBookings, findFunctionSpace(spaces)?.id, selected, spaces)} />
       )}
       {showForm && <BookingForm booking={editData} onSave={handleFormSave} onClose={() => { setShowForm(false); setEditData(null) }} />}
     </div>

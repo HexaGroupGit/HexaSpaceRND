@@ -12,7 +12,9 @@ import { Screen, Label, Display, Rule, Card, Chip, Sheet, fmt, to12, money, book
 import { invoiceTotal, unpaidInvoices } from '../lib/invoiceTotal.js'
 import { buildNotifications } from '../lib/notifications.js'
 import { canViewBilling } from '../../lib/billingAccess.js'
+import { bookingPhase } from '../lib/bookingActions.js'
 import PaySheet from '../screens/PaySheet.jsx'
+import BookingSheet from '../screens/BookingSheet.jsx'
 
 // Home — Eclat-style front page: wordmark + icon row, serif greeting,
 // "what's happening" (upcoming events) with the lounge photo, quick actions,
@@ -24,6 +26,7 @@ export default function Home() {
   const { company, member, bookings, spaces, invoices, mailItems } = data
   const [payInvoice, setPayInvoice] = useState(null)
   const [showNotifications, setShowNotifications] = useState(false)
+  const [sheetBooking, setSheetBooking] = useState(null)
 
   // Stripe Checkout bounces back to /app?paid=<invoice number>.
   const [justPaid] = useState(() => new URLSearchParams(window.location.search).get('paid'))
@@ -53,9 +56,10 @@ export default function Home() {
   const firstName = (member?.name || company?.contactName || company?.businessName || '').split(' ')[0]
   const awaitingMail = (mailItems ?? []).filter((m) => m.status === 'awaiting')
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  // A booking live right now (key window) vs the soonest still-upcoming one.
+  const activeBooking = (bookings ?? []).find((b) => b.status !== 'Cancelled' && bookingPhase(b) === 'active')
   const nextBooking = [...(bookings ?? [])]
-    .filter((b) => b.date && b.date >= todayStr && b.status !== 'Cancelled')
+    .filter((b) => b.status !== 'Cancelled' && bookingPhase(b) === 'upcoming')
     .sort((a, b) => (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || '')))[0]
 
   const unpaid = unpaidInvoices(invoices)
@@ -169,6 +173,23 @@ export default function Home() {
         </button>
       )}
 
+      {/* Happening now — a live booking, tap to unlock the door */}
+      {activeBooking && (
+        <div className="mt-8">
+          <Label className="mb-4">Happening now</Label>
+          <Card onClick={() => setSheetBooking(activeBooking)} className="p-5 flex items-center gap-4 border-hexa-green/50">
+            <div className="bg-hexa-green text-paper h-14 w-14 shrink-0 flex items-center justify-center">
+              <KeyRound size={20} strokeWidth={1.5} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-heading uppercase tracking-nav text-[11px] text-ink truncate">{bookingName(spaces, activeBooking)}</div>
+              <div className="hx-prose text-[12px] mt-1">{to12(activeBooking.startTime)} – {to12(activeBooking.endTime)} · tap to unlock</div>
+            </div>
+            <Chip tone="green">Key live</Chip>
+          </Card>
+        </div>
+      )}
+
       {/* Next booking */}
       <div className="mt-8">
         <div className="flex items-center justify-between mb-4">
@@ -178,7 +199,7 @@ export default function Home() {
           </Link>
         </div>
         {nextBooking ? (
-          <Card className="p-5 flex items-center gap-4">
+          <Card onClick={() => setSheetBooking(nextBooking)} className="p-5 flex items-center gap-4">
             <div className="bg-bone border border-ink/10 h-14 w-14 shrink-0 flex flex-col items-center justify-center">
               <span className="font-display font-extralight text-xl leading-none">{nextBooking.date.slice(8, 10)}</span>
               <span className="font-heading uppercase tracking-label text-[8px] text-portal-muted mt-1">
@@ -232,6 +253,10 @@ export default function Home() {
           </div>
         )}
       </Sheet>
+
+      {sheetBooking && (
+        <BookingSheet booking={sheetBooking} onClose={() => setSheetBooking(null)} />
+      )}
 
       {payInvoice && (
         <PaySheet
