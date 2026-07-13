@@ -1187,14 +1187,33 @@ export function useStore() {
       }
     })
 
-    // Heal orphaned occupants: an office still tagged with an occupant whose
-    // contract has since ended (terminated/offboarded) and has no live lease
-    // should read as vacant. Retroactively fixes contracts terminated before the
-    // offboard step learned to clear these fields. Guarded so a manually-assigned
-    // occupant with no ended-contract history is left untouched.
+    // Keep every space's occupant in step with its live lease. Two directions:
+    //  • Assign — a space with exactly one active lease should read as that
+    //    tenant. This is the safety net for suite moves / reassignments where
+    //    only the lease's spaceId changed and the space's occupant pointer went
+    //    stale (the classic "still shows the old tenant" bug).
+    //  • Heal — a space tagged with an occupant whose contract has since ended
+    //    (terminated/offboarded) and has no live lease should read as vacant.
+    // Status is left to the schedule pass above (with its demotion guard); we
+    // only touch the occupant here. Shared spaces (more than one active tenant)
+    // and manually-tagged occupants with no lease history are left untouched.
     spaces.forEach((s) => {
-      if (!s.occupantTenantId && !s.occupantName) return
       const spaceLeases = leases.filter((l) => leaseSpaceIds(l).includes(s.id))
+      const activeTenants = [...new Set(
+        spaceLeases.filter((l) => l.status === 'active' && !l.offboardedAt).map((l) => l.tenantId).filter(Boolean)
+      )]
+      if (activeTenants.length > 1) return // shared space — don't guess
+      if (activeTenants.length === 1) {
+        // The one active lease is authoritative — point the occupant at it.
+        // Scoped to dedicated offices; pooled/bookable resources (parking,
+        // studios, flex) keep whatever occupant tag they already have.
+        if (s.type === 'office' && s.occupantTenantId !== activeTenants[0]) {
+          updateSpace(s.id, { occupantTenantId: activeTenants[0], occupantName: '' })
+        }
+        return
+      }
+      // No active lease: heal an orphaned occupant left behind by an ended contract.
+      if (!s.occupantTenantId && !s.occupantName) return
       const hasLive = spaceLeases.some((l) => ['active', 'pending'].includes(l.status) && !l.offboardedAt)
       const hasEndedForOccupant = spaceLeases.some((l) =>
         (['expired', 'terminated'].includes(l.status) || l.offboardedAt) &&
@@ -1451,8 +1470,14 @@ export function useStore() {
     // multi-office contract reserves all its offices.
     const initialStatus = requiresAccessGate(item) ? 'reserved' : 'occupied'
     const heldIds = new Set(leaseSpaceIds(item))
+    // Occupying immediately (no access gate) → the space's occupant is this
+    // tenant now. Gated contracts claim the occupant later, when they flip to
+    // 'occupied' in provisionAndOnboardLease.
+    const claimOccupant = initialStatus === 'occupied'
     setSpaces((prev) => {
-      const next = prev.map((s) => (heldIds.has(s.id) ? { ...s, status: initialStatus } : s))
+      const next = prev.map((s) => (heldIds.has(s.id)
+        ? { ...s, status: initialStatus, ...(claimOccupant && s.type === 'office' ? { occupantTenantId: item.tenantId, occupantName: '' } : {}) }
+        : s))
       next.filter((s) => heldIds.has(s.id)).forEach((updated) => {
         syncRow('spaces', updated.id, updated)
         // Auto-remove from website: if the unit was published, re-sync so its
@@ -1499,7 +1524,12 @@ export function useStore() {
       const sp = spacesRef.current.find((s) => s.id === sid)
       if (!sp) return
       const demoting = sp.status === 'occupied' && desired === 'reserved'
-      if (desired !== sp.status && !demoting) updateSpace(sp.id, { status: desired })
+      const patch = {}
+      if (desired !== sp.status && !demoting) patch.status = desired
+      // Once the space is actually occupied, its occupant is this lease's tenant
+      // (dedicated offices only — pooled/bookable resources aren't occupant-tagged).
+      if (desired === 'occupied' && sp.type === 'office' && sp.occupantTenantId !== lease.tenantId) { patch.occupantTenantId = lease.tenantId; patch.occupantName = '' }
+      if (Object.keys(patch).length) updateSpace(sp.id, patch)
     })
     // If the space was already occupied, this tenant is already moved in — stamp
     // onboardedAt to suppress a retroactive welcome rather than re-sending it.
@@ -1514,7 +1544,9 @@ export function useStore() {
         // Release every space the contract held (all line items, not just primary).
         const heldIds = new Set(leaseSpaceIds(lease))
         setSpaces((spaces) => {
-          const next = spaces.map((s) => (heldIds.has(s.id) ? { ...s, status: 'vacant' } : s))
+          // Release the space: clear the occupant too, not just the status, so a
+          // deleted/moved lease never leaves a stale tenant tag behind.
+          const next = spaces.map((s) => (heldIds.has(s.id) ? { ...s, status: 'vacant', occupantTenantId: null, occupantName: '' } : s))
           next.filter((s) => heldIds.has(s.id)).forEach((updated) => syncRow('spaces', updated.id, updated))
           return next
         })
