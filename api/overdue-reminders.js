@@ -10,6 +10,20 @@ import { stripeConfigured, chargeInvoiceOffSession } from './_stripe.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
+// Add N business days (weekends excluded) to a yyyy-mm-dd date. NOTE: public
+// holidays are NOT excluded — the window may be 1 day short if a VIC public
+// holiday falls in it; acceptable for a "at least" notice, revisit if needed.
+function addBusinessDays(fromStr, n) {
+  const d = new Date(`${fromStr}T00:00:00Z`)
+  let added = 0
+  while (added < n) {
+    d.setUTCDate(d.getUTCDate() + 1)
+    const day = d.getUTCDay() // 0 Sun … 6 Sat
+    if (day !== 0 && day !== 6) added++
+  }
+  return d.toISOString().split('T')[0]
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
@@ -64,8 +78,9 @@ export default async function handler(req, res) {
     // (authorised by clause 7(i) of the T&C). A grace period applies after the
     // due date (default 7 days, per the clause) before any charge is made.
     // Charged invoices drop out of the reminder list; the tenant gets a receipt.
-    const charged = [], chargeFailed = []
+    const charged = [], chargeFailed = [], chargeNotified = []
     const graceDays = Number(settings?.stripe?.chargeGraceDays ?? 7)
+    const NOTICE_BUSINESS_DAYS = 2 // clause 7(i): ≥2 business days' notice before charging
     // UTC-anchored so the day arithmetic can't drift across timezones.
     const chargeCutoff = (() => { const d = new Date(`${todayStr}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - graceDays); return d.toISOString().split('T')[0] })()
     if (settings?.stripe?.autoChargeOverdue === true && stripeConfigured()) {
@@ -77,8 +92,34 @@ export default async function handler(req, res) {
         // on pre-authority contracts who merely saved a card are never
         // auto-charged — see src/lib/cardAuthority.js.
         if (tenant.cardAuthorityAccepted !== true) continue
-        // Grace period: only charge once the due date is graceDays behind us.
+        // Grace period: only proceed once the due date is graceDays behind us.
         if (!inv.dueDate || inv.dueDate > chargeCutoff) continue
+
+        // Clause 7(i): give at least 2 business days' written notice by email
+        // BEFORE charging. The first eligible pass sends that notice and records
+        // the scheduled charge date; the charge only fires on/after that date, so
+        // a member always has time to pay first or query it.
+        if (!inv.chargeNoticeSentAt) {
+          const chargeOn = addBusinessDays(todayStr, NOTICE_BUSINESS_DAYS)
+          const to = billingEmailFor(tenant, members)
+          if (resendKey && to) {
+            const sub = (inv.lineItems ?? []).reduce((s, l) => s + Math.round(l.unitPrice * l.qty * (1 - (l.discountPct ?? 0) / 100) * 100) / 100, 0)
+            const amt = inv.vatEnabled !== false ? Math.round(sub * 1.1 * 100) / 100 : sub
+            const inner =
+              bKicker('Upcoming payment') +
+              bH1(`$${amt.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD`) +
+              bP(`Hi ${tenant.contactName ?? tenant.businessName},`) +
+              bP(`This is advance notice that, as authorised in your membership agreement, we intend to charge your saved ${(tenant.cardBrand || 'card').toUpperCase()} •••• ${tenant.cardLast4} for overdue invoice <strong>${inv.number}</strong> on or after <strong>${chargeOn}</strong>.`) +
+              bP('To avoid this charge, you can pay the invoice in the member portal before that date. If anything looks incorrect, just reply to this email.') +
+              bSmall(`Automated notice from ${fromName}. Sent at least 2 business days before any charge, per clause 7(i) of your agreement.`)
+            await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to, subject: `Upcoming card payment — ${inv.number} (${fromName})`, html: brandFrame(inner, { footerLabel: 'Accounts' }) }).catch(() => {})
+          }
+          await supabase.from('invoices').update({ data: { ...inv, chargeNoticeSentAt: todayStr, chargeScheduledFor: chargeOn } }).eq('id', inv.id)
+          chargeNotified.push({ number: inv.number, tenant: tenant.businessName, chargeOn })
+          continue // don't charge yet — notice period must elapse
+        }
+        // Still inside the notice period — wait until the scheduled charge date.
+        if (inv.chargeScheduledFor && todayStr < inv.chargeScheduledFor) continue
         // One attempt per day per invoice; skip if today's attempt already failed.
         if (inv.lastChargeAttempt === todayStr) continue
         const result = await chargeInvoiceOffSession(supabase, inv, tenant)
@@ -190,7 +231,7 @@ export default async function handler(req, res) {
     }
 
     if (!resendKey || allOverdue.length === 0) {
-      return res.status(200).json({ marked: nowOverdue.length, reminded: 0, charged: charged.length, chargeFailed, blocked, unblocked })
+      return res.status(200).json({ marked: nowOverdue.length, reminded: 0, charged: charged.length, notified: chargeNotified.length, chargeFailed, blocked, unblocked })
     }
 
     // 4. Send reminder emails (one per tenant, listing all overdue invoices).
@@ -256,7 +297,7 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ marked: nowOverdue.length, reminded, charged: charged.length, chargeFailed, blocked, unblocked })
+    return res.status(200).json({ marked: nowOverdue.length, reminded, charged: charged.length, notified: chargeNotified.length, chargeFailed, blocked, unblocked })
   } catch (err) {
     console.error('Overdue reminders error:', err)
     return res.status(500).json({ error: err.message })
