@@ -155,7 +155,30 @@ export default async function handler(req, res) {
       // Overdue counts too — an unpaid invoice flips to 'overdue' after its
       // due date, and those are exactly the ones that get paid late.
       const candidates = invoices.filter((i) => i.xeroInvoiceId && ['pending', 'overdue'].includes(i.status))
-      const paidMarked = [], partial = [], voidedInXero = [], receipts = []
+      const paidMarked = [], partial = [], voidedInXero = [], receipts = [], linkedByNumber = []
+
+      // Unpaid invoices with NO Xero link (migration/backfill gaps) are
+      // invisible to the ID-based pull — try to adopt the Xero twin by invoice
+      // number first. Xero raises its own INV-#### invoices with no platform
+      // twin, so a number match only counts as the twin when it's an ACCREC
+      // sales invoice AND the totals agree.
+      const unlinked = invoices.filter((i) => !i.xeroInvoiceId && ['pending', 'overdue'].includes(i.status) && i.number)
+      for (const batch of chunk(unlinked, 40)) {
+        const nums = batch.map((i) => encodeURIComponent(i.number)).join(',')
+        const r = await xeroFetch(supabase, `/Invoices?InvoiceNumbers=${nums}`)
+        if (!r.ok) break // linking is best-effort; the ID-based pull below still runs
+        for (const xi of r.json?.Invoices ?? []) {
+          if (xi.Type !== 'ACCREC' || xi.Status === 'VOIDED' || xi.Status === 'DELETED') continue
+          const inv = batch.find((i) => String(i.number).trim() === String(xi.InvoiceNumber).trim() && !i.xeroInvoiceId)
+          if (!inv) continue
+          const ownTotal = Math.round(invoiceTotal(inv) * (inv.vatEnabled !== false ? 1.1 : 1) * 100) / 100
+          if (Math.abs(Number(xi.Total) - ownTotal) > 0.05) continue // same number, different invoice
+          inv.xeroInvoiceId = xi.InvoiceID
+          if (!dryRun) await saveRow(supabase, 'invoices', inv.id, inv)
+          linkedByNumber.push({ number: inv.number })
+          candidates.push(inv) // now visible to the paid check below
+        }
+      }
 
       for (const batch of chunk(candidates, 40)) {
         const ids = batch.map((i) => i.xeroInvoiceId).join(',')
@@ -221,7 +244,7 @@ export default async function handler(req, res) {
       // the refresh token during this run — writing the stale conn back would
       // re-install the consumed token and kill the connection (forced reconnect).
       if (!dryRun) await stampConnection(supabase, { lastPull: new Date().toISOString() })
-      return res.status(200).json({ action, dryRun, checked: candidates.length, paidMarked, receipted: receipts.length, partial, voidedInXero })
+      return res.status(200).json({ action, dryRun, checked: candidates.length, paidMarked, receipted: receipts.length, partial, voidedInXero, linkedByNumber })
     }
 
     // ── PUSH: send unsynced invoices to Xero ─────────────────────────────────
