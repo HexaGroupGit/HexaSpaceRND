@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "app:sync": "vite build && cap sync android",
-    "app:open": "cap open android"
+    "app:open": "cap open android",
+    "app:sync:ios": "vite build && cap sync ios",
+    "app:open:ios": "cap open ios",
+    "app:assets": "capacitor-assets generate"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
@@ -22,6 +25,7 @@
     "@capacitor/app": "^8.1.0",
     "@capacitor/browser": "^8.0.3",
     "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
     "@dnd-kit/core": "^6.3.1",
