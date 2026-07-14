@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, X, Users, Clock } from 'lucide-react'
 import { format, addDays } from 'date-fns'
 import { bookingFeeName, afterHoursConfig } from '../lib/credits.js'
+import { blockingResourceIds } from '../lib/roomConflicts.js'
 
 const HOUR_H = 52
 const CREDIT_VALUE = 40 // $40 per credit
@@ -16,6 +17,7 @@ const RESOURCE_TYPES = [
 const t12 = (h) => `${h % 12 || 12}:00 ${h >= 12 ? 'pm' : 'am'}`
 const toDec = (t) => { const [h, m] = (t || '0:0').split(':').map(Number); return h + m / 60 }
 const fromDec = (d) => `${String(Math.floor(d)).padStart(2, '0')}:${String(Math.round((d % 1) * 60)).padStart(2, '0')}`
+const timesOverlap = (aS, aE, bS, bE) => toDec(aS) < toDec(bE) && toDec(bS) < toDec(aE)
 const round2 = (n) => Math.round(n * 100) / 100
 const ROOM_COLORS = ['#7c8b2f', '#10b981', '#7c3aed', '#b45309', '#1d4ed8', '#d97706', '#374151', '#9d174d']
 
@@ -95,6 +97,19 @@ export default function Calendar() {
   }
 
   function handleSave(payload) {
+    // Conflict-aware clash guard — the Function Space physically comprises
+    // North/South/West, so a hold on any of them occupies the others too.
+    const ids = new Set(blockingResourceIds(payload.resourceId, spaces))
+    const clash = bookings.find((b) =>
+      (modal.mode !== 'edit' || b.id !== modal.id) && ids.has(b.resourceId) &&
+      b.date === payload.date && b.status !== 'Cancelled' &&
+      timesOverlap(payload.startTime, payload.endTime, b.startTime, b.endTime))
+    if (clash) {
+      const where = spaces.find((s) => s.id === clash.resourceId)
+      const sameRoom = clash.resourceId === payload.resourceId
+      window.alert(`That slot clashes with "${clash.title || 'a booking'}" ${clash.startTime}–${clash.endTime} on ${where?.unitNumber || 'this room'}${sameRoom ? '' : ', which occupies the same physical space'}.`)
+      return
+    }
     const status = payload.tentative ? 'Pending' : 'Confirmed'
     const member = members.find((m) => m.id === payload.memberId)
     const companyId = payload.companyId || member?.companyId || ''
@@ -153,7 +168,11 @@ export default function Calendar() {
             {/* room columns */}
             {rooms.map((room, ri) => {
               const color = ROOM_COLORS[ri % ROOM_COLORS.length]
-              const roomBookings = dayBookings.filter((b) => b.resourceId === room.id)
+              // Include holds on rooms that physically share this space (the
+              // Function Space vs North/South/West) so booking one visibly
+              // blocks the others.
+              const blockIds = new Set(blockingResourceIds(room.id, spaces))
+              const roomBookings = dayBookings.filter((b) => blockIds.has(b.resourceId))
               return (
                 <div key={room.id} className="flex-1 min-w-0 border-r border-border last:border-r-0">
                   <div className="h-16 border-b border-border px-2 py-1.5" style={{ borderTop: `3px solid ${color}` }}>
@@ -172,16 +191,22 @@ export default function Calendar() {
                       const m = members.find((x) => x.id === b.memberId)
                       const co = tenants.find((t) => t.id === b.companyId)
                       const cancelled = b.status === 'Cancelled'
+                      // A hold living on a sibling resource (e.g. a Function
+                      // Space event blocking this room) renders as "blocked".
+                      const external = b.resourceId !== room.id
+                      const sourceRoom = external ? spaces.find((s) => s.id === b.resourceId)?.unitNumber : null
                       return (
                         <div
                           key={b.id}
                           onClick={(e) => { e.stopPropagation(); openBooking(b) }}
-                          title="Click to edit"
+                          title={external ? `Blocked by a ${sourceRoom || 'shared-space'} booking — click to view` : 'Click to edit'}
                           className={`absolute left-1 right-1 rounded px-1.5 py-1 text-[10px] text-white overflow-hidden cursor-pointer hover:ring-2 hover:ring-black/40 transition ${cancelled ? 'opacity-50 line-through' : ''}`}
-                          style={{ top, height, background: color }}
+                          style={{ top, height, background: external
+                            ? 'repeating-linear-gradient(45deg, #6b7280, #6b7280 6px, #4b5563 6px, #4b5563 12px)'
+                            : color }}
                         >
-                          <div className="font-semibold truncate">{b.title || co?.businessName || m?.name || 'Booking'}</div>
-                          <div className="truncate opacity-90">{t12(Math.floor(toDec(b.startTime)))}–{t12(Math.floor(toDec(b.endTime)))}{b.status === 'Pending' ? ' · tentative' : ''}</div>
+                          <div className="font-semibold truncate">{external ? `Blocked — ${sourceRoom || 'shared space'}` : (b.title || co?.businessName || m?.name || 'Booking')}</div>
+                          <div className="truncate opacity-90">{external ? (b.title || co?.businessName || 'Booking') : `${t12(Math.floor(toDec(b.startTime)))}–${t12(Math.floor(toDec(b.endTime)))}${b.status === 'Pending' ? ' · tentative' : ''}`}</div>
                         </div>
                       )
                     })}
