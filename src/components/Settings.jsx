@@ -1665,13 +1665,12 @@ function Stat({ label, value, ok, sub }) {
 // Three door kinds, all authorized server-side (api/salto/open.js): a member's
 // OWN office door (active lease → lock map below), BUILDING ENTRY doors scoped to
 // their floor, and MEETING ROOMS during a booking (rooms use the roomLocks map,
-// set on the Spaces / meeting-room tab). Every unlock is audit-logged (Access Log)
-// and rate-limited. Requires the SALTO_REMOTE_OPEN_WEBHOOK zap (mock until set).
+// set on the Spaces / meeting-room tab). Every unlock is audit-logged (Access Log).
+// Requires the SALTO_REMOTE_OPEN_WEBHOOK zap (mock until set).
 const ENTRY_FLOORS = [2, 4, 5]
 function RemoteUnlockSection({ settings, updateSettings, spaces }) {
   const cur = settings.salto?.remoteOpen ?? {}
   const [enabled, setEnabled] = useState(cur.enabled === true)
-  const [dailyLimit, setDailyLimit] = useState(cur.dailyLimit ?? 10)
   // A space's lock value is a string (single door) or an array of { lockId, label }
   // for a dual/combined office — expand each into its own editable row.
   const [rows, setRows] = useState(() =>
@@ -1715,7 +1714,7 @@ function RemoteUnlockSection({ settings, updateSettings, spaces }) {
     updateSettings({
       salto: {
         ...(settings.salto ?? {}),
-        remoteOpen: { ...cur, enabled, dailyLimit: Number(dailyLimit) || 10, locks, entryDoors },
+        remoteOpen: { ...cur, enabled, locks, entryDoors },
       },
     })
     setSaved(true); setTimeout(() => setSaved(false), 2000)
@@ -1728,16 +1727,11 @@ function RemoteUnlockSection({ settings, updateSettings, spaces }) {
         Lets members unlock doors from the Hexa app: their <strong>own office</strong> (active contract),
         the <strong>building entry for their floor</strong>, and a <strong>meeting room they’ve booked</strong>
         (during its window — set room locks on the meeting-room tab). Every unlock is audit-logged to the
-        Access Log and rate-limited. Requires the <code>SALTO_REMOTE_OPEN_WEBHOOK</code> zap (mock until set).
+        Access Log; unlocks are unlimited. Requires the <code>SALTO_REMOTE_OPEN_WEBHOOK</code> zap (mock until set).
       </p>
 
       <FormRow label="Enable remote unlock" description="Master switch for the app's Unlock buttons">
         <Toggle checked={enabled} onChange={setEnabled} />
-      </FormRow>
-      <FormRow label="Daily limit" description="Unlocks per member per day (shared across all doors) before they must use their fob">
-        <input type="number" min={1} max={50} value={dailyLimit}
-          onChange={(e) => setDailyLimit(e.target.value)}
-          className="w-20 border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-center" />
       </FormRow>
 
       <div className="mt-6 mb-2 text-sm font-medium text-foreground">Office → Salto lock mapping</div>

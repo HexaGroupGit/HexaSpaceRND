@@ -16,7 +16,7 @@
 //   GET  → { enabled, remaining, doors: [{ id, kind, label, sublabel?, availableNow, until? }] }
 //   POST { doorId } → fires the unlock. Every attempt is written to salto_open_log
 //         as 'dispatched'; the zap's callback (api/salto/open-callback.js) flips it
-//         to the real 'opened'/'failed'. Per-member shared daily cap across kinds.
+//         to the real 'opened'/'failed'. Unlimited unlocks (audit-logged only).
 //
 // Transport — SALTO_REMOTE_OPEN_WEBHOOK: a "Webhooks by Zapier" Catch Hook whose
 // zap runs the Salto KS native "open door / pulse lock" action on {{lockId}}, then
@@ -34,7 +34,6 @@ import { requireMember } from '../_auth.js'
 import { applyCors } from '../_cors.js'
 import { melOffset, isConfirmed } from './_time.js'
 
-const DAILY_CAP_DEFAULT = 10
 const ROOM_LEAD_MS = 15 * 60 * 1000 // door opens 15 min before the booking start
 
 // 'l2' / 'L4' / 4 → 4
@@ -143,17 +142,10 @@ export default async function handler(req, res) {
   const settings = settRows?.[0]?.data ?? {}
   const cfg = settings?.salto?.remoteOpen ?? {}
   const enabled = cfg.enabled === true
-  const cap = Number(cfg.dailyLimit) > 0 ? Number(cfg.dailyLimit) : DAILY_CAP_DEFAULT
-
-  // Shared daily cap across all door kinds — count anything that fired (real or
-  // mock), not failed attempts.
-  const dayStart = new Date(); dayStart.setUTCHours(dayStart.getUTCHours() - 24)
-  const { count } = await sb.from('salto_open_log')
-    .select('id', { count: 'exact', head: true })
-    .eq('email', auth.user.email)
-    .in('result', ['opened', 'dispatched', 'mock'])
-    .gte('at', dayStart.toISOString())
-  const remaining = Math.max(0, cap - (count ?? 0))
+  // Unlimited unlocks — the key must never lock a member out of their own door.
+  // Every attempt is still audit-logged to salto_open_log. `remaining: null`
+  // keeps the response shape; the app hides its counter for non-finite values.
+  const remaining = null
 
   if (req.method === 'GET') {
     const doors = enabled ? await memberDoors(sb, auth.companyId, settings) : []
@@ -169,7 +161,6 @@ export default async function handler(req, res) {
   // Authorization is the door list itself: anything not currently openable by
   // this member (wrong floor, no active lease, booking outside its window) is absent.
   if (!door) return res.status(403).json({ error: 'That door isn’t available to open right now.' })
-  if (remaining <= 0) return res.status(429).json({ error: 'Daily unlock limit reached — use your fob or the Salto app.' })
 
   const requestId = `so_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
   const logRow = {
@@ -209,7 +200,7 @@ export default async function handler(req, res) {
       }),
     })
     if (!r.ok) throw new Error(`hook ${r.status}`)
-    return res.status(200).json({ dispatched: true, door: door.label, requestId, remaining: remaining - 1 })
+    return res.status(200).json({ dispatched: true, door: door.label, requestId, remaining })
   } catch (err) {
     console.error('salto remote open failed:', err)
     await writeLog('failed')
