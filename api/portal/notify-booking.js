@@ -36,11 +36,13 @@ export default async function handler(req, res) {
       sb.from('spaces').select('data').eq('id', b.resourceId),
       b.companyId ? sb.from('tenants').select('data').eq('id', b.companyId) : Promise.resolve({ data: [] }),
     ])
-    const room = spRows?.[0]?.data?.unitNumber || b.resourceName || 'Meeting room'
+    const space = spRows?.[0]?.data
+    const room = space?.unitNumber || b.resourceName || 'Meeting room'
     const company = tRows?.[0]?.data?.businessName || b.companyName || '—'
 
+    const opsNoun = space?.type === 'studio' ? 'Media studio' : space?.type === 'podcast' ? 'Podcast room' : 'Meeting room'
     const copy = {
-      new: { kicker: 'New Booking', h1: 'Meeting room booked 📅', lead: 'A member just booked a meeting room from the portal/app.' },
+      new: { kicker: 'New Booking', h1: `${opsNoun} booked 📅`, lead: `A member just booked a ${opsNoun.toLowerCase()} from the portal/app.` },
       amended: { kicker: 'Booking Changed', h1: 'Booking amended ✏️', lead: 'A member changed their booking — door access re-queues for the new time automatically.' },
       cancelled: { kicker: 'Booking Cancelled', h1: 'Booking cancelled ✖️', lead: 'A member cancelled their booking; their credits were returned.' },
     }[kind] ?? {}
@@ -67,7 +69,40 @@ export default async function handler(req, res) {
       subject: `${kind === 'new' ? 'New booking' : kind === 'amended' ? 'Booking amended' : 'Booking cancelled'}: ${room} — ${dmy(b.date)} ${to12(b.startTime)} (${company})`,
       html: brandFrame(inner, { footerLabel: 'Bookings' }),
     })
-    return res.status(200).json({ sent: !!r?.ok })
+
+    // Media rooms (studios / podcast rooms): the booker gets a confirmation
+    // email too — these are higher-stakes bookings people plan shoots around.
+    // Meeting rooms stay in-app only, as before.
+    let memberSent = false
+    if (['studio', 'podcast'].includes(space?.type)) {
+      const noun = space.type === 'studio' ? 'studio' : 'podcast room'
+      const mCopy = {
+        new: { kicker: 'Booking Confirmation', h1: `Your ${noun} is booked ✅`, subject: 'Booking confirmed', lead: `Your booking for <strong>${room}</strong> is confirmed. Here are the details:`, outro: `Your access pass unlocks the ${noun} from 15 minutes before your booking. Need to change or cancel? Manage it in the member portal or app.` },
+        amended: { kicker: 'Booking Updated', h1: 'Your booking has been updated 🕒', subject: 'Booking updated', lead: `Your <strong>${room}</strong> booking has changed. Here are the new details:`, outro: 'Your door access adjusts to the new time automatically.' },
+        cancelled: { kicker: 'Booking Cancelled', h1: 'Your booking has been cancelled', subject: 'Booking cancelled', lead: `Your <strong>${room}</strong> booking below has been cancelled. Any credits it used have been returned to your allowance.`, outro: 'Need to rebook? Book any time in the member portal or app.' },
+      }[kind] ?? {}
+      const memberInner =
+        bKicker(mCopy.kicker ?? 'Booking') +
+        bH1(mCopy.h1 ?? 'Booking update') +
+        bP(mCopy.lead ?? '') +
+        bTable([
+          ['Room', room, true],
+          ['When', `${dmy(b.date)} · ${to12(b.startTime)} – ${to12(b.endTime)}${occurrences > 1 ? ` (+${occurrences - 1} more session${occurrences > 2 ? 's' : ''})` : ''}`, true],
+          ...(kind !== 'cancelled' && Number(b.creditsUsed) > 0 ? [['Credits used', String(b.creditsUsed), true]] : []),
+        ]) +
+        bP(mCopy.outro ?? '') +
+        bSmall('Sent by the Hexa Space team.')
+      const mr = await sendResendEmail({
+        from: 'Hexa Space <noreply@hexaspace.com.au>',
+        to: auth.user.email,
+        replyTo: OPS_EMAIL,
+        subject: `${mCopy.subject ?? 'Booking update'}: ${room} — ${dmy(b.date)} ${to12(b.startTime)}`,
+        html: brandFrame(memberInner, { footerLabel: 'Bookings' }),
+      })
+      memberSent = !!mr?.ok
+    }
+
+    return res.status(200).json({ sent: !!r?.ok, memberSent })
   } catch (err) {
     console.error('notify-booking error:', err)
     return res.status(500).json({ error: 'Could not send the notification.' })

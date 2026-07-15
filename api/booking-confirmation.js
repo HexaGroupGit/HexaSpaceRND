@@ -35,8 +35,12 @@ export default async function handler(req, res) {
       b.companyId ? sb.from('tenants').select('data').eq('id', b.companyId) : Promise.resolve({ data: [] }),
     ])
     const room = spRows?.[0]?.data
-    // Meeting rooms only — event/function spaces have their own booking flows.
-    if (room && room.type !== 'meeting') return res.status(200).json({ skipped: 'not a meeting room' })
+    // Meeting rooms, media studios & podcast rooms — event/function spaces
+    // have their own booking flows.
+    if (room && !['meeting', 'studio', 'podcast'].includes(room.type)) {
+      return res.status(200).json({ skipped: 'not a bookable room type' })
+    }
+    const noun = room?.type === 'studio' ? 'studio' : room?.type === 'podcast' ? 'podcast room' : 'meeting room'
 
     const member = mRows?.[0]?.data
     const company = tRows?.[0]?.data?.businessName || b.companyName || ''
@@ -46,14 +50,14 @@ export default async function handler(req, res) {
 
     const copy = {
       new: {
-        kicker: 'Booking Confirmation', h1: 'Your meeting room is booked ✅', subject: 'Booking confirmed',
+        kicker: 'Booking Confirmation', h1: `Your ${noun} is booked ✅`, subject: 'Booking confirmed',
         lead: `Hi ${firstName}, we've booked <strong>${roomName}</strong> for you${company ? ` (${company})` : ''}. Here are the details:`,
-        outro: 'Your access pass unlocks the meeting room from 15 minutes before your booking. Need to change or cancel? Reply to this email or manage it in the member portal.',
+        outro: `Your access pass unlocks the ${noun} from 15 minutes before your booking. Need to change or cancel? Reply to this email or manage it in the member portal.`,
       },
       amended: {
         kicker: 'Booking Updated', h1: 'Your booking has been updated 🕒', subject: 'Booking updated',
         lead: `Hi ${firstName}, the details of your <strong>${roomName}</strong> booking have changed. Here are the new details:`,
-        outro: 'Your door access adjusts to the new time automatically — your pass unlocks the room from 15 minutes before the booking. Questions? Just reply to this email.',
+        outro: `Your door access adjusts to the new time automatically — your pass unlocks the ${noun} from 15 minutes before the booking. Questions? Just reply to this email.`,
       },
       cancelled: {
         kicker: 'Booking Cancelled', h1: 'Your booking has been cancelled', subject: 'Booking cancelled',

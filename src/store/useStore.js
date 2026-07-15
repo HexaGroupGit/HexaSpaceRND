@@ -1361,9 +1361,9 @@ export function useStore() {
     syncRow('bookings', item.id, item)
     logAudit('create', 'booking', item.id, item.reference)
     if (/confirmed|approved/i.test(String(item.status ?? ''))) queueRoomAccess()
-    // Admin books a meeting room FOR a member → email the member their
-    // confirmation (cc info@). Member-made bookings notify via the portal
-    // flow instead; the endpoint skips non-meeting rooms itself.
+    // Admin books a meeting room / studio / podcast room FOR a member → email
+    // the member their confirmation (cc info@). Member-made bookings notify via
+    // the portal flow instead; the endpoint skips other room types itself.
     if (item.createdBy === 'Admin' && item.memberId && item.type !== 'function' &&
         /confirmed/i.test(String(item.status ?? ''))) {
       ;(async () => {
@@ -1394,7 +1394,7 @@ export function useStore() {
       // Admin edited a member's booking (only the admin Calendar calls this):
       // time/date change (e.g. extended) → 'amended' email; cancellation →
       // 'cancelled'. Both go to the member, cc info@ (endpoint skips
-      // non-meeting rooms itself).
+      // non-bookable room types itself).
       if (before && updated?.memberId && updated.type !== 'function') {
         const cancelled = updates.status === 'Cancelled' && before.status !== 'Cancelled'
         const timeChanged = ['date', 'startTime', 'endTime'].some(
