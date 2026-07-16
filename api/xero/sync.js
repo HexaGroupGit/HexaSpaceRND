@@ -249,11 +249,20 @@ export default async function handler(req, res) {
 
     // ── PUSH: send unsynced invoices to Xero ─────────────────────────────────
     const gateDate = (i) => i.periodStart ?? i.issueDate ?? ''
+    // Invoices RAISED on the platform after the OfficeRND cutover exist in no
+    // other system — they must reach Xero even though their period predates the
+    // syncFrom go-live (that gate only keeps MIGRATED history out). Without
+    // this, a July-raised invoice has nothing in Xero to reconcile its bank
+    // payment against.
+    const NEW_INVOICE_PUSH_FROM = '2026-07-01'
     const eligible = [], skipped = []
     for (const i of invoices) {
       if (i.status === 'voided' || i.xeroSync) continue
-      if (i.status !== 'pending' && i.status !== 'paid') continue
-      if (gateDate(i) < syncFrom) { continue } // pre-go-live history stays out of Xero
+      // Already linked to a Xero invoice (migration backfill or the pull's
+      // number-adoption) — pushing again would create a duplicate.
+      if (i.xeroInvoiceId) continue
+      if (!['pending', 'paid', 'overdue'].includes(i.status)) continue
+      if (gateDate(i) < syncFrom && (i.issueDate ?? '') < NEW_INVOICE_PUSH_FROM) { continue } // pre-go-live history stays out of Xero
       const total = invoiceTotal(i)
       if (total < 0) { skipped.push({ number: i.number, reason: 'credit note — push manually as ACCRECCREDIT' }); continue }
       eligible.push(i)
