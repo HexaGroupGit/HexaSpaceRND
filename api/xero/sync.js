@@ -38,6 +38,9 @@ function lineAccountCode(li, invoice, space, settings) {
   if (direct) return direct
   if (invoice.invoiceType === 'deposit' || /deposit/i.test(name)) return accountCode(x.deposits)
   if (/booking|meeting|event|studio/i.test(name)) return accountCode(x.bookingL45)
+  // Room/studio BOOKING lines whose revenue account carries no signal (e.g.
+  // "Additional Services") — the description does: "Media Studios Booking …".
+  if (/booking/i.test(String(li.description ?? ''))) return accountCode(x.bookingL45)
   if (/parking/i.test(name)) return accountCode(isL2 ? x.parkingL2 : x.oneOffL45)
   if (space?.type === 'parking') return accountCode(isL2 ? x.parkingL2 : x.oneOffL45)
   return accountCode(isL2 ? x.membershipL2 : x.membershipL45)
