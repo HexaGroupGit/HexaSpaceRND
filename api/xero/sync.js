@@ -159,6 +159,12 @@ export default async function handler(req, res) {
       // due date, and those are exactly the ones that get paid late.
       const candidates = invoices.filter((i) => i.xeroInvoiceId && ['pending', 'overdue'].includes(i.status))
       const paidMarked = [], partial = [], voidedInXero = [], receipts = [], linkedByNumber = []
+      // invoice.id → its OWN twin's ContactID, recorded from the fetch below.
+      // Never map tenant → contact: one tenant's invoices can be linked to
+      // different Xero contacts (e.g. INV-2956 moved You Hao → Top 1 Care),
+      // and a tenant-level map would compare against the wrong balance.
+      const twinContact = new Map()
+      const partialTwins = new Set() // invoice.ids whose twin is partially paid
 
       // Unpaid invoices with NO Xero link (migration/backfill gaps) are
       // invisible to the ID-based pull — try to adopt the Xero twin by invoice
@@ -191,6 +197,7 @@ export default async function handler(req, res) {
         for (const xi of r.json?.Invoices ?? []) {
           const inv = batch.find((i) => i.xeroInvoiceId === xi.InvoiceID)
           if (!inv) continue
+          if (xi.Contact?.ContactID) twinContact.set(inv.id, xi.Contact.ContactID)
           if (xi.Status === 'PAID') {
             // Several platform invoices can share one combined Xero invoice
             // (migrated office+parking) — record each invoice's OWN total,
@@ -218,6 +225,79 @@ export default async function handler(req, res) {
             voidedInXero.push({ number: inv.number }) // reported, never auto-voided here
           } else if (Number(xi.AmountPaid) > 0) {
             partial.push({ number: inv.number, paid: xi.AmountPaid, due: xi.AmountDue })
+            partialTwins.add(inv.id)
+          }
+        }
+      }
+
+      // ── Contact-level balance sync ───────────────────────────────────────
+      // Payments in Xero don't always land on the invoice the portal has open
+      // (July's rent reconciled against June's Xero invoice, credit notes,
+      // write-offs). Per contact, Xero's outstanding AR is the truth for WHAT
+      // is owed even when the invoice-level twin check above can't see it:
+      //  - Xero balance BELOW the portal's open total → settle portal invoices
+      //    oldest-first until they agree (never partially — stop at the first
+      //    invoice that doesn't fit; a partial is a reconciliation question).
+      //  - Xero balance ABOVE the portal's → Xero knows about debt the portal
+      //    doesn't (e.g. a Xero-only invoice) — report + ops alert.
+      // Only Xero-linked invoices are counted/settled: platform-only invoices
+      // (never pushed) have no Xero side and must stay untouched.
+      const settledByBalance = [], contactOwesMore = []
+      const ownTotal = (i) => Math.round(invoiceTotal(i) * (i.vatEnabled !== false ? 1.1 : 1) * 100) / 100
+      const justPaid = new Set(paidMarked.map((p) => p.number))
+      const voidedNums = new Set(voidedInXero.map((v) => v.number))
+
+      const byContact = new Map()
+      for (const inv of invoices) {
+        if (!inv.xeroInvoiceId || !['pending', 'overdue'].includes(inv.status)) continue
+        if (justPaid.has(inv.number) || voidedNums.has(inv.number)) continue
+        const cid = twinContact.get(inv.id)
+        if (!cid) continue
+        if (!byContact.has(cid)) byContact.set(cid, [])
+        byContact.get(cid).push(inv)
+      }
+
+      for (const batch of chunk([...byContact.keys()], 40)) {
+        // page=1 matters: Xero only includes Balances on paginated reads.
+        const r = await xeroFetch(supabase, `/Contacts?IDs=${batch.join(',')}&page=1`)
+        if (!r.ok) break // best-effort — balance sync just waits for the next run
+        for (const c of r.json?.Contacts ?? []) {
+          const open = byContact.get(c.ContactID)
+          const xeroOut = Number(c.Balances?.AccountsReceivable?.Outstanding)
+          if (!open || !Number.isFinite(xeroOut)) continue
+          const platformOut = Math.round(open.reduce((s, i) => s + ownTotal(i), 0) * 100) / 100
+          if (xeroOut > platformOut + 0.05) {
+            contactOwesMore.push({ contact: c.Name, xeroOutstanding: xeroOut, platformOutstanding: platformOut })
+            continue
+          }
+          let excess = Math.round((platformOut - xeroOut) * 100) / 100
+          if (excess <= 0.05) continue
+          // A partially-paid twin shifts the contact balance by the paid
+          // portion, which can fake an "excess" that would settle a genuinely
+          // unpaid OLDER invoice. Partial payments are a reconciliation
+          // question — leave the whole contact to the human.
+          if (open.some((i) => partialTwins.has(i.id))) continue
+          open.sort((a, b) => String(a.issueDate ?? '').localeCompare(String(b.issueDate ?? '')))
+          for (const inv of open) {
+            const total = ownTotal(inv)
+            if (total > excess + 0.05) break
+            excess = Math.round((excess - total) * 100) / 100
+            if (!dryRun) {
+              inv.payments = [
+                ...(inv.payments ?? []),
+                {
+                  id: `pay_xero_bal_${inv.id.slice(-6)}`,
+                  amount: total,
+                  date: new Date().toISOString().split('T')[0],
+                  method: 'xero',
+                  reference: 'Settled from Xero contact balance (payment was reconciled against a different invoice in Xero)',
+                },
+              ]
+              inv.status = 'paid'
+              await saveRow(supabase, 'invoices', inv.id, inv)
+              receipts.push({ inv, amount: total })
+            }
+            settledByBalance.push({ number: inv.number, contact: c.Name, amount: total })
           }
         }
       }
@@ -243,11 +323,39 @@ export default async function handler(req, res) {
         }).catch(() => {})
       }
 
+      // Ops alert (eric@ + info@): always when the balance sync settled
+      // something (auditable action), and when the owes-more set CHANGES —
+      // never re-sent every 6h for a known standing mismatch.
+      const owesMoreFingerprint = JSON.stringify(
+        contactOwesMore.map((o) => `${o.contact}:${o.xeroOutstanding}:${o.platformOutstanding}`).sort()
+      )
+      const owesMoreChanged = owesMoreFingerprint !== (conn.lastOwesMoreAlert ?? '[]')
+      if (!dryRun && (settledByBalance.length || (owesMoreChanged && contactOwesMore.length))) {
+        const inner =
+          bKicker('Xero balance sync') +
+          bH1('Contact balances need a look') +
+          (settledByBalance.length
+            ? bP(`<strong>Auto-settled on the portal</strong> (paid in Xero at contact level, against a different invoice):<br/>${settledByBalance.map((s) => `${s.number} — ${s.contact} — $${s.amount.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`).join('<br/>')}`)
+            : '') +
+          (contactOwesMore.length
+            ? bP(`<strong>Xero says these contacts owe MORE than the portal shows</strong> (likely a Xero-only invoice — the portal is under-reporting):<br/>${contactOwesMore.map((o) => `${o.contact} — Xero $${o.xeroOutstanding.toLocaleString('en-AU', { minimumFractionDigits: 2 })} vs portal $${o.platformOutstanding.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`).join('<br/>')}`)
+            : '') +
+          bSmall('Automated report from the 6-hourly Xero payment pull.')
+        for (const to of ['eric@hexaspace.com.au', 'info@hexaspace.com.au']) {
+          await sendResendEmail({
+            from: `${fromName} <${fromEmail}>`,
+            to,
+            subject: `Xero balance sync — ${settledByBalance.length} settled, ${contactOwesMore.length} under-reported`,
+            html: brandFrame(inner, { footerLabel: 'Accounts' }),
+          }).catch(() => {})
+        }
+      }
+
       // stampConnection, NOT saveConnection({...conn}): getAccessToken rotated
       // the refresh token during this run — writing the stale conn back would
       // re-install the consumed token and kill the connection (forced reconnect).
-      if (!dryRun) await stampConnection(supabase, { lastPull: new Date().toISOString() })
-      return res.status(200).json({ action, dryRun, checked: candidates.length, paidMarked, receipted: receipts.length, partial, voidedInXero, linkedByNumber })
+      if (!dryRun) await stampConnection(supabase, { lastPull: new Date().toISOString(), lastOwesMoreAlert: owesMoreFingerprint })
+      return res.status(200).json({ action, dryRun, checked: candidates.length, paidMarked, receipted: receipts.length, partial, voidedInXero, linkedByNumber, settledByBalance, contactOwesMore })
     }
 
     // ── PUSH: send unsynced invoices to Xero ─────────────────────────────────
