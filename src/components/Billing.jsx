@@ -4,7 +4,7 @@ import { format, parseISO, startOfMonth, isBefore, addMonths, differenceInDays }
 import { Plus, Search, X, Check, Download, Send, Ban } from 'lucide-react'
 import InvoiceDetail from './InvoiceDetail.jsx'
 import InvoiceForm from './InvoiceForm.jsx'
-import { sendEmail, invoiceEmailHtml } from '../lib/sendEmail.js'
+import { sendEmail, invoiceEmailHtml, makePayToken, invoicePayLink } from '../lib/sendEmail.js'
 import { invoiceLease, invoiceSpace, locationLabel } from '../lib/billing.js'
 import { buildMonthlyInvoiceForLease } from '../lib/billingEngine.js'
 import { jsPDF } from 'jspdf'
@@ -190,10 +190,13 @@ export default function Billing() {
       const tenant = tenants.find((t) => t.id === inv.tenantId)
       if (!tenant?.email) continue
       try {
+        // Mint the public pay-link token once; re-sends keep the same link.
+        const payToken = inv.payToken ?? makePayToken()
+        if (!inv.payToken) updateInvoice(id, { payToken })
         await sendEmail({
           to: tenant.email,
           subject: `Invoice ${inv.number} from ${settings?.company?.name ?? 'Hexa Space'}`,
-          html: invoiceEmailHtml({ invoice: inv, tenant, settings }),
+          html: invoiceEmailHtml({ invoice: inv, tenant, settings, payLink: invoicePayLink({ ...inv, payToken }) }),
           settings,
           tenantId: inv.tenantId, emailType: 'invoice',
         })

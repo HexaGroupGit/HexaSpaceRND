@@ -5,6 +5,7 @@
 // then emails each tenant their invoice.
 
 import { createClient } from '@supabase/supabase-js'
+import { randomBytes } from 'crypto'
 import { sendResendEmail, billingEmailFor } from './_email.js'
 import { brandFrame, bKicker, bH1, bH2, bSmall, bBtn, bPanel, bTable, SANS, INK, MUTE } from './_brand.js'
 import { buildMonthlyInvoiceForLease, lineItemsSubtotal } from '../src/lib/billingEngine.js'
@@ -52,11 +53,15 @@ function invoiceEmail(invoice, tenant, settings, subtotal, gst, total) {
     `<div style="font-family:${SANS};font-size:13px;color:#444;margin:3px 0">Account: ${b.acc}</div>` +
     `<div style="font-family:${SANS};font-size:13px;color:#444;margin:3px 0">Reference: <strong>${invoice.number}</strong></div>`
   ) : ''
+  const payBtn = invoice.payToken
+    ? bBtn('Pay this invoice online', `https://portal.hexaspace.com.au/pay/${invoice.id}?t=${invoice.payToken}`)
+    : ''
   const inner =
     bKicker('Invoice') +
     bH1(invoice.number) +
     bSmall(`Due ${invoice.dueDate}`) +
     bTable(rows) +
+    payBtn +
     bank +
     bBtn('View in Member Portal', 'https://portal.hexaspace.com.au/billing') +
     bSmall(`Hexa Space Pty Ltd &nbsp;·&nbsp; ABN ${b.abn ?? ''}<br>${b.address ?? '402/830 Whitehorse Road, Box Hill VIC 3128'}`)
@@ -143,6 +148,8 @@ export default async function handler(req, res) {
       number: invoiceNum,
       sentStatus: 'sent',
       createdAt: issueDate,
+      // Public pay-link secret for the "Pay this invoice online" button.
+      payToken: randomBytes(18).toString('base64url'),
     }
 
     let { error: saveErr } = await supabase.from('invoices').insert({

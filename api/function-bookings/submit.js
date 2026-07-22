@@ -4,9 +4,10 @@
 // their company/member, raises the deposit + $300 security invoices, emails the
 // deposit, and moves the booking to 'awaiting_deposit'. Balance + calendar happen
 // later when the deposit is marked paid.
+import { randomBytes } from 'crypto'
 import { sessionsLabel } from '../../src/lib/functionBooking.js'
 import { sendResendEmail } from '../_email.js'
-import { brandFrame, bKicker, bH1, bP, bSmall, bPanel, bTable, SANS, INK } from '../_brand.js'
+import { brandFrame, bKicker, bH1, bP, bSmall, bPanel, bTable, bBtn, SANS, INK } from '../_brand.js'
 import { invoicePdfBase64 } from '../_invoicePdf.js'
 import { requireMember, isAdminEmail } from '../_auth.js'
 
@@ -116,7 +117,7 @@ export default async function handler(req, res) {
     // One deposit invoice, two lines: 50% of the booking cost (GST applies) and
     // the $300 refundable security deposit (GST-exempt). Due immediately to secure.
     const depId = `inv${Date.now()}${Math.random().toString(36).slice(2, 6)}`
-    const depInv = { ...base, id: depId, number: numFor(), invoiceType: 'function_deposit', dueDate: now.split('T')[0], vatEnabled: true, lineItems: [
+    const depInv = { ...base, id: depId, number: numFor(), invoiceType: 'function_deposit', dueDate: now.split('T')[0], vatEnabled: true, payToken: randomBytes(18).toString('base64url'), lineItems: [
       { description: `50% deposit — function booking · ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf ?? 0, qty: 1, discountPct: 0 },
       { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit ?? 300, qty: 1, discountPct: 0, vatExempt: true },
     ] }
@@ -162,6 +163,7 @@ async function emailDeposit(settings, b, q, depInv) {
       ['Deposit due now', money(q.dueNow), true],
       ['Balance (14 days before event)', money(q.balanceDue)],
     ]) +
+    (depInv?.payToken ? bBtn('Pay deposit online', `https://portal.hexaspace.com.au/pay/${depInv.id}?t=${depInv.payToken}`) : '') +
     bankBlock +
     bSmall("Your tax invoice is attached. Deposit includes your 50% venue hire and the $300 refundable security deposit. Once received, we'll confirm and lock in your booking.")
   const html = brandFrame(inner, { footerLabel: 'Function Space Hire' })
