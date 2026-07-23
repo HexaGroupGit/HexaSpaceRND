@@ -88,10 +88,22 @@ export function buildDirectoryBoard(level, prev, { tenants, leases, spaces }) {
     .map(({ _k, ...s }) => s)
 
   // ── Community members ─────────────────────────────────────────────────────
-  const commSpaceIds = new Set(spaces.filter((s) => ['virtual', 'desk'].includes(s.type)).map((s) => s.id))
+  // Anyone holding an active membership that isn't a suite: virtual office or
+  // desk spaces, plus SPACE-LESS memberships — dedicated-desk and MTM flexible
+  // contracts carry no spaceId at all (e.g. Lunea, Trafficon). Office
+  // occupants are excluded: they're already displayed on a suite row.
+  const spaceById = new Map(spaces.map((s) => [s.id, s]))
+  const officeTenantIds = new Set()
+  for (const l of active) {
+    if (leaseSpaceIds(l).some((sid) => spaceById.get(sid)?.type === 'office')) officeTenantIds.add(l.tenantId)
+  }
   const commIds = new Set()
   for (const l of active) {
-    if (leaseSpaceIds(l).some((sid) => commSpaceIds.has(sid))) commIds.add(l.tenantId)
+    const sids = leaseSpaceIds(l)
+    const isCommunityLease = sids.length === 0
+      ? true // membership-only contract (dedicated desk / flexible / MTM)
+      : sids.some((sid) => ['virtual', 'desk'].includes(spaceById.get(sid)?.type))
+    if (isCommunityLease && !officeTenantIds.has(l.tenantId)) commIds.add(l.tenantId)
   }
   const prevComm = prev?.community ?? []
   const community = [
