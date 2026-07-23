@@ -68,7 +68,15 @@ export default async function handler(req, res) {
       supabase.from('templates').select('id,data'),
     ]);
 
-    const templates = (tmplRows ?? []).map((r) => ({ id: r.id, ...r.data }));
+    // Fill T&C placeholders (e.g. {{cpiPct}}) server-side so the public sign
+    // page shows the same numbers as the admin preview/PDF.
+    const { fillTermsVars } = await import('../../src/lib/termsVars.js');
+    const rawSettings = settRows?.[0]?.data ?? {};
+    const templates = (tmplRows ?? []).map((r) => ({
+      id: r.id,
+      ...r.data,
+      ...(r.data?.content ? { content: fillTermsVars(r.data.content, rawSettings) } : {}),
+    }));
 
     return res.status(200).json({
       request: reqOut,

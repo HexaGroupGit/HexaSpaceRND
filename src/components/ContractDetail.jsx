@@ -15,6 +15,7 @@ import { leaseInclusions } from '../lib/voInclusions.js'
 import { resolvePrimaryContact } from '../lib/leaseContact.js'
 import { sendLeaseForSigning } from '../lib/esign.js'
 import { requiresCardOnFile, portalWelcomeInvitePayload, gettingStartedEmailHtml } from '../lib/onboarding.js'
+import { fillTermsVars } from '../lib/termsVars.js'
 
 const SIG_STATUS = {
   manually_signed: { label: 'Manually Signed', cls: 'bg-green-500 text-white' },
@@ -610,7 +611,7 @@ export default function ContractDetail({
           doc.line(ml, y, mr, y); y += 8
           const html = tmpl.content
             ?? (tmpl.clauses ?? []).map((c) => `<h3>${c.number}. ${c.title}</h3><p>${c.content}</p>`).join('')
-          renderHtml(html)
+          renderHtml(fillTermsVars(html, settings))
         }
       }
 
@@ -1115,7 +1116,7 @@ export default function ContractDetail({
                   <div
                     style={{ lineHeight: 1.6 }}
                     className="template-html-body"
-                    dangerouslySetInnerHTML={{ __html: tmpl.content ?? '' }}
+                    dangerouslySetInnerHTML={{ __html: fillTermsVars(tmpl.content ?? '', settings) }}
                   />
                 </div>
               ))}

@@ -134,10 +134,30 @@ export default function Leases() {
     }
   }
 
+  // Renewal pricing: apply the Billing Rules CPI increase to every price the
+  // renewal contract inherits (monthly rent, list prices, item steps). The
+  // same percentage fills {{cpiPct}} in the agreement's CPI clause, so the
+  // generated contract and its terms always agree. Admin can still edit the
+  // prefilled prices before sending.
+  function applyCpi(lease) {
+    const pct = Number(settings?.billingRules?.renewalCpiPct ?? 4)
+    if (!(pct > 0)) return lease
+    const up = (n) => (n == null || n === '' ? n : Math.round(Number(n) * (1 + pct / 100) * 100) / 100)
+    return {
+      ...lease,
+      monthlyRent: up(lease.monthlyRent),
+      listPrice: up(lease.listPrice),
+      items: (lease.items ?? []).map((it) => ({
+        ...it,
+        steps: (it.steps ?? []).map((s) => ({ ...s, listPrice: up(s.listPrice) })),
+      })),
+    }
+  }
+
   function handleRenew() {
     const base = selectedLease
     if (!base) return
-    setEditingLease({
+    setEditingLease(applyCpi({
       ...base,
       id: undefined,
       contractNumber: undefined,
@@ -149,7 +169,7 @@ export default function Leases() {
       endDate: '',
       createdAt: undefined,
       payments: [],
-    })
+    }))
     setMode('create')
   }
 
@@ -168,7 +188,7 @@ export default function Leases() {
         const renewalStart = lease.endDate
           ? format(startOfMonth(addMonths(parseISO(lease.endDate), 1)), 'yyyy-MM-dd')
           : ''
-        setEditingLease({
+        setEditingLease(applyCpi({
           ...lease,
           id: undefined,
           contractNumber: undefined,
@@ -181,7 +201,7 @@ export default function Leases() {
           createdAt: undefined,
           payments: [],
           lastGeneratedAt: undefined,
-        })
+        }))
         setSelectedLease(null)
         setMode('create')
         break

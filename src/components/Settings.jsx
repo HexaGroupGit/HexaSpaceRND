@@ -878,6 +878,23 @@ function BillingRulesSection({ settings, updateSettings }) {
         </FormRow>
       )}
       <FormRow
+        label="Renewal / CPI increase (%)"
+        description="Applied automatically when a renewal contract is generated (Renew action) — the new contract's pricing is the old pricing plus this percentage. The same number fills the {{cpiPct}} placeholder in the licence agreement's Annual CPI Adjustment clause, so the signed terms and the actual increase always match. Default 4."
+      >
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={0}
+            max={50}
+            step={0.1}
+            value={form.renewalCpiPct ?? 4}
+            onChange={(e) => set('renewalCpiPct')(e.target.value === '' ? null : Number(e.target.value))}
+            className="w-24 border border-input rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <span className="text-xs text-muted-foreground">% increase on renewal</span>
+        </div>
+      </FormRow>
+      <FormRow
         label="Auto-approve renewals (no notice = auto-renew)"
         description="When a term ends and no non-renewal notice was given, the membership rolls forward on its PREVIOUS terms automatically — no manual 'Approve renewal' step — and the tenant gets a renewal-confirmation email. Runs server-side daily, so it renews even if nobody opens the admin app. Off = renewals still roll forward but wait in Renewals for a one-click approval."
       >
