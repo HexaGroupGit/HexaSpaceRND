@@ -911,6 +911,10 @@ export function useStore() {
             if (lease.status !== 'active') continue
             if (lease.autoRenew === false || lease.renewalDeclined) continue
             if (lease.pendingRenewalApproval) continue
+            // A signed (active) renewal contract supersedes this one — never
+            // roll the old term forward alongside it (double billing). The
+            // daily reconcile expires the superseded contract at term end.
+            if (loadedLeases.some((x) => x.previousContractId === lease.id && x.status === 'active')) continue
             if (!lease.endDate) continue
             const end = new Date(lease.endDate)
             if (end > todayD) continue

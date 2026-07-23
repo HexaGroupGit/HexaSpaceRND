@@ -436,13 +436,30 @@ export default async function handler(req, res) {
     // bills the new period on next load); we don't invoice from the cron.
     out.renewed = []; out.renewalEmailed = []
     const autoApproveRenewals = settings?.billingRules?.autoApproveRenewals === true
+    // A SIGNED renewal contract (created via the Renew action, activated at
+    // countersign) supersedes its predecessor: the old contract must neither
+    // auto-roll (double contract, double billing) nor offboard (the tenant is
+    // staying — the successor holds the space). An UNSIGNED renewal (still
+    // 'pending') changes nothing: the old contract keeps rolling as usual.
+    const hasActiveSuccessor = (lease) =>
+      leases.some((x) => x.previousContractId === lease.id && x.status === 'active')
     for (const lease of leases) {
       if (lease.status !== 'active') continue
+
+      // Superseded → hand over at term end: expire quietly, no offboarding.
+      if (lease.endDate && lease.endDate < todayISO && hasActiveSuccessor(lease)) {
+        if (!dryRun) await saveRow('leases', lease.id, { ...lease, status: 'expired', expiredReason: 'superseded_by_renewal' })
+        Object.assign(lease, { status: 'expired', expiredReason: 'superseded_by_renewal' })
+        const tenant = tenants.find((t) => t.id === lease.tenantId)
+        out.expired.push(`${tenant?.businessName ?? lease.tenantId} (${lease.contractNumber ?? lease.id}) — superseded by signed renewal`)
+        continue
+      }
 
       // (a) roll-forward when the term has ended and the lease isn't opting out.
       const canRoll = lease.autoRenew !== false && !lease.renewalDeclined
         && !lease.pendingRenewalApproval && !lease.needsOffboard && !lease.offboardedAt
         && lease.endDate && lease.endDate < todayISO && !lease.noticeGiven
+        && !hasActiveSuccessor(lease)
       if (canRoll) {
         const end = new Date(`${lease.endDate}T00:00:00Z`)
         const start = new Date(`${lease.startDate ?? lease.endDate}T00:00:00Z`)
