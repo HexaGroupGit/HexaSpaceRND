@@ -42,7 +42,11 @@ export function buildDirectoryBoard(level, prev, { tenants, leases, spaces }) {
     return ten?.directoryName?.trim() || ten?.businessName || ''
   }
   const hasConfirmedName = (id) => !!tenantOf(id)?.directoryName?.trim()
-  const active = leases.filter((l) => l.status === 'active' && (l.startDate ?? '') <= t)
+  // Suites reflect physical occupancy → only already-started contracts.
+  // Community lists every SIGNED active membership (a member starting in
+  // September is still a member the board should announce).
+  const activeAll = leases.filter((l) => l.status === 'active')
+  const active = activeAll.filter((l) => (l.startDate ?? '') <= t)
 
   // spaceId → occupying tenant ids
   const occ = new Map()
@@ -88,9 +92,11 @@ export function buildDirectoryBoard(level, prev, { tenants, leases, spaces }) {
     .map(({ _k, ...s }) => s)
 
   // ── Community members ─────────────────────────────────────────────────────
-  // Anyone holding an active membership that isn't a suite: virtual office or
-  // desk spaces, plus SPACE-LESS memberships — dedicated-desk and MTM flexible
-  // contracts carry no spaceId at all (e.g. Lunea, Trafficon). Office
+  // Anyone holding a signed active membership that isn't a suite: virtual
+  // office, desk or studio-residency spaces, plus memberships whose lease
+  // carries NO resolvable space — dedicated-desk / flexible / MTM contracts
+  // have no spaceId at all (Lunea, Trafficon), and some script-migrated VOs
+  // point at space ids that don't exist (Bricklane's hx_vo_CON-246). Office
   // occupants are excluded: they're already displayed on a suite row.
   const spaceById = new Map(spaces.map((s) => [s.id, s]))
   const officeTenantIds = new Set()
@@ -98,11 +104,11 @@ export function buildDirectoryBoard(level, prev, { tenants, leases, spaces }) {
     if (leaseSpaceIds(l).some((sid) => spaceById.get(sid)?.type === 'office')) officeTenantIds.add(l.tenantId)
   }
   const commIds = new Set()
-  for (const l of active) {
-    const sids = leaseSpaceIds(l)
-    const isCommunityLease = sids.length === 0
-      ? true // membership-only contract (dedicated desk / flexible / MTM)
-      : sids.some((sid) => ['virtual', 'desk'].includes(spaceById.get(sid)?.type))
+  for (const l of activeAll) {
+    const resolved = leaseSpaceIds(l).map((sid) => spaceById.get(sid)).filter(Boolean)
+    const isCommunityLease = resolved.length === 0
+      ? true // membership-only contract, or dangling space reference
+      : resolved.some((s) => ['virtual', 'desk', 'studio'].includes(s.type))
     if (isCommunityLease && !officeTenantIds.has(l.tenantId)) commIds.add(l.tenantId)
   }
   const prevComm = prev?.community ?? []
