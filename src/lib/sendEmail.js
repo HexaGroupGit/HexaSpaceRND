@@ -195,23 +195,29 @@ export function invoiceEmailHtml({ invoice, tenant, settings, payLink }) {
   }, 0)
   const gst = invoice.vatEnabled !== false ? Math.round(total * 0.1 * 100) / 100 : 0
   const grandTotal = total + gst
+  // Reflect payments already made: a paid (or part-paid) invoice must not show
+  // the full total as owing, and a settled one shows $0 with no pay prompt.
+  const paidAmt = (invoice.payments ?? []).reduce((s, p) => s + Number(p.amount || 0), 0)
+  const amountDue = Math.max(0, Math.round((grandTotal - paidAmt) * 100) / 100)
+  const isPaid = invoice.status === 'paid' || amountDue <= 0
+  const money = (n) => `$${n.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD`
 
   const intro = settings?.emailTemplates?.invoice?.intro?.replace(/\{\{number\}\}/g, invoice.number ?? '').replace(/\{\{dueDate\}\}/g, invoice.dueDate ?? '') ?? 'Please find your invoice details below.'
   const cell = `padding:11px 15px;font-family:${SANS};font-size:14px`
   const inner = `${bKicker('Invoice')}${bH1('Your invoice from ' + name + '.')}` +
     bP(`Hi ${tenant?.contactName ?? tenant?.businessName ?? 'there'},`) +
-    bP(intro) +
+    bP(isPaid ? `This invoice has been paid in full — thank you. This copy is for your records; no payment is required.` : intro) +
     `      <table style="width:100%;border-collapse:collapse;margin:6px 0 22px">
         <tr style="background:${GREIGE}"><td style="${cell};font-weight:600;color:${INK}">Invoice Number</td><td style="${cell}">${invoice.number}</td></tr>
         <tr><td style="${cell};font-weight:600;color:${INK}">Period</td><td style="${cell}">${invoice.periodStart ?? ''} – ${invoice.periodEnd ?? ''}</td></tr>
         <tr style="background:${GREIGE}"><td style="${cell};font-weight:600;color:${INK}">Due Date</td><td style="${cell}">${invoice.dueDate ?? '—'}</td></tr>
-        <tr><td style="${cell};font-weight:600;color:${INK}">Amount Due</td><td style="${cell};font-family:${SERIF};font-size:22px;color:${OLIVE}">$${grandTotal.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD</td></tr>
+        <tr><td style="${cell};font-weight:600;color:${INK}">Amount Due</td><td style="${cell};font-family:${SERIF};font-size:22px;color:${OLIVE}">${money(amountDue)}${isPaid ? ` <span style="font-family:${CAPS};font-size:10px;letter-spacing:.16em;color:#2e7d32;vertical-align:middle">&nbsp;PAID</span>` : ''}</td></tr>
       </table>
-      ${payLink ? bBtn('Pay this invoice online', payLink) + bSmall(`Card payments are processed securely by Stripe. If the button doesn't work, copy this link: <a href="${payLink}" style="color:${OLIVE}">${payLink}</a>`) : ''}
-      <div style="background:${GREIGE};border-radius:8px;padding:16px 18px;margin:0 0 8px">
+      ${!isPaid && payLink ? bBtn('Pay this invoice online', payLink) + bSmall(`Card payments are processed securely by Stripe. If the button doesn't work, copy this link: <a href="${payLink}" style="color:${OLIVE}">${payLink}</a>`) : ''}
+      ${isPaid ? '' : `<div style="background:${GREIGE};border-radius:8px;padding:16px 18px;margin:0 0 8px">
         <div style="font-family:${CAPS};font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:${OLIVE};margin-bottom:8px">${payLink ? 'Or pay by bank transfer' : 'Payment details'}</div>
         <div style="font-family:${SANS};font-size:13px;color:#3a3a3a;line-height:1.7">Account Name: ${name}<br>BSB: ${bsb}<br>ACC: ${acc}</div>
-      </div>
+      </div>`}
       ${bSmall(`${name} · ${address}`)}`
   return brandShell(inner, { company: name, website })
 }
