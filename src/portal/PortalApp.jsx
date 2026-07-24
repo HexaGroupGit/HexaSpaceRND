@@ -42,6 +42,9 @@ function clearPortalSession() {
   window.location.replace('/')
 }
 
+// Remembers which company a multi-company user last viewed (per browser).
+const ACTIVE_CO_KEY = 'hexa_portal_company'
+
 export default function PortalApp() {
   const [session, setSession]   = useState(null)
   const [data, setData]         = useState(null) // { company, member, members, companies, leases, invoices, spaces, bookings, fees, templates }
@@ -76,8 +79,8 @@ export default function PortalApp() {
     return () => subscription.unsubscribe()
   }, [])
 
-  async function fetchData(email) {
-    if (loadedFor.current === email) return
+  async function fetchData(email, targetId) {
+    if (loadedFor.current === email && !targetId) return
     loadedFor.current = email
     setLoading(true)
     try {
@@ -90,15 +93,28 @@ export default function PortalApp() {
         results.map((r) => (r.data ?? []).map((row) => row.data))
 
       const lc = email?.toLowerCase()
-      // Resolve the logged-in person: a member first, else a company primary contact.
-      const member = members.find((m) => m.email?.toLowerCase() === lc) ?? null
-      const company =
-        (member && companies.find((c) => c.id === member.companyId)) ??
-        companies.find((c) => c.email?.toLowerCase() === lc) ??
-        null
+      // Every company this person can act for: each one they're a member of, plus
+      // any company whose primary-contact email is theirs. RLS now returns rows
+      // for all of them (see current_companies() in phase3b_multi_company.sql).
+      const myMembers = members.filter((m) => m.email?.toLowerCase() === lc)
+      const myCompanyIds = new Set([
+        ...myMembers.map((m) => m.companyId).filter(Boolean),
+        ...companies.filter((c) => c.email?.toLowerCase() === lc).map((c) => c.id),
+      ])
+      const myCompanies = companies
+        .filter((c) => myCompanyIds.has(c.id))
+        .sort((a, b) => (a.businessName || '').localeCompare(b.businessName || ''))
+
+      // Active company: explicit switch → last choice → first.
+      const wanted = targetId || localStorage.getItem(ACTIVE_CO_KEY)
+      const company = myCompanies.find((c) => c.id === wanted) ?? myCompanies[0] ?? null
+      if (company) localStorage.setItem(ACTIVE_CO_KEY, company.id)
+      // The member row for the ACTIVE company (a person can hold a different row
+      // per company); null when they're the primary contact with no member row.
+      const member = (company && myMembers.find((m) => m.companyId === company.id)) ?? null
 
       const cid = company?.id
-      const myEmail = (company?.email || member?.email || '').toLowerCase()
+      const myEmail = (company?.email || member?.email || lc || '').toLowerCase()
 
       // Tenant-scoped fetches (JSONB filter → immune to the 1000-row cap).
       const [invRes, leaseRes] = cid
@@ -129,7 +145,10 @@ export default function PortalApp() {
       const settings = await fetch('/api/portal/settings').then((r) => r.json()).then((d) => d.settings ?? {}).catch(() => ({}))
 
       setData({
-        company, member, members, companies, spaces, templates,
+        // members/fees are scoped to the ACTIVE company so a multi-company user
+        // never sees the other company's directory or charges mixed in.
+        company, member, myCompanies, companies, spaces, templates,
+        members: cid ? members.filter((m) => m.companyId === cid) : members,
         leases, settings,
         invoices,
         bookings: ownBookings,
@@ -138,7 +157,7 @@ export default function PortalApp() {
           (cid && (fb.companyId === cid || fb.tenantId === cid)) ||
           (member && fb.memberId === member.id) ||
           (myEmail && (fb.email || '').toLowerCase() === myEmail)),
-        fees,
+        fees: cid ? fees.filter((f) => f.companyId === cid) : fees,
       })
     } catch (err) {
       console.error('Portal fetchData error:', err)
@@ -153,6 +172,14 @@ export default function PortalApp() {
     setSession(null)
     setData(null)
     setNeedsPassword(false)
+  }
+
+  // Multi-company user picks a different company to view — re-scope all data.
+  async function switchCompany(id) {
+    const email = session?.user?.email
+    if (!email || id === data?.company?.id) return
+    loadedFor.current = null
+    await fetchData(email, id)
   }
 
   if (loading) return <Splash><p className="hx-prose">Loading…</p></Splash>
@@ -214,7 +241,7 @@ export default function PortalApp() {
 
   return (
     <BrowserRouter basename={basename}>
-      <PortalLayout company={company} member={data.member} onSignOut={signOut} restricted={restricted}>
+      <PortalLayout company={company} member={data.member} companies={data.myCompanies} onSwitchCompany={switchCompany} onSignOut={signOut} restricted={restricted}>
         <Routes>
           {restricted ? (
             <>

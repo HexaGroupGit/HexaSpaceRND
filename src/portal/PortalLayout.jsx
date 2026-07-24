@@ -24,10 +24,11 @@ const nav = [
 // message us, but NOT the member facilities, directory, discounts or perks.
 const FUNCTION_ONLY_PATHS = new Set(['/', '/meeting-rooms', '/function-space', '/billing', '/account', '/messages'])
 
-export default function PortalLayout({ company, member, onSignOut, children, restricted = false }) {
+export default function PortalLayout({ company, member, companies = [], onSwitchCompany, onSignOut, children, restricted = false }) {
   const [open, setOpen] = useState(false)
   const who = member?.name || company?.contactName || company?.businessName
   const items = restricted ? nav.filter((n) => FUNCTION_ONLY_PATHS.has(n.to)) : nav
+  const multiCompany = (companies?.length ?? 0) > 1
 
   const sidebar = (
     <aside className="w-60 bg-charcoal text-paper flex flex-col h-full">
@@ -40,6 +41,21 @@ export default function PortalLayout({ company, member, onSignOut, children, res
           <X size={18} />
         </button>
       </div>
+
+      {multiCompany && (
+        <div className="px-4 pt-4 pb-1">
+          <label className="font-heading uppercase tracking-label text-[9px] text-paper/40 block mb-1.5">Viewing company</label>
+          <select
+            value={company?.id || ''}
+            onChange={(e) => onSwitchCompany?.(e.target.value)}
+            className="w-full bg-paper/10 text-paper text-[12px] font-body border border-paper/20 rounded px-3 py-2 cursor-pointer focus:outline-none focus:border-hexa-green/60"
+          >
+            {companies.map((c) => (
+              <option key={c.id} value={c.id} className="text-ink">{c.businessName}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
         {items.map(({ to, label, icon: Icon, end }) => (
