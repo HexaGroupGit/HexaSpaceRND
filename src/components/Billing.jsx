@@ -321,6 +321,7 @@ export default function Billing() {
       <div className="flex border-b border-border mb-6">
         {[
           { id: 'invoices', label: 'Invoices' },
+          { id: 'cards', label: 'Saved Cards' },
           { id: 'discounts', label: 'Discounts' },
         ].map(({ id, label }) => (
           <button
@@ -595,6 +596,68 @@ export default function Billing() {
           </div>
         </>
       )}
+
+      {/* ── Saved Cards ── which clients have a card on file, and their outstanding balance ── */}
+      {subTab === 'cards' && (() => {
+        const withCards = tenants
+          .filter((t) => t.stripePaymentMethodId || t.cardLast4)
+          .map((t) => {
+            const open = invoices
+              .filter((i) => i.tenantId === t.id && ['pending', 'overdue'].includes(i.status))
+              .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+            return { t, open, owing: open.reduce((s, i) => s + calcAmountDue(i), 0) }
+          })
+          .sort((a, b) => b.owing - a.owing)
+        return (
+          <>
+            <p className="text-sm text-muted-foreground mb-4">
+              {withCards.length} compan{withCards.length === 1 ? 'y' : 'ies'} with a saved card. Open an invoice to charge the card.
+            </p>
+            {withCards.length === 0 ? (
+              <div className="bg-card border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">No saved cards on file yet.</div>
+            ) : (
+              <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Company</th>
+                      <th className="px-4 py-3 font-medium">Saved card</th>
+                      <th className="px-4 py-3 font-medium">Expires</th>
+                      <th className="px-4 py-3 font-medium">Authority</th>
+                      <th className="px-4 py-3 font-medium text-center">Open</th>
+                      <th className="px-4 py-3 font-medium text-right">Owing</th>
+                      <th className="px-4 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {withCards.map(({ t, open, owing }) => (
+                      <tr key={t.id} className="border-t border-border hover:bg-muted/40">
+                        <td className="px-4 py-3 font-medium text-foreground">{t.businessName}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{(t.cardBrand || 'Card').toUpperCase()} •••• {t.cardLast4 || '????'}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{t.cardExpMonth ? `${String(t.cardExpMonth).padStart(2, '0')}/${t.cardExpYear}` : '—'}</td>
+                        <td className="px-4 py-3">
+                          {t.cardAuthorityAccepted
+                            ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Authorised</span>
+                            : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">Not authorised</span>}
+                        </td>
+                        <td className="px-4 py-3 text-center text-muted-foreground">{open.length}</td>
+                        <td className="px-4 py-3 text-right font-medium text-foreground">${owing.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</td>
+                        <td className="px-4 py-3 text-right">
+                          {open.length > 0 && (
+                            <button onClick={() => setSelectedInvoice(open[0])} className="text-xs font-medium text-blue-600 hover:text-blue-700 whitespace-nowrap">
+                              Charge / view →
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )
+      })()}
 
       {/* ── Discounts ── */}
       {subTab === 'discounts' && (
