@@ -36,6 +36,8 @@ export default async function handler(req, res) {
   }
 
   const result = await sendResendEmail({ from, to, subject, html, replyTo, cc, bcc, attachments })
+  // Every recipient unsubscribed → correctly not sent; that's a success, not an error.
+  if (result.skipped && result.reason === 'suppressed') return res.status(200).json({ success: true, suppressed: true })
   if (result.skipped) return res.status(500).json({ error: 'Email service not configured' })
   if (!result.ok) {
     console.error('Resend error:', result.data)
