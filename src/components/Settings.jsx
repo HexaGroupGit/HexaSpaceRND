@@ -537,6 +537,19 @@ function EmailsSection({ settings, updateSettings }) {
         </div>
       </div>
 
+      <FormRow
+        label="Unsubscribed addresses"
+        description="One email per line. These addresses are never emailed by the platform — every send (invoices, reminders, announcements, invites) silently drops them, including as cc/bcc. Use for members who ask to stop receiving emails."
+      >
+        <textarea
+          rows={4}
+          value={(form.suppressed ?? []).join('\n')}
+          onChange={(e) => set('suppressed')(e.target.value.split('\n').map((a) => a.trim().toLowerCase()).filter(Boolean))}
+          placeholder={'someone@example.com'}
+          className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background font-mono resize-y focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </FormRow>
+
       <FormRow label="Notification Email" description="Receive system notifications at this address">
         <TextInput type="email" value={form.notificationEmail} onChange={set('notificationEmail')} />
       </FormRow>

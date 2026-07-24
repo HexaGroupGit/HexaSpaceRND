@@ -21,7 +21,13 @@ async function getSafeConfig() {
       const sb = createClient(url, key, { auth: { persistSession: false } })
       const { data } = await sb.from('settings').select('data').eq('id', 'global')
       const e = data?.[0]?.data?.emails ?? {}
-      const val = { mode: e.safeMode !== false, to: e.safeRecipient || DEFAULT_SAFE_RECIPIENT }
+      const val = {
+        mode: e.safeMode !== false,
+        to: e.safeRecipient || DEFAULT_SAFE_RECIPIENT,
+        // Unsubscribed addresses (Settings → Emails) — the platform never
+        // emails these, on any flow. Compared lowercase.
+        suppressed: (Array.isArray(e.suppressed) ? e.suppressed : []).map((a) => String(a).toLowerCase().trim()).filter(Boolean),
+      }
       _cache = { at: now, val }
       return val
     }
@@ -29,8 +35,10 @@ async function getSafeConfig() {
     console.error('email safe-config read failed:', err)
   }
   // Fail safe: if we can't read the setting, block everything but the default.
-  return { mode: true, to: DEFAULT_SAFE_RECIPIENT }
+  return { mode: true, to: DEFAULT_SAFE_RECIPIENT, suppressed: [] }
 }
+
+const isSuppressed = (safe, addr) => safe.suppressed.includes(String(addr ?? '').toLowerCase().trim())
 
 // payload: { from, to, subject, html, replyTo|reply_to, cc, bcc, attachments }
 // Returns { ok, skipped?, status?, data? }.
@@ -50,6 +58,15 @@ export async function sendResendEmail(payload = {}) {
   if (payload.cc) p.cc = Array.isArray(payload.cc) ? payload.cc : [payload.cc]
   if (payload.bcc) p.bcc = Array.isArray(payload.bcc) ? payload.bcc : [payload.bcc]
   if (payload.attachments?.length) p.attachments = payload.attachments
+
+  // Unsubscribed addresses: drop them from every recipient field; if nobody
+  // is left to address, skip the send entirely (reported ok+skipped so
+  // callers treat it as a non-event, not a failure).
+  const toList = (Array.isArray(p.to) ? p.to : [p.to]).filter(Boolean).filter((a) => !isSuppressed(safe, a))
+  if (!toList.length) return { ok: true, skipped: true, reason: 'suppressed' }
+  p.to = toList
+  if (p.cc) { p.cc = p.cc.filter((a) => !isSuppressed(safe, a)); if (!p.cc.length) delete p.cc }
+  if (p.bcc) { p.bcc = p.bcc.filter((a) => !isSuppressed(safe, a)); if (!p.bcc.length) delete p.bcc }
 
   if (safe.mode) {
     // Redirect everything to the single safe recipient; strip cc/bcc so no one
@@ -98,6 +115,10 @@ export async function sendResendBatch(messages = []) {
     if (replyTo) p.reply_to = replyTo
     return p
   })
+    // Unsubscribed addresses never receive batch mail either.
+    .map((p) => ({ ...p, to: p.to.filter((a) => !isSuppressed(safe, a)) }))
+    .filter((p) => p.to.length)
+  if (!batch.length) return { ok: true, sent: 0 }
 
   if (safe.mode) {
     // Collapse the entire batch to ONE email to the safe recipient.
