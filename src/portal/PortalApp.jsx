@@ -216,9 +216,13 @@ export default function PortalApp() {
     )
   }
 
-  // Offboarded members keep their auth session until it expires — show the
-  // membership-ended screen instead of the portal (revoke bans new logins).
-  if (data.member && data.member.portalAccess === false) {
+  // Offboarded members keep their auth session until it expires. If this ended
+  // company is their ONLY one, take over with the membership-ended screen.
+  // Multi-company users keep the portal + switcher (below) so an ended company
+  // can never trap them with no way back.
+  const membershipEnded = !!(data.member && data.member.portalAccess === false)
+  const hasMultipleCompanies = (data.myCompanies?.length ?? 0) > 1
+  if (membershipEnded && !hasMultipleCompanies) {
     return (
       <Splash>
         <p className="hx-prose mb-1">Your membership has ended</p>
@@ -242,6 +246,13 @@ export default function PortalApp() {
   return (
     <BrowserRouter basename={basename}>
       <PortalLayout company={company} member={data.member} companies={data.myCompanies} onSwitchCompany={switchCompany} onSignOut={signOut} restricted={restricted}>
+        {membershipEnded ? (
+          <div className="max-w-lg mx-auto text-center px-6 py-20">
+            <p className="hx-lead text-ink mb-2">Your membership with {company.businessName} has ended.</p>
+            <p className="hx-prose text-[13px] text-portal-muted mb-8">Choose another company from the sidebar to continue, or contact us if this looks wrong.</p>
+            <a href="mailto:info@hexaspace.com.au" className="hx-btn inline-flex">Contact Hexa Space</a>
+          </div>
+        ) : (
         <Routes>
           {restricted ? (
             <>
@@ -270,6 +281,7 @@ export default function PortalApp() {
             </>
           )}
         </Routes>
+        )}
       </PortalLayout>
     </BrowserRouter>
   )
