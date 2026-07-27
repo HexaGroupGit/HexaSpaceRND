@@ -66,6 +66,19 @@ export function bookingFeeName({ roomName, rate, date, startTime, endTime, usedC
 
 export const round2 = (n) => Math.round(Number(n || 0) * 100) / 100
 
+// Members get 30% off the listed meeting-room hourly rate. room.hourlyRate is
+// the STANDARD/EXTERNAL rate; any booking attached to a member/company is
+// priced at 70% of it. This single helper feeds every pricing path (credit
+// consumption, overage Booking Fee, and the invoice line alike) so the member
+// rate is applied identically no matter who created the booking — the member
+// (portal/app) or an admin (calendar / Bookings). External (non-member)
+// bookings pass isMember=false and pay the full listed rate.
+export const MEMBER_ROOM_DISCOUNT = 0.30
+export function memberRoomRate(room, isMember = true) {
+  const rate = Number(room?.hourlyRate ?? room?.rate ?? 0)
+  return isMember ? round2(rate * (1 - MEMBER_ROOM_DISCOUNT)) : rate
+}
+
 // ── Meeting-room perk (by membership) ───────────────────────────────────────
 // Members get certain rooms FREE (no credits) up to hour caps, varying by
 // membership type. Defaults below; overridable per-tier via
@@ -197,4 +210,17 @@ export function billingEmailFor(tenant, members = []) {
   if (tenant?.email) return tenant.email
   const mine = (members ?? []).filter((m) => m.companyId === tenant?.id && m.email)
   return (mine.find((m) => m.billingPerson) ?? mine.find((m) => m.contactPerson) ?? mine[0])?.email || ''
+}
+
+// Who to actually chase for payment. Same fallback order as billingEmailFor so
+// the name/number shown next to an overdue invoice belongs to the person the
+// reminder email reaches.
+export function billingContactFor(tenant, members = []) {
+  const mine = (members ?? []).filter((m) => m.companyId === tenant?.id)
+  const m = mine.find((x) => x.billingPerson) ?? mine.find((x) => x.contactPerson) ?? mine[0]
+  return {
+    name: tenant?.contactName || m?.name || '',
+    phone: tenant?.phone || m?.phone || '',
+    email: billingEmailFor(tenant, members),
+  }
 }

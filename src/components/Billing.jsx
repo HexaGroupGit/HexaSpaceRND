@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext, useLocation, useNavigate } from 'react-router-dom'
 import { format, parseISO, startOfMonth, isBefore, addMonths, differenceInDays } from 'date-fns'
-import { Plus, Search, X, Check, Download, Send, Ban } from 'lucide-react'
+import { Plus, Search, X, Check, Download, Send, Ban, BellRing } from 'lucide-react'
 import InvoiceDetail from './InvoiceDetail.jsx'
 import InvoiceForm from './InvoiceForm.jsx'
-import { sendEmail, invoiceEmailHtml, makePayToken, invoicePayLink } from '../lib/sendEmail.js'
+import { sendEmail, invoiceEmailHtml, makePayToken, invoicePayLink, brandShell, bKicker, bH1, bP, bSmall, bBtn, BRAND } from '../lib/sendEmail.js'
+import { billingContactFor } from '../lib/credits.js'
 import { invoiceLease, invoiceSpace, locationLabel } from '../lib/billing.js'
 import { buildMonthlyInvoiceForLease } from '../lib/billingEngine.js'
 import { jsPDF } from 'jspdf'
@@ -130,18 +131,20 @@ export default function Billing() {
 
   // ── CSV Export ────────────────────────────────────────────────────────────
   function exportCSV() {
-    const rows = [['Number', 'Tenant', 'Status', 'Sent', 'Issue Date', 'Due Date', 'Period', 'Subtotal', 'GST', 'Total', 'Paid', 'Amount Due']]
+    const rows = [['Number', 'Tenant', 'Status', 'Sent', 'Issue Date', 'Due Date', 'Period', 'Subtotal', 'GST', 'Total', 'Paid', 'Amount Due', 'Contact', 'Phone', 'Email']]
     for (const inv of filtered) {
       const tenant = tenants.find((t) => t.id === inv.tenantId)
       const sub = (inv.lineItems ?? []).reduce((s, l) => s + Math.round(l.unitPrice * l.qty * (1 - (l.discountPct ?? 0) / 100) * 100) / 100, 0)
       const gst = inv.vatEnabled !== false ? Math.round(sub * taxRate * 100) / 100 : 0
       const total = sub + gst
       const paid = (inv.payments ?? []).reduce((s, p) => s + Number(p.amount), 0)
+      const contact = billingContactFor(tenant, members)
       rows.push([
         inv.number ?? '', tenant?.businessName ?? '', inv.status ?? '', inv.sentStatus ?? '',
         inv.issueDate ?? '', inv.dueDate ?? '',
         inv.periodStart ? `${inv.periodStart} to ${inv.periodEnd}` : (inv.invoiceType === 'deposit' ? 'Deposit' : ''),
         sub.toFixed(2), gst.toFixed(2), total.toFixed(2), paid.toFixed(2), Math.max(0, total - paid).toFixed(2),
+        contact.name, contact.phone, contact.email,
       ])
     }
     const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -209,6 +212,115 @@ export default function Billing() {
     alert(`Sent ${sent} of ${selected.size} invoice(s).`)
   }
 
+  // ── Bulk overdue reminders ────────────────────────────────────────────────
+  // One email per company (not per invoice) so a tenant three invoices behind
+  // gets a single chase listing all of them, each with its own pay link.
+  function overdueReminderHtml({ tenant, rows, totalDue }) {
+    const companyName = settings?.company?.name ?? 'Hexa Space'
+    const list = rows.map(({ inv, due, daysOverdue, payLink }) => `
+      <tr>
+        <td style="font-family:${BRAND.SANS};font-size:14px;color:${BRAND.INK};padding:8px 0;border-bottom:1px solid ${BRAND.HAIR}">
+          <strong>${inv.number}</strong><br>
+          <span style="font-size:12px;color:${BRAND.MUTE}">Due ${inv.dueDate ? format(parseISO(inv.dueDate), 'dd/MM/yyyy') : '—'} · ${daysOverdue} day${daysOverdue === 1 ? '' : 's'} overdue</span>
+        </td>
+        <td style="font-family:${BRAND.SANS};font-size:14px;color:${BRAND.INK};padding:8px 0;border-bottom:1px solid ${BRAND.HAIR};text-align:right;white-space:nowrap">
+          $${due.toLocaleString('en-AU', { minimumFractionDigits: 2 })}${payLink ? `<br><a href="${payLink}" style="font-size:12px;color:${BRAND.OLIVE}">Pay now</a>` : ''}
+        </td>
+      </tr>`).join('')
+    return brandShell(
+      bKicker('Payment reminder') +
+      bH1(rows.length === 1 ? 'A gentle reminder.' : 'A few invoices are past due.') +
+      bP(`Hi ${tenant?.contactName ?? tenant?.businessName ?? ''},`) +
+      bP(`Our records show <strong style="color:${BRAND.INK}">$${totalDue.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD</strong> outstanding across ${rows.length} invoice${rows.length === 1 ? '' : 's'}. Please arrange payment at your earliest convenience.`) +
+      `      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">${list}</table>` +
+      (rows.length === 1 && rows[0].payLink ? bBtn('Pay this invoice online', rows[0].payLink) : '') +
+      bSmall('If you have already made payment, please disregard this message — or reply to this email and we will reconcile it.'),
+      { company: companyName, website: settings?.company?.website || 'hexaspace.com.au' },
+    )
+  }
+
+  async function bulkSendReminders(scope) {
+    // scope: the invoices to chase. Only genuinely overdue, unpaid ones qualify.
+    const targets = scope.filter((i) => i._status === 'overdue' && calcAmountDue(i, taxRate) > 0)
+    if (targets.length === 0) {
+      alert('Nothing to remind about — no overdue invoices with an amount still owing.')
+      return
+    }
+
+    // Group by company.
+    const groups = new Map()
+    for (const inv of targets) {
+      if (!groups.has(inv.tenantId)) groups.set(inv.tenantId, [])
+      groups.get(inv.tenantId).push(inv)
+    }
+
+    const noEmail = []
+    const sendable = []
+    for (const [tenantId, invs] of groups) {
+      const tenant = tenants.find((t) => t.id === tenantId)
+      const contact = billingContactFor(tenant, members)
+      if (!contact.email) { noEmail.push(tenant?.businessName ?? 'Unknown company'); continue }
+      sendable.push({ tenant, contact, invs })
+    }
+
+    if (sendable.length === 0) {
+      alert(`No email address on file for: ${noEmail.join(', ')}`)
+      return
+    }
+
+    const warn = noEmail.length ? `\n\nSkipped (no email on file): ${noEmail.join(', ')}` : ''
+    if (!window.confirm(
+      `Send a payment reminder to ${sendable.length} compan${sendable.length === 1 ? 'y' : 'ies'} covering ${targets.length} overdue invoice${targets.length === 1 ? '' : 's'}?${warn}`
+    )) return
+
+    setBulkWorking(true)
+    const nowISO = new Date().toISOString()
+    let sent = 0
+    const failed = []
+    for (const { tenant, contact, invs } of sendable) {
+      const rows = invs
+        .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
+        .map((inv) => {
+          // Mint the pay-link token once; re-sends keep the same link.
+          const payToken = inv.payToken ?? makePayToken()
+          if (!inv.payToken) updateInvoice(inv.id, { payToken })
+          return {
+            inv,
+            due: calcAmountDue(inv, taxRate),
+            daysOverdue: inv.dueDate ? Math.abs(differenceInDays(parseISO(inv.dueDate), today)) : 0,
+            payLink: invoicePayLink({ ...inv, payToken }),
+          }
+        })
+      const totalDue = rows.reduce((s, r) => s + r.due, 0)
+      try {
+        await sendEmail({
+          to: contact.email,
+          subject: rows.length === 1
+            ? `Payment reminder — ${rows[0].inv.number} overdue`
+            : `Payment reminder — ${rows.length} overdue invoices`,
+          html: overdueReminderHtml({ tenant, rows, totalDue }),
+          settings,
+          tenantId: tenant?.id, emailType: 'reminder',
+        })
+        // Stamp each invoice so the table shows who has already been chased.
+        invs.forEach((inv) => updateInvoice(inv.id, {
+          reminderSentAt: nowISO,
+          reminderCount: (inv.reminderCount ?? 0) + 1,
+        }))
+        sent++
+      } catch (err) {
+        failed.push(`${tenant?.businessName ?? 'Unknown'} (${err.message})`)
+      }
+    }
+    setBulkWorking(false)
+    setSelected(new Set())
+    alert(
+      `Reminders sent to ${sent} of ${sendable.length} compan${sendable.length === 1 ? 'y' : 'ies'}.` +
+      (failed.length ? `\n\nFailed: ${failed.join(', ')}` : '') +
+      (noEmail.length ? `\n\nSkipped (no email on file): ${noEmail.join(', ')}` : '')
+    )
+  }
+
   // ── Invoice update handler (handles credit note creation) ───────────────
   function handleInvoiceUpdate(id, updates) {
     if (id === '__create_credit_note__') {
@@ -258,6 +370,10 @@ export default function Billing() {
       return true
     })
     .sort((a, b) => (b.issueDate ?? '').localeCompare(a.issueDate ?? ''))
+
+  // Chasing overdue money needs a human to call, so surface the billing
+  // contact only on the Overdue tab where it earns its column width.
+  const showContact = filterStatus === 'overdue'
 
   // Counts for filter badges
   const counts = {
@@ -438,6 +554,16 @@ export default function Billing() {
                   className="pl-8 pr-3 py-1.5 border border-input rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-48"
                 />
               </div>
+              {filterStatus === 'overdue' && (
+                <button
+                  onClick={() => bulkSendReminders(filtered)}
+                  disabled={bulkWorking || filtered.length === 0}
+                  className="flex items-center gap-1.5 text-sm bg-red-600 text-white rounded px-3 py-1.5 hover:bg-red-700 font-medium disabled:opacity-50"
+                  title="Email a payment reminder to every company with an overdue invoice shown below"
+                >
+                  <BellRing size={14} /> {bulkWorking ? 'Sending…' : `Send Reminders (${filtered.length})`}
+                </button>
+              )}
               <button onClick={exportCSV}
                 className="flex items-center gap-1.5 text-sm border border-input rounded px-3 py-1.5 text-foreground hover:bg-muted/50 font-medium">
                 <Download size={14} /> Export CSV
@@ -466,6 +592,10 @@ export default function Billing() {
                 className="flex items-center gap-1.5 text-xs bg-blue-600 text-white rounded px-3 py-1.5 hover:bg-blue-700 disabled:opacity-50">
                 <Send size={12} /> {bulkWorking ? 'Sending…' : 'Send All'}
               </button>
+              <button onClick={() => bulkSendReminders(filtered.filter((i) => selected.has(i.id)))} disabled={bulkWorking}
+                className="flex items-center gap-1.5 text-xs bg-red-600 text-white rounded px-3 py-1.5 hover:bg-red-700 disabled:opacity-50">
+                <BellRing size={12} /> {bulkWorking ? 'Sending…' : 'Send Reminders'}
+              </button>
               <button onClick={bulkMarkPaid}
                 className="flex items-center gap-1.5 text-xs bg-green-600 text-white rounded px-3 py-1.5 hover:bg-green-700">
                 <Check size={12} /> Mark Paid
@@ -490,7 +620,10 @@ export default function Billing() {
                       checked={selected.size === filtered.length && filtered.length > 0}
                       onChange={selectAll} />
                   </th>
-                  {['Number', 'To', 'Status', 'Issue Date', 'Due Date', 'Amount Due', ''].map((h) => (
+                  {(showContact
+                    ? ['Number', 'To', 'Contact', 'Status', 'Issue Date', 'Due Date', 'Amount Due', '']
+                    : ['Number', 'To', 'Status', 'Issue Date', 'Due Date', 'Amount Due', '']
+                  ).map((h) => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       {h}
                     </th>
@@ -500,7 +633,7 @@ export default function Billing() {
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground text-sm">
+                    <td colSpan={showContact ? 9 : 8} className="px-4 py-10 text-center text-muted-foreground text-sm">
                       No invoices found.{' '}
                       <button onClick={() => setShowForm(true)} className="text-blue-600 hover:underline">
                         Add the first invoice
@@ -517,6 +650,7 @@ export default function Billing() {
                   // Voided invoices owe nothing; amount due is red only once overdue.
                   const isVoided = inv._status === 'voided'
                   const overdue = inv._status === 'overdue'
+                  const contact = showContact ? billingContactFor(tenant, members) : null
                   const due = isVoided ? 0 : amountDue
                   const amountColor = overdue ? 'text-red-600' : 'text-foreground'
 
@@ -540,6 +674,23 @@ export default function Billing() {
                         <div className="font-medium text-foreground">{tenant?.businessName ?? '—'}</div>
                         <div className="text-xs text-muted-foreground">{locationLabel(invoiceLease(inv, leases), invoiceSpace(inv, leases, spaces))}</div>
                       </td>
+                      {showContact && (
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <div className="text-sm text-foreground">{contact.name || '—'}</div>
+                          {contact.phone ? (
+                            <a href={`tel:${contact.phone.replace(/[^\d+]/g, '')}`} className="text-xs text-blue-700 hover:underline">
+                              {contact.phone}
+                            </a>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">No phone on file</div>
+                          )}
+                          {contact.email && (
+                            <a href={`mailto:${contact.email}`} className="block text-xs text-muted-foreground hover:underline truncate max-w-[180px]">
+                              {contact.email}
+                            </a>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-3 cursor-pointer" onClick={() => setSelectedInvoice(inv)}>
                         <div className="flex flex-col gap-1">
                           <span className={`text-xs font-semibold px-2 py-0.5 rounded capitalize w-fit ${STATUS_STYLE[inv._status]}`}>
@@ -548,6 +699,12 @@ export default function Billing() {
                           <span className={`text-xs px-2 py-0.5 rounded w-fit ${inv.sentStatus === 'sent' ? 'bg-muted text-muted-foreground' : 'bg-yellow-50 text-yellow-700'}`}>
                             {inv.sentStatus === 'sent' ? 'Sent' : 'Not Sent'}
                           </span>
+                          {inv.reminderSentAt && (
+                            <span className="text-xs px-2 py-0.5 rounded w-fit bg-red-50 text-red-700" title={`Reminders sent: ${inv.reminderCount ?? 1}`}>
+                              Reminded {format(parseISO(inv.reminderSentAt), 'dd/MM')}
+                              {(inv.reminderCount ?? 1) > 1 ? ` ×${inv.reminderCount}` : ''}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground text-sm">
