@@ -36,6 +36,12 @@ const fmtTime = (t) => {
   const hh = ((h + 11) % 12) || 12
   return `${hh}:${String(m || 0).padStart(2, '0')}${ap}`
 }
+// Compact form for the per-session quote rows ("Fri 7 Aug") — the full date is
+// too long once a series has six of them side by side with a price.
+const fmtShort = (d) => {
+  if (!d) return ''
+  try { return new Date(`${d}T00:00:00`).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }) } catch { return d }
+}
 
 // What the client should SEE for their current function booking — so a completed
 // booking never shows the blank form again:
@@ -102,15 +108,34 @@ export default function PortalFunction({ spaces, member, company }) {
     })()
   }, [company?.id])
 
+  // A booking can be a SERIES — several sessions priced together (each at its own
+  // weekday/weekend rate, cleaning per session, one security deposit). The form
+  // below only has one date/from/to, so for a series we must not price from it:
+  // doing so quoted the client the first session alone.
+  const series = bookingSessions(existing || {})
+  const isSeries = series.length > 1
+
   // Carry any negotiated pricing (discount / custom rate) from the client's
   // existing booking so the portal shows the SAME numbers as the proposal.
-  const quote = computeQuote({ eventDate: f.date, startTime: f.startTime, endTime: f.endTime, guests: f.guests, addons: f.addons, priceOverrides: existing?.priceOverrides, bookedOn: today() })
+  // For a series we show the STORED quote rather than recomputing: its dates
+  // aren't editable here, so a recompute could only drift from what was sent.
+  // `bookedOn` is anchored to when the booking was raised, not today — otherwise
+  // a client opening the page inside the late-booking window would be shown a
+  // surcharge that was never part of their quote.
+  const quote = (isSeries && existing?.quote)
+    ? existing.quote
+    : computeQuote({
+        ...(isSeries ? { sessions: series } : { eventDate: f.date, startTime: f.startTime, endTime: f.endTime }),
+        guests: f.guests, addons: f.addons, priceOverrides: existing?.priceOverrides,
+        bookedOn: existing?.createdAt || today(),
+      })
 
   async function submit(e) {
     e.preventDefault()
     setError('')
     if (!f.businessName.trim()) return setError('Please enter your company / organisation name.')
-    if (!f.date || !f.startTime || !f.endTime || !f.guests) return setError('Please complete date, time and guest numbers.')
+    if (!isSeries && (!f.date || !f.startTime || !f.endTime)) return setError('Please complete the date and time.')
+    if (!f.guests) return setError('Please enter your expected guest numbers.')
     if (!f.signerName.trim()) return setError('Please enter your full name for the signature.')
     if (sigRef.current?.isEmpty()) return setError('Please add your signature.')
     if (!f.ack) return setError('Please accept the Terms & Conditions to continue.')
@@ -128,7 +153,12 @@ export default function PortalFunction({ spaces, member, company }) {
       name: f.signerName, organisation: f.businessName, email: company?.email || member?.email || '',
       phone: f.memberPhone || company?.phone || '', memberId: member?.id || existing?.memberId || '', companyId: company?.id || existing?.companyId || '',
       eventName: f.eventName || `${f.eventType} function`, eventType: f.eventType,
-      eventDate: f.date, startTime: f.startTime, endTime: f.endTime, guests: f.guests, layout: f.layout,
+      // Never let the single-date form overwrite a multi-session series — the
+      // dates weren't editable here, so f.date only holds the first session.
+      ...(isSeries
+        ? { sessions: existing.sessions, eventDate: existing.eventDate, startTime: existing.startTime, endTime: existing.endTime }
+        : { eventDate: f.date, startTime: f.startTime, endTime: f.endTime }),
+      guests: f.guests, layout: f.layout,
       catering: f.catering, addons: f.addons, additionalRequirements: f.notes,
       companyInfo: { businessName: f.businessName, abn: f.abn, phone: f.companyPhone, contactName: f.signerName },
       memberInfo: { name: f.signerName, email: company?.email || member?.email || '', phone: f.memberPhone },
@@ -257,11 +287,23 @@ export default function PortalFunction({ spaces, member, company }) {
                 <select className="hx-input" value={f.eventType} onChange={up('eventType')}><option>Corporate</option><option>Launch</option><option>Conference / Seminar</option><option>Dinner</option><option>Celebration</option><option>Other</option></select>
               </div>
             </div>
-            <div className="grid sm:grid-cols-3 gap-5">
-              <div><label className="hx-eyebrow block mb-1.5">Date</label><input type="date" className="hx-input" value={f.date} onChange={up('date')} required /></div>
-              <div><label className="hx-eyebrow block mb-1.5">From</label><input type="time" className="hx-input" value={f.startTime} onChange={up('startTime')} required /></div>
-              <div><label className="hx-eyebrow block mb-1.5">To</label><input type="time" className="hx-input" value={f.endTime} onChange={up('endTime')} required /></div>
-            </div>
+            {isSeries ? (
+              <div>
+                <label className="hx-eyebrow block mb-1.5">Your sessions ({series.length})</label>
+                <Card className="p-5">
+                  {series.map((s, i) => (
+                    <p key={i} className="hx-prose text-[13px]">{fmtDate(s.date)} · {fmtTime(s.startTime)} – {fmtTime(s.endTime)}</p>
+                  ))}
+                  <p className="hx-prose text-[12px] text-portal-muted mt-3">These dates were agreed with you and are priced together below. To change them, reply to your booking email and we’ll re-issue the quote.</p>
+                </Card>
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-3 gap-5">
+                <div><label className="hx-eyebrow block mb-1.5">Date</label><input type="date" className="hx-input" value={f.date} onChange={up('date')} required /></div>
+                <div><label className="hx-eyebrow block mb-1.5">From</label><input type="time" className="hx-input" value={f.startTime} onChange={up('startTime')} required /></div>
+                <div><label className="hx-eyebrow block mb-1.5">To</label><input type="time" className="hx-input" value={f.endTime} onChange={up('endTime')} required /></div>
+              </div>
+            )}
             <div className="grid sm:grid-cols-2 gap-5">
               <div><label className="hx-eyebrow block mb-1.5">Expected guests</label><input type="number" min={1} max={120} className="hx-input" value={f.guests} onChange={up('guests')} placeholder="e.g. 60" required /></div>
               <div><label className="hx-eyebrow block mb-1.5">Layout</label>
@@ -302,8 +344,21 @@ export default function PortalFunction({ spaces, member, company }) {
           <div>
             <Eyebrow className="mb-4">Your quote</Eyebrow>
             <Card className="p-7">
-              <Row label={`Venue hire — ${quote.hours} hrs @ ${money(quote.rate)}/hr ${quote.isWeekend ? '(weekend)' : '(weekday)'}`} value={money(quote.rental)} />
-              <Row label="Cleaning fee" value={money(quote.cleaning)} />
+              {isSeries ? (
+                <>
+                  <div className="pb-1"><span className="hx-prose text-[13px] font-medium">Venue hire — {quote.sessionCount ?? series.length} sessions</span></div>
+                  {(quote.sessions ?? series).map((s, i) => (
+                    <Row key={i} label={`${fmtShort(s.date)} · ${fmtTime(s.startTime)} – ${fmtTime(s.endTime)}${s.rate ? ` @ ${money(s.rate)}/hr` : ''}`}
+                      value={s.rental != null ? money(s.rental) : ''} muted />
+                  ))}
+                  <Row label={`Cleaning fee — ${quote.sessionCount ?? series.length} sessions`} value={money(quote.cleaning)} />
+                </>
+              ) : (
+                <>
+                  <Row label={`Venue hire — ${quote.hours} hrs @ ${money(quote.rate)}/hr ${quote.isWeekend ? '(weekend)' : '(weekday)'}`} value={money(quote.rental)} />
+                  <Row label="Cleaning fee" value={money(quote.cleaning)} />
+                </>
+              )}
               {quote.staffApplies ? <Row label={`F&B & AV staff (80+ pax)`} value={money(quote.staff)} /> : null}
               {ADDONS.filter((a) => f.addons[a.key]).map((a) => <Row key={a.key} label={a.label} value={money(a.price)} />)}
               {(quote.extras ?? []).map((l, i) => <Row key={`x${i}`} label={l.description} value={money(l.amount)} />)}
