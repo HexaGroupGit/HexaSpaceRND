@@ -24,6 +24,24 @@ export function isFree(allBookings, resourceId, date, startTime, endTime, spaces
     overlaps(startTime, endTime, b.startTime, b.endTime))
 }
 
+// Server-truth availability check, run immediately before a write. The screens
+// pass `allBookings` from a snapshot loaded when the app started, which goes
+// stale while the app sits open — two members can otherwise each confirm the
+// same slot. `isFree` above still drives the grid; this is the authority.
+// Fails CLOSED: if availability can't be read we refuse rather than assume free.
+export async function assertSlotFree({ resourceId, date, startTime, endTime, spaces, excludeId }) {
+  const ids = [...new Set(blockingResourceIds(resourceId, spaces))]
+  const { data, error } = await supabase
+    .from('booking_availability')
+    .select('id,resource_id,date,start_time,end_time,status')
+    .in('resource_id', ids)
+    .eq('date', date)
+  if (error) throw new Error('We couldn’t confirm the room is still free — please try again.')
+  const clash = (data ?? []).some((b) => b.id !== excludeId && b.status !== 'Cancelled' &&
+    overlaps(startTime, endTime, b.start_time, b.end_time))
+  if (clash) throw new Error('That time was just taken — please choose another slot.')
+}
+
 const monthKey = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -97,12 +115,8 @@ export async function amendBooking({ booking, room, date, startTime, endTime, me
   if (!canModifyBooking(booking)) {
     throw new Error('This booking has already started — its time can no longer be changed.')
   }
-  // Clash check (conflict-aware), excluding this booking itself.
-  const ids = new Set(blockingResourceIds(room.id, spaces))
-  const clash = (allBookings ?? []).some((b) =>
-    b.id !== booking.id && ids.has(b.resourceId) && b.date === date && b.status !== 'Cancelled' &&
-    overlaps(startTime, endTime, b.startTime, b.endTime))
-  if (clash) throw new Error('That time was just taken — please choose another slot.')
+  // Clash check against server truth (conflict-aware), excluding this booking.
+  await assertSlotFree({ resourceId: room.id, date, startTime, endTime, spaces, excludeId: booking.id })
 
   const hrs = Math.max(0, toDec(endTime) - toDec(startTime))
   if (hrs <= 0) throw new Error('The end time must be after the start time.')
@@ -200,9 +214,7 @@ export function creditBalance(company) {
  * Returns { booking, company: updatedCompany, fee } — throws on clash/db error.
  */
 export async function createBooking({ room, date, startTime, endTime, title, member, company, allBookings, leases, spaces, settings }) {
-  if (!isFree(allBookings, room.id, date, startTime, endTime, spaces)) {
-    throw new Error('That time was just taken — please choose another slot.')
-  }
+  await assertSlotFree({ resourceId: room.id, date, startTime, endTime, spaces })
 
   const hrs = Math.max(0, toDec(endTime) - toDec(startTime))
 

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight, X, Repeat, Check, User } from 'lucide-react'
 import { format, addDays, addMonths } from 'date-fns'
 import { supabase } from '../lib/supabase.js'
-import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig } from '../lib/credits.js'
+import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig, memberRoomRate } from '../lib/credits.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
 import { Card } from './ui.jsx'
 
@@ -88,7 +88,7 @@ export default function PortalCalendar({ resources, allBookings, member, company
           {resources.map((room) => {
             const blockIds = new Set(blockingResourceIds(room.id, allSpaces ?? resources))
             const roomBookings = dayBookings.filter((b) => blockIds.has(b.resourceId))
-            const rate = room.hourlyRate ?? room.rate
+            const rate = memberRoomRate(room) // member portal — show the 30%-off member rate
             const cap = capacityOf(room)
             return (
               <div key={room.id} className="flex-1 min-w-0 border-r border-ink/10 last:border-r-0">
@@ -243,7 +243,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
 
   const room = resources.find((r) => r.id === f.resourceId)
-  const rate = room?.hourlyRate ?? room?.rate ?? 0
+  const rate = memberRoomRate(room) // member portal — 30% off the listed rate
   const hrs = Math.max(0, toDec(f.endTime) - toDec(f.startTime))
   // Office perk: private-office (suite) companies get Sky/Earth/Sun/Moon free,
   // capped per booking + per company per day. When it applies, no credits/fee.
@@ -291,13 +291,29 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
       return setError(`${room?.unitNumber || 'This room'} is included with your membership — up to ${perk.maxHoursPerBooking}h per booking. Please shorten or split it.`)
     }
     const dates = occurrenceDates()
+    const blockIds = [...new Set(blockingResourceIds(f.resourceId, allSpaces ?? resources))]
+
+    // Re-check availability against the SERVER right before writing, rather than
+    // trusting the snapshot this page loaded with. That snapshot is taken once at
+    // mount and never refreshed, so a tab left open goes stale and two members can
+    // each confirm the same slot. Fail CLOSED: if we can't read availability we
+    // refuse the booking rather than assuming the room is free.
+    const { data: liveRows, error: availErr } = await supabase
+      .from('booking_availability')
+      .select('resource_id,date,start_time,end_time,status')
+      .in('resource_id', blockIds)
+      .in('date', dates)
+    if (availErr) return setError('We couldn’t confirm the room is still free — please try again.')
+    const live = (liveRows ?? [])
+      .filter((r) => r.status !== 'Cancelled')
+      .map((r) => ({ resourceId: r.resource_id, date: r.date, startTime: r.start_time, endTime: r.end_time }))
+
     const created = []
     const skipped = []
     const dayCapped = []            // dates skipped by the per-day perk cap
     const perkAddedByDate = {}      // running perk hours this session, per date
     for (const date of dates) {
-      const blockIds = new Set(blockingResourceIds(f.resourceId, allSpaces ?? resources))
-      const clash = bookings.some((b) => blockIds.has(b.resourceId) && b.date === date && b.status !== 'Cancelled' && overlaps(f.startTime, f.endTime, b.startTime, b.endTime))
+      const clash = live.some((b) => b.date === date && overlaps(f.startTime, f.endTime, b.startTime, b.endTime))
       if (clash) { skipped.push(date); continue }
       // Office-perk cap: max hours PER DAY per company across the free rooms.
       if (isPerk) {
@@ -357,7 +373,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
       const fee = {
         id: feeId,
         name: bookingFeeName({
-          roomName: feeRoom?.unitNumber, rate: feeRoom?.hourlyRate ?? feeRoom?.rate,
+          roomName: feeRoom?.unitNumber, rate: memberRoomRate(feeRoom),
           date: created[0]?.date, startTime: f.startTime, endTime: f.endTime,
           usedCredits: created.reduce((s, b) => s + (b.creditsUsed || 0), 0),
         }),
@@ -395,7 +411,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
           <div>
             <label className="hx-eyebrow block mb-1.5">Space</label>
             <select value={f.resourceId} onChange={up('resourceId')} className="hx-input">
-              {resources.map((r) => <option key={r.id} value={r.id}>{r.unitNumber}{(r.hourlyRate ?? r.rate) ? ` — A$${r.hourlyRate ?? r.rate}/hr` : ''}</option>)}
+              {resources.map((r) => <option key={r.id} value={r.id}>{r.unitNumber}{memberRoomRate(r) ? ` — A$${memberRoomRate(r)}/hr` : ''}</option>)}
             </select>
           </div>
           <div>
@@ -476,7 +492,7 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
 
   const room = resources.find((r) => r.id === b.resourceId)
-  const rate = room?.hourlyRate ?? room?.rate ?? 0
+  const rate = memberRoomRate(room) // member portal — 30% off the listed rate
   const round2c = (n) => Math.round(n * 100) / 100
   const perk = companyPerk(company?.id, leases, allSpaces ?? resources, settings)
   const isPerk = isPerkRoom(room, perk)
@@ -520,9 +536,16 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
     if (isPerk && newHrs > perk.maxHoursPerBooking) {
       return setError(`${room?.unitNumber || 'This room'} is included with your membership — up to ${perk.maxHoursPerBooking}h per booking.`)
     }
-    const blockIds = new Set(blockingResourceIds(b.resourceId, allSpaces ?? resources))
-    const clash = bookings.some((x) => x.id !== b.id && blockIds.has(x.resourceId) && x.date === f.date &&
-      x.status !== 'Cancelled' && overlaps(f.startTime, f.endTime, x.startTime, x.endTime))
+    // Same server re-check as when creating — the page's snapshot may be stale.
+    const blockIds = [...new Set(blockingResourceIds(b.resourceId, allSpaces ?? resources))]
+    const { data: liveRows, error: availErr } = await supabase
+      .from('booking_availability')
+      .select('id,resource_id,date,start_time,end_time,status')
+      .in('resource_id', blockIds)
+      .eq('date', f.date)
+    if (availErr) return setError('We couldn’t confirm the room is still free — please try again.')
+    const clash = (liveRows ?? []).some((x) => x.id !== b.id && x.status !== 'Cancelled' &&
+      overlaps(f.startTime, f.endTime, x.start_time, x.end_time))
     if (clash) return setError('That time is already booked — pick another slot.')
     if (isPerk) {
       const usedElsewhere = perkHoursUsed({ companyId: company?.id, date: f.date, bookings, perk, spaces: allSpaces ?? resources, excludeIds: [b.id] })
