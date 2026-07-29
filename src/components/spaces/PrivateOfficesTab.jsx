@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { Plus, Pencil, Trash2, FileText, DoorClosed, KeyRound } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileText, DoorClosed, KeyRound, BadgeDollarSign } from 'lucide-react'
 import ContractForm from '../ContractForm.jsx'
 import {
   FLOORS, floorLabel, StatusPill, money, Field, Modal, ic,
@@ -219,6 +219,13 @@ export default function PrivateOfficesTab({ ctx }) {
                           <FileText size={12} /> {derivedStatus === 'vacating' ? 'Pre-lease' : 'Contract'}
                         </button>
                       )}
+                      {/* Below-list pricing needs a manager's sign-off — raise it
+                          here, primed with this office and its list rate. */}
+                      <button onClick={() => navigate(`/pricing-requests?space=${encodeURIComponent(o.id)}`)}
+                        title="Request approval to let this office below the list rate"
+                        className="flex items-center gap-1 text-xs border border-input hover:bg-muted/50 px-2.5 py-1.5 rounded-md font-medium">
+                        <BadgeDollarSign size={12} /> Pricing
+                      </button>
                       <button onClick={() => openEdit(o)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"><Pencil size={14} /></button>
                       <button onClick={() => { if (confirm('Delete this office?')) deleteSpace(o.id) }} className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>
                     </div>

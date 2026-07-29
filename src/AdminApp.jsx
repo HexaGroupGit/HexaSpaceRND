@@ -3,6 +3,7 @@ import Layout from './components/Layout.jsx'
 import Dashboard from './components/Dashboard.jsx'
 import Tenants from './components/Tenants.jsx'
 import Spaces from './components/Spaces.jsx'
+import PricingRequests from './components/PricingRequests.jsx'
 import Leases from './components/Leases.jsx'
 import Renewals from './components/Renewals.jsx'
 import Templates from './components/Templates.jsx'
@@ -62,6 +63,7 @@ export default function AdminApp({ onLogout }) {
           <Route path="activity" element={<ActivityLog />} />
           <Route path="access-log" element={<AccessLog />} />
           <Route path="spaces" element={<Spaces />} />
+          <Route path="pricing-requests" element={<PricingRequests />} />
           <Route path="leases" element={<Leases />} />
           <Route path="billing" element={<Billing />} />
           <Route path="renewals" element={<Renewals />} />

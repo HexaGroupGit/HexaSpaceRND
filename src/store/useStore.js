@@ -788,6 +788,7 @@ export function useStore() {
   const [invoices, setInvoices] = useState([])
   const [discounts, setDiscounts] = useState([])
   const [maintenance, setMaintenance] = useState([])
+  const [pricingRequests, setPricingRequests] = useState([])
   const [leads, setLeads] = useState([])
   const [pipelineStages, setPipelineStages] = useState([])
   const [eventRegistrations, setEventRegistrations] = useState([])
@@ -940,6 +941,14 @@ export function useStore() {
         setTemplates(loadedTemplates)
         setDiscounts(loadedDiscounts)
         setMaintenance(loadedMaintenance)
+        // Pricing requests load on their own round trip rather than joining the
+        // Promise.all above — that array is positionally destructured, so adding
+        // to it is easy to get subtly wrong. The table is tiny.
+        supabase.from('pricing_requests').select('data')
+          .then(({ data, error }) => {
+            if (error) { console.error('pricing_requests load failed:', error); return }
+            setPricingRequests(data?.length ? extractRows(data) : [])
+          })
         setLeads(loadedLeads)
         setPipelineStages([...loadedStages].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)))
         setEventRegistrations(loadedRegistrations)
@@ -2053,6 +2062,21 @@ export function useStore() {
     deleteRow('maintenance', id)
   }, [])
 
+  // ── Pricing requests ──────────────────────────────────────────────────────
+  // Staff propose a rate for a space; a manager approves it with reasoning.
+  // See src/lib/pricingApproval.js for who may decide and when.
+  const addPricingRequest = useCallback((req) => {
+    setPricingRequests((prev) => [req, ...prev])
+    syncRow('pricing_requests', req.id, req)
+  }, [])
+
+  // Callers pass the FULL next record (applyDecision returns one), so the write
+  // can't half-apply a decision.
+  const updatePricingRequest = useCallback((id, next) => {
+    setPricingRequests((prev) => prev.map((r) => r.id === id ? next : r))
+    syncRow('pricing_requests', id, next)
+  }, [])
+
   // ── Leads (CRM pipeline) ────────────────────────────────────────────────────
   const addLead = useCallback((lead) => {
     const today = new Date().toISOString().split('T')[0]
@@ -2390,6 +2414,7 @@ export function useStore() {
     invoices, addInvoice, updateInvoice, voidInvoice, deleteInvoice, addPaymentToInvoice, addCommentToInvoice, approveBondRefund, runAutoBillRun,
     discounts, addDiscount, updateDiscount, deleteDiscount,
     maintenance, addMaintenanceIssue, updateMaintenanceIssue, deleteMaintenanceIssue,
+    pricingRequests, addPricingRequest, updatePricingRequest,
     leads, addLead, updateLead, moveLeadToStage, deleteLead, convertLeadToTenant, appendLeadActivity,
     pipelineStages, addStage, updateStage, deleteStage,
     eventRegistrations, markRegistrationRead, deleteEventRegistration, markRegistrationsReminded,

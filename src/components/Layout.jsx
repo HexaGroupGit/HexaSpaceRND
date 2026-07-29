@@ -6,7 +6,7 @@ import {
   Wrench, BarChart2, Menu, X, Calendar, MessageSquare,
   ClipboardList, Megaphone, Building2, User, Tag, DollarSign,
   CalendarCheck, Activity, CalendarDays, PartyPopper, Mailbox, Croissant, KeyRound,
-  MonitorPlay, DoorOpen,
+  MonitorPlay, DoorOpen, BadgeDollarSign,
 } from 'lucide-react'
 import { logout } from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
@@ -32,6 +32,7 @@ const GROUPS = [
     heading: 'Workspace',
     items: [
       { to: '/spaces', icon: Warehouse, label: 'Spaces' },
+      { to: '/pricing-requests', icon: BadgeDollarSign, label: 'Pricing Requests' },
       { to: '/billing', icon: Receipt, label: 'Billing' },
       { to: '/renewals', icon: RefreshCw, label: 'Renewals' },
     ],
