@@ -58,6 +58,10 @@ export function useMemberData(email) {
       const ownBookings = cid ? mine(bookings) : (member ? bookings.filter((b) => b.memberId === member.id) : [])
       const ownIds = new Set(ownBookings.map((b) => b.id))
       const availRes = await supabase.from('booking_availability').select('*')
+      // A failure here used to pass silently as an empty list, which renders the
+      // grid as if every room were free. Surface it — createBooking re-checks
+      // against the server and will refuse, but the grid must not lie.
+      if (availRes.error) console.error('booking_availability read failed — grid may under-report bookings:', availRes.error)
       const slots = (availRes.data ?? [])
         .filter((s) => !ownIds.has(s.id))
         .map((s) => ({ id: s.id, resourceId: s.resource_id, date: s.date, startTime: s.start_time, endTime: s.end_time, status: s.status }))

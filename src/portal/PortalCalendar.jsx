@@ -35,6 +35,9 @@ export default function PortalCalendar({ resources, allBookings, member, company
   const DAY_START = ahCfg.extendedStart
   const DAY_END = ahCfg.extendedEnd
   const HOURS = Array.from({ length: DAY_END - DAY_START }, (_, i) => DAY_START + i)
+  // Clickable cells are half-hourly (10, 10.5, 11 …) so a 30-minute booking can
+  // be made directly, instead of every click defaulting to a full hour.
+  const SLOTS = Array.from({ length: (DAY_END - DAY_START) * 2 }, (_, i) => DAY_START + i / 2)
   const LABEL_HOURS = Array.from({ length: DAY_END - DAY_START + 1 }, (_, i) => DAY_START + i)
   const canAfterHours = companyCanAfterHours(company?.id, leases, allSpaces ?? resources, settings)
   const win = bookingWindow(canAfterHours, settings)
@@ -53,8 +56,11 @@ export default function PortalCalendar({ resources, allBookings, member, company
   // otherwise leave its block on screen and look like it did nothing).
   const dayBookings = bookings.filter((b) => b.date === dayStr && b.status !== 'Cancelled')
 
-  function openSlot(resourceId, hour) {
-    setModal({ resourceId, date: dayStr, startTime: fromDec(hour), endTime: fromDec(hour + 1) })
+  // `dec` is a half-hour boundary (10 = 10:00, 10.5 = 10:30). Clicking a cell
+  // selects THAT half hour — the grid granularity and the booking you get are
+  // the same thing. The modal's duration buttons extend it in one click.
+  function openSlot(resourceId, dec) {
+    setModal({ resourceId, date: dayStr, startTime: fromDec(dec), endTime: fromDec(dec + 0.5) })
   }
 
   return (
@@ -104,19 +110,22 @@ export default function PortalCalendar({ resources, allBookings, member, company
                   </div>
                 </div>
                 <div className="relative" style={{ height: (HOURS.length + 1) * HOUR_H }}>
-                  {HOURS.map((h) => {
+                  {SLOTS.map((d) => {
                     // Outside the resource's bookable band → not clickable.
                     // Studios gate to business hours for everyone (same as
                     // external bookings); other rooms follow the company's
                     // window (24/7 memberships get the extended band).
                     const roomWin = resourceBookingWindow(room, canAfterHours, settings)
-                    const bookable = h >= roomWin.start && h + 1 <= roomWin.end
+                    const bookable = d >= roomWin.start && d + 0.5 <= roomWin.end
+                    // Each cell's BOTTOM edge: the :30 cell ends on the hour, so
+                    // it carries the stronger rule; the :00 cell ends mid-hour.
+                    const endsOnHour = !Number.isInteger(d)
                     return (
-                      <div key={h} onClick={bookable ? () => openSlot(room.id, h) : undefined} style={{ height: HOUR_H }}
+                      <div key={d} onClick={bookable ? () => openSlot(room.id, d) : undefined} style={{ height: HOUR_H / 2 }}
                         title={bookable ? undefined : (roomWin.studioGated
                           ? `Studios are bookable ${t12(roomWin.start)}–${t12(roomWin.end)}`
                           : 'After-hours — available to members with 24/7 access')}
-                        className={`border-b border-ink/5 transition-colors ${bookable ? 'hover:bg-hexa-green/5 cursor-pointer' : 'bg-bone/40 cursor-not-allowed'}`} />
+                        className={`border-b ${endsOnHour ? 'border-ink/5' : 'border-ink/[0.03]'} transition-colors ${bookable ? 'hover:bg-hexa-green/5 cursor-pointer' : 'bg-bone/40 cursor-not-allowed'}`} />
                     )
                   })}
                   <div style={{ height: HOUR_H }} className="border-b border-ink/5" />
@@ -422,6 +431,21 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
             <div><label className="hx-eyebrow block mb-1.5">Date</label><input type="date" value={f.date} onChange={up('date')} className="hx-input" /></div>
             <div><label className="hx-eyebrow block mb-1.5">From</label><input type="time" value={f.startTime} onChange={up('startTime')} className="hx-input" /></div>
             <div><label className="hx-eyebrow block mb-1.5">To</label><input type="time" value={f.endTime} onChange={up('endTime')} className="hx-input" /></div>
+          </div>
+          {/* One-click durations — the grid selects 30 minutes, these extend it
+              without making anyone do time arithmetic in the To field. */}
+          <div className="flex flex-wrap gap-2">
+            {[30, 60, 90, 120].map((min) => {
+              const on = Math.round((toDec(f.endTime) - toDec(f.startTime)) * 60) === min
+              return (
+                <button key={min} type="button"
+                  onClick={() => setF((p) => ({ ...p, endTime: fromDec(toDec(p.startTime) + min / 60) }))}
+                  className={`font-heading uppercase tracking-nav text-[10px] px-3 py-2 border transition-colors ${
+                    on ? 'bg-ink text-paper border-ink' : 'border-ink/15 hover:bg-bone'}`}>
+                  {min === 30 ? '30 mins' : min === 60 ? '1 hour' : min === 90 ? '1.5 hrs' : '2 hours'}
+                </button>
+              )
+            })}
           </div>
           <div>
             <label className="hx-eyebrow block mb-1.5">Invite people (optional)</label>
