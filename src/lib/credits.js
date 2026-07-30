@@ -66,6 +66,21 @@ export function bookingFeeName({ roomName, rate, date, startTime, endTime, usedC
 
 export const round2 = (n) => Math.round(Number(n || 0) * 100) / 100
 
+export const creditMonthKey = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+
+/**
+ * Credits a company has left this month. A `creditsPeriod` from an earlier month
+ * means the pool hasn't been touched yet this month, so the full allowance is
+ * available. Lives here (dependency-free) so the app, portal and serverless
+ * endpoints all price a booking off ONE definition.
+ */
+export function creditBalance(company) {
+  return company?.creditsPeriod === creditMonthKey()
+    ? Number(company?.creditsRemaining ?? 0)
+    : Number(company?.monthlyAllowance ?? company?.creditsRemaining ?? 0)
+}
+
 // Members get 30% off the listed meeting-room hourly rate. room.hourlyRate is
 // the STANDARD/EXTERNAL rate; any booking attached to a member/company is
 // priced at 70% of it. This single helper feeds every pricing path (credit

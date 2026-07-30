@@ -6,6 +6,7 @@
 import { stripeConfigured, stripeFetch, ensureStripeCustomer } from '../_stripe.js'
 import { applyCors } from '../_cors.js'
 import { requireMember, isAdminEmail, isBillingAuthority } from '../_auth.js'
+import { ensureClientForMember } from '../_dropin.js'
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return
@@ -19,13 +20,26 @@ export default async function handler(req, res) {
   if (auth.error) return res.status(auth.status).json({ error: auth.error })
   const supabase = auth.sb
   const isAdmin = await isAdminEmail(supabase, auth.user.email)
-  // Only the company's billing/contact person (or an admin) may manage the card.
-  if (!isAdmin && !(await isBillingAuthority(supabase, auth.user.email))) {
+  let tenantId = isAdmin ? (req.body?.tenantId || auth.companyId) : auth.companyId
+  const returnTo = req.body?.returnTo
+  // A drop-in may have no client record yet — cards are stored per-company, so
+  // create a lightweight one rather than dead-ending a walk-in who wants to pay.
+  if (!tenantId && !isAdmin) {
+    try {
+      ({ companyId: tenantId } = await ensureClientForMember(supabase, auth.user, null))
+    } catch (e) {
+      return res.status(500).json({ error: e.message })
+    }
+  }
+  if (!tenantId) return res.status(400).json({ error: 'No company on this account.' })
+
+  // The billing-authority gate exists so a random employee can't change their
+  // company's card. It doesn't apply to a drop-in: there is no membership and no
+  // shared bill — they are paying for their own booking, with their own card.
+  if (!isAdmin && !(await isDropInCompany(supabase, tenantId))
+      && !(await isBillingAuthority(supabase, auth.user.email))) {
     return res.status(403).json({ error: 'Only your company’s billing contact can manage the payment card.' })
   }
-  const tenantId = isAdmin ? (req.body?.tenantId || auth.companyId) : auth.companyId
-  const returnTo = req.body?.returnTo
-  if (!tenantId) return res.status(400).json({ error: 'No company on this account.' })
 
   try {
     const { data: tRow } = await supabase.from('tenants').select('data').eq('id', tenantId).single()

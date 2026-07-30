@@ -1,10 +1,12 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { format, addDays } from 'date-fns'
-import { Check, Users, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Check, Users, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
 import { useApp } from '../context.js'
 import { Screen, BackHeader, Label, Rule, Chip, Sheet, BigButton, RoomPhoto, fmt, to12, money0 } from '../ui.jsx'
 import { toDec, fromDec, isFree, creditBalance, createBooking, CREDIT_VALUE } from '../lib/bookingActions.js'
 import { blockingResourceIds } from '../../lib/roomConflicts.js'
+import { priceBooking, requiresUpfrontPayment } from '../../lib/dropIn.js'
+import { apiUrl, openPayment } from '../lib/native.js'
 import { isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow, afterHoursConfig } from '../../lib/credits.js'
 
 // Single-room day calendar — the app's version of the website's booking grid:
@@ -237,15 +239,53 @@ function SlotSheet({ room, date, start, member, company, allBookings, balance, l
   const effDur = usable.some((d) => d.min === durMin) ? durMin : (usable.at(-1)?.min ?? 30)
   const end = fromDec(toDec(start) + effDur / 60)
 
-  const rate = room.hourlyRate ?? room.rate ?? 0
   const hrs = effDur / 60
-  const cost = hrs * rate
-  const credits = Math.round((cost / CREDIT_VALUE) * 100) / 100
-  const overage = Math.max(0, Math.round((credits - balance) * 100) / 100)
+  // Drop-ins pay the LIST rate (the member discount is a membership benefit) and
+  // pay on the spot — a month-end fee collects nothing from someone who gets no
+  // month-end bill. Members are unchanged.
+  const quote = priceBooking({ room, hours: hrs, company, leases, isPerk })
+  const { rate, cost, creditsUsed } = quote
+  const credits = quote.needed
+  const overage = quote.shortfallCredits
+  const mustPay = requiresUpfrontPayment({ company, leases, isPerk, payNow: quote.payNow })
+  const hasCard = !!company?.stripePaymentMethodId
+  const payIncGst = Math.round(quote.payNow * 1.1 * 100) / 100
+
+  async function addCard() {
+    setSaving(true); setError('')
+    try {
+      const { authHeaders } = await import('../../lib/apiFetch.js')
+      const r = await fetch(apiUrl('/api/stripe/setup'), {
+        method: 'POST', headers: await authHeaders(),
+        body: JSON.stringify({ returnTo: '/app' }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || !d.url) throw new Error(d.error ?? 'Could not start card setup.')
+      await openPayment(d.url)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function confirm() {
     setSaving(true); setError('')
     try {
+      if (mustPay) {
+        // Server charges first and only then writes the booking, so a drop-in
+        // can never hold a room they haven't paid for.
+        const { authHeaders } = await import('../../lib/apiFetch.js')
+        const r = await fetch(apiUrl('/api/bookings/pay-and-book'), {
+          method: 'POST', headers: await authHeaders(),
+          body: JSON.stringify({ resourceId: room.id, date, startTime: start, endTime: end, title }),
+        })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(d.error ?? 'The payment could not be processed.')
+        onBooked({ booking: d.booking, company, fee: null })
+        setDone(d.booking)
+        return
+      }
       const result = await createBooking({ room, date, startTime: start, endTime: end, title, member, company, allBookings, leases, spaces, settings })
       onBooked(result)
       setDone(result.booking)
@@ -304,15 +344,46 @@ function SlotSheet({ room, date, start, member, company, allBookings, balance, l
           ) : (
             <div className="bg-bone border border-ink/10 p-4 space-y-2">
               <Line k={`${to12(start)} – ${to12(end)}`} v={cost ? `${money0(cost)} · ${credits} cr` : 'Free'} />
-              <Line k="Allowance remaining" v={`${balance} cr`} green={balance >= credits} />
-              {overage > 0 && <Line k="Over allowance" v={`${overage} cr · billed as a fee`} amber />}
+              {mustPay ? (
+                <>
+                  {creditsUsed > 0 && <Line k="Credits applied" v={`${creditsUsed} cr`} green />}
+                  <Line k="Pay now (inc GST)" v={money0(payIncGst)} />
+                  <p className="hx-prose text-[12px] text-portal-muted mt-1.5">
+                    {money0(rate)}/hr casual rate. Paid by card when you confirm — no account needed.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Line k="Allowance remaining" v={`${balance} cr`} green={balance >= credits} />
+                  {overage > 0 && <Line k="Over allowance" v={`${overage} cr · billed as a fee`} amber />}
+                </>
+              )}
             </div>
           )}
 
           {error && <div className="mt-4 text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>}
-          <BigButton onClick={confirm} disabled={saving} className="mt-6">
-            {saving ? 'Booking…' : 'Confirm booking'}
-          </BigButton>
+
+          {mustPay && !hasCard ? (
+            <>
+              <BigButton onClick={addCard} disabled={saving} className="mt-6">
+                <CreditCard size={14} className="inline mr-2 -mt-0.5" />
+                {saving ? 'Opening…' : 'Add a card to continue'}
+              </BigButton>
+              <p className="hx-prose text-[11px] text-center mt-3">
+                Stripe takes your card securely — we never see the number. Come back here to confirm and pay.
+              </p>
+            </>
+          ) : (
+            <BigButton onClick={confirm} disabled={saving} className="mt-6">
+              {saving ? (mustPay ? 'Taking payment…' : 'Booking…')
+                : mustPay ? `Pay ${money0(payIncGst)} & confirm` : 'Confirm booking'}
+            </BigButton>
+          )}
+          {mustPay && hasCard && (
+            <p className="hx-prose text-[11px] text-center mt-3">
+              Charging {(company.cardBrand || 'card').toUpperCase()} •••• {company.cardLast4}.
+            </p>
+          )}
         </>
       )}
     </Sheet>

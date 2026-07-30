@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase.js'
 import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow } from '../../lib/credits.js'
 import { blockingResourceIds } from '../../lib/roomConflicts.js'
+import { priceBooking, requiresUpfrontPayment } from '../../lib/dropIn.js'
 import { apiUrl } from './native.js'
 
 // Booking writes for the app — mirrors the portal's PortalCalendar confirm()
@@ -202,11 +203,9 @@ export async function amendBooking({ booking, room, date, startTime, endTime, me
 }
 
 /** Company credit balance right now (monthly pool, resets on a new month). */
-export function creditBalance(company) {
-  return company?.creditsPeriod === monthKey()
-    ? Number(company?.creditsRemaining ?? 0)
-    : Number(company?.monthlyAllowance ?? company?.creditsRemaining ?? 0)
-}
+// Re-exported so existing app screens keep importing it from here, while the
+// single definition lives in the dependency-free lib (shared with the server).
+export { creditBalance } from '../../lib/credits.js'
 
 /**
  * Create a single booking request: writes the booking, deducts the company's
@@ -244,14 +243,22 @@ export async function createBooking({ room, date, startTime, endTime, title, mem
     }
   }
 
-  const rate = room.hourlyRate ?? room.rate ?? 0
-  const cost = isPerk ? 0 : hrs * rate
-  const perCredits = Math.round((cost / CREDIT_VALUE) * 100) / 100
+  // Drop-ins pay the list rate on the spot via /api/bookings/pay-and-book. Refuse
+  // them here rather than writing a booking whose shortfall becomes a month-end
+  // fee nobody collects — with no company record at all, no fee was even raised.
+  const quote = priceBooking({ room, hours: hrs, company, leases, isPerk })
+  if (requiresUpfrontPayment({ company, leases, isPerk, payNow: quote.payNow })) {
+    throw new Error('This booking needs paying up front — add a card and confirm to pay.')
+  }
 
-  const bal = creditBalance(company)
-  const used = isPerk ? 0 : Math.max(0, Math.min(bal, perCredits))
+  const rate = quote.rate
+  const cost = quote.cost
+  const perCredits = quote.needed
+
+  const bal = quote.balance
+  const used = quote.creditsUsed
   const newBal = isPerk ? bal : Math.round((bal - used) * 100) / 100
-  const shortfall = isPerk ? 0 : Math.round((perCredits - used) * 100) / 100
+  const shortfall = quote.shortfallCredits
 
   const booking = {
     id: `bk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
