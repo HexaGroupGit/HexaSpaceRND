@@ -10,6 +10,7 @@ import {
   DEFAULT_LEAD_FOLLOWUP_SUBJECT, DEFAULT_LEAD_FOLLOWUP_HTML, DEFAULT_LEAD_FINAL_SUBJECT, DEFAULT_LEAD_FINAL_HTML,
   DEFAULT_PROPOSAL_EMAIL_SUBJECT, DEFAULT_PROPOSAL_EMAIL_HTML,
   DEFAULT_TOUR_CONFIRMATION_SUBJECT, DEFAULT_TOUR_CONFIRMATION_HTML,
+  DEFAULT_TOUR_BOOKED_SUBJECT, DEFAULT_TOUR_BOOKED_HTML,
   receiptEmailHtml,
 } from '../lib/sendEmail.js'
 import {
@@ -27,7 +28,8 @@ import {
   resolveBondRefundCopy, bondRefundEmailHtml,
   provisionSaltoAccess, revokeSaltoAccess,
 } from '../lib/onboarding.js'
-import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, bookingFeeName, billingEmailFor } from '../lib/credits.js'
+import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, bookingFeeName, billingEmailFor, spendableCredits, creditMonthKey } from '../lib/credits.js'
+import { bookingRate } from '../lib/dropIn.js'
 import { configureFunctionPricing } from '../lib/functionBooking.js'
 import { isRentFreeMonth } from '../lib/paymentSchedule.js'
 
@@ -151,6 +153,16 @@ const DEFAULT_SETTINGS = {
     fromEmail: 'noreply@hexaspace.com.au',
     fromName: 'Hexa Space',
     dnsVerified: false,
+  },
+  // Arrival details sent with every confirmed tour (Settings → Tours).
+  tours: {
+    address: '402/830 Whitehorse Road, Box Hill VIC 3128',
+    arrival: "Take the lift to Level 4 and check in at reception — we'll come and meet you.",
+    parking: [
+      'Trio Box Hill — free underground parking, entry from Wellington Road',
+      'Box Hill Central car park',
+    ],
+    durationMinutes: 30,
   },
   contracts: {
     numberTemplate: 'CON-{{number}}',
@@ -418,6 +430,7 @@ const SAMPLE_TEMPLATES = [
   { id: 'tmpl_email_lead_final', category: 'email', emailType: 'lead_final', name: 'Lead — Final follow-up', version: 'v1.0', subject: DEFAULT_LEAD_FINAL_SUBJECT, content: DEFAULT_LEAD_FINAL_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
   { id: 'tmpl_email_proposal', category: 'email', emailType: 'proposal', name: 'Proposal (cover email)', version: 'v1.0', subject: DEFAULT_PROPOSAL_EMAIL_SUBJECT, content: DEFAULT_PROPOSAL_EMAIL_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
   { id: 'tmpl_email_tour_confirmation', category: 'email', emailType: 'tour_confirmation', name: 'Tour confirmation', version: 'v1.0', subject: DEFAULT_TOUR_CONFIRMATION_SUBJECT, content: DEFAULT_TOUR_CONFIRMATION_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
+  { id: 'tmpl_email_tour_booked', category: 'email', emailType: 'tour_booked', name: 'Tour — Booking confirmed', version: 'v1.0', subject: DEFAULT_TOUR_BOOKED_SUBJECT, content: DEFAULT_TOUR_BOOKED_HTML, updatedAt: '2026-07-31', createdAt: '2026-07-31' },
   { id: 'tmpl_email_function_brochure', category: 'email', emailType: 'function_brochure', name: 'Function — Brochure / info', version: 'v1.0', subject: DEFAULT_FUNCTION_BROCHURE_SUBJECT, content: DEFAULT_FUNCTION_BROCHURE_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
   { id: 'tmpl_email_function_agreement', category: 'email', emailType: 'function_agreement', name: 'Function — Agreement (review & sign)', version: 'v1.0', subject: DEFAULT_FUNCTION_AGREEMENT_SUBJECT, content: DEFAULT_FUNCTION_AGREEMENT_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
   { id: 'tmpl_email_function_confirmed', category: 'email', emailType: 'function_confirmed', name: 'Function — Booking confirmed', version: 'v1.0', subject: DEFAULT_FUNCTION_CONFIRMED_SUBJECT, content: DEFAULT_FUNCTION_CONFIRMED_HTML, updatedAt: '2026-07-02', createdAt: '2026-07-02' },
@@ -1355,13 +1368,15 @@ export function useStore() {
       const room = spacesRef.current.find((s) => s.id === item.resourceId)
       const toDec = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return (h || 0) + (m || 0) / 60 }
       const hrs = Math.max(0, toDec(item.endTime) - toDec(item.startTime))
-      const need = round2(hrs * Number(room?.hourlyRate || 0) / CREDIT_VALUE)
+      // Members get 30% off and can draw on the credit pool; a drop-in (a client
+      // record with no active membership) pays the list rate with no credits.
+      const leases = leasesRef.current
+      const rate = bookingRate(room, item.companyId, leases)
+      const need = round2(hrs * rate / CREDIT_VALUE)
       if (tenant && need > 0) {
         // Monthly pool with rollover, mirroring the portal calendar.
-        const mk = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
-        const available = tenant.creditsPeriod === mk
-          ? Number(tenant.creditsRemaining ?? 0)
-          : Number(tenant.monthlyAllowance ?? tenant.creditsRemaining ?? 0)
+        const mk = creditMonthKey()
+        const available = spendableCredits(tenant, leases)
         const used = Math.max(0, Math.min(available, need))
         const shortfall = round2(need - used)
         item.creditsUsed = used
@@ -1369,7 +1384,7 @@ export function useStore() {
         updateTenant(item.companyId, { creditsRemaining: round2(available - used), creditsPeriod: mk })
         if (shortfall > 0) {
           const fee = addFee({
-            name: bookingFeeName({ roomName: room?.unitNumber, rate: room?.hourlyRate, date: item.date, startTime: item.startTime, endTime: item.endTime, usedCredits: used }),
+            name: bookingFeeName({ roomName: room?.unitNumber, rate, date: item.date, startTime: item.startTime, endTime: item.endTime, usedCredits: used }),
             type: 'Booking Fee', memberId: item.memberId ?? null, companyId: item.companyId,
             date: item.date || new Date().toISOString().split('T')[0],
             price: round2(shortfall * CREDIT_VALUE), status: 'Not Paid',

@@ -5,6 +5,7 @@ import { Plus, Trash2, Check } from 'lucide-react'
 import { XERO_ACCOUNTS, DEFAULT_XERO_ACCOUNTS } from './spaces/shared.jsx'
 import { xeroStatus, connectXero, disconnectXero, xeroSync } from '../lib/xero.js'
 import { PERK_TIER_DEFAULTS, PERK_TIER_ORDER, AFTER_HOURS_DEFAULTS } from '../lib/credits.js'
+import { tourConfig, TOUR_DEFAULTS } from '../lib/tourInvite.js'
 
 const MENU = [
   {
@@ -21,6 +22,7 @@ const MENU = [
       { key: 'contracts', label: 'Contracts' },
       { key: 'room-perks', label: 'Room Perks' },
       { key: 'after-hours', label: 'After-hours' },
+      { key: 'tours', label: 'Tours' },
       { key: 'email-templates', label: 'Email Templates' },
     ],
   },
@@ -1092,6 +1094,64 @@ function AfterHoursSection({ settings, updateSettings }) {
   )
 }
 
+// ── Tours ─────────────────────────────────────────────────────────────────────
+// The arrival details that go out on every confirmed tour — the email body and
+// the LOCATION/DESCRIPTION on the calendar invitation both read from here.
+function ToursSection({ settings, updateSettings }) {
+  const cur = tourConfig(settings)
+  const [form, setForm] = useState({
+    address: cur.address,
+    arrival: cur.arrival,
+    parking: cur.parking.join('\n'),
+    durationMinutes: cur.durationMinutes,
+  })
+  const [saved, setSaved] = useState(false)
+  const set = (k) => (v) => setForm((p) => ({ ...p, [k]: v }))
+
+  function save() {
+    updateSettings({ tours: {
+      address: form.address.trim() || TOUR_DEFAULTS.address,
+      arrival: form.arrival.trim(),
+      parking: form.parking.split('\n').map((s) => s.trim()).filter(Boolean),
+      durationMinutes: Math.max(5, Math.min(480, Number(form.durationMinutes) || TOUR_DEFAULTS.durationMinutes)),
+    } })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  return (
+    <div>
+      <h1 className="text-xl font-bold text-foreground mb-1">Tours</h1>
+      <p className="text-sm text-muted-foreground mb-6">
+        What a prospect is told when a tour is booked through CRM → <strong>Book a Tour</strong>. This copy appears in
+        their confirmation email and on the calendar invitation they receive. The wording around it is editable under
+        Templates → Emails → "Tour — Booking confirmed".
+      </p>
+
+      <div className="mb-6 border border-border rounded-md p-4">
+        <FormRow label="Address" description="Shown in the email and used as the invitation's location">
+          <TextInput value={form.address} onChange={set('address')} placeholder={TOUR_DEFAULTS.address} />
+        </FormRow>
+        <FormRow label="On arrival" description="What to do when they get to the building">
+          <textarea value={form.arrival} onChange={(e) => set('arrival')(e.target.value)} rows={2}
+            placeholder={TOUR_DEFAULTS.arrival}
+            className="w-full border border-input rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </FormRow>
+        <FormRow label="Parking options" description="One per line — listed in the email, best option first">
+          <textarea value={form.parking} onChange={(e) => set('parking')(e.target.value)} rows={4}
+            placeholder={TOUR_DEFAULTS.parking.join('\n')}
+            className="w-full border border-input rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </FormRow>
+        <FormRow label="Default duration" description="How long a tour is blocked out for (minutes)">
+          <TextInput type="number" value={form.durationMinutes} onChange={set('durationMinutes')} />
+        </FormRow>
+      </div>
+
+      <SaveButton onClick={save} saved={saved} />
+    </div>
+  )
+}
+
 // ── Invoicing ─────────────────────────────────────────────────────────────────
 function InvoicingSection({ settings, updateSettings }) {
   const [form, setForm] = useState(() => ({ ...settings.invoicing }))
@@ -1838,6 +1898,7 @@ export default function Settings() {
     'contracts': <ContractsSection settings={settings} updateSettings={updateSettings} />,
     'room-perks': <RoomPerksSection settings={settings} updateSettings={updateSettings} />,
     'after-hours': <AfterHoursSection settings={settings} updateSettings={updateSettings} />,
+    'tours': <ToursSection settings={settings} updateSettings={updateSettings} />,
     'billing-rules': <BillingRulesSection settings={settings} updateSettings={updateSettings} />,
     'invoicing': <InvoicingSection settings={settings} updateSettings={updateSettings} />,
     'email-templates': <EmailTemplatesSection settings={settings} updateSettings={updateSettings} />,

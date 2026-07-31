@@ -5,8 +5,9 @@ import {
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { parseISO, differenceInCalendarDays } from 'date-fns'
-import { Plus, X, Pencil, Trash2, UserPlus, Mail, Phone, CheckCircle2 } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, UserPlus, Mail, Phone, CheckCircle2, CalendarClock } from 'lucide-react'
 import LeadDetail from './LeadDetail.jsx'
+import { to12h } from '../lib/tourInvite.js'
 
 const SOURCES = ['website', 'walk-in', 'referral', 'phone', 'email', 'other']
 
@@ -293,6 +294,13 @@ function LeadCard({ lead, spaces, tenants, onEdit, onDelete, onConvert, onOpen, 
         {lead.value > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-700">${Number(lead.value).toLocaleString('en-AU')}/mo</span>}
         {lead.source && <span className="text-xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground capitalize border border-border">{lead.source}</span>}
       </div>
+
+      {lead.tourStatus === 'confirmed' && lead.tourDate && (
+        <div className="flex items-center gap-1 mt-2 text-xs font-medium text-teal-700">
+          <CalendarClock size={11} className="shrink-0" />
+          Tour {lead.tourDate.split('-').reverse().join('/')}{lead.tourTime ? ` · ${to12h(lead.tourTime)}` : ''}
+        </div>
+      )}
 
       {(lead.email || lead.phone) && (
         <div className="flex flex-col gap-0.5 mt-2 text-xs text-muted-foreground">

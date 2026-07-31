@@ -8,6 +8,8 @@ import { sendEmail, renderProposalTemplate, messageEmailHtml, brandShell, bKicke
 import { randomToken } from '../lib/token.js'
 import { buildProposalPdf, buildDeskBrochurePdf, buildVirtualBrochurePdf, buildOverviewBrochurePdf } from '../lib/proposalPdf.js'
 import { moveOutDate } from './spaces/shared.jsx'
+import TourBookingModal from './TourBookingModal.jsx'
+import { tourWhenLabel, durationLabel } from '../lib/tourInvite.js'
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: User },
@@ -115,6 +117,11 @@ export default function LeadDetail({ lead, store, onClose }) {
   const [tourMsg, setTourMsg] = useState('')
   const [sendingTour, setSendingTour] = useState(false)
   const [tourResult, setTourResult] = useState('')
+
+  // Confirmed booking (phone enquiries) — a locked-in time with a real calendar
+  // invitation, as opposed to the "pick a time yourself" invite above.
+  const [bookingTour, setBookingTour] = useState(false)
+  const tourConfirmed = lead.tourStatus === 'confirmed' && !!lead.tourDate
 
   const tourLink = (() => {
     if (settings?.leads?.tourUrl) return settings.leads.tourUrl
@@ -608,6 +615,36 @@ export default function LeadDetail({ lead, store, onClose }) {
 
           {tab === 'tour' && (
             <div className="space-y-4">
+              {/* Confirmed booking — the phone-enquiry path. */}
+              <div className="bg-card border border-border rounded-xl shadow-sm p-4">
+                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-1">Book the tour</h3>
+                {tourConfirmed ? (
+                  <>
+                    <div className="bg-green-50 border border-green-200 text-green-800 rounded-md px-3 py-2 text-sm mb-3">
+                      <div className="font-semibold">{tourWhenLabel(lead.tourDate, lead.tourTime) || `${lead.tourDate} ${lead.tourTime || ''}`}</div>
+                      <div className="text-xs mt-0.5">
+                        {durationLabel(lead.tourDurationMinutes || 30)}{lead.tourHost ? ` · with ${lead.tourHost}` : ''} · invitation sent to {lead.email || 'the lead'}
+                      </div>
+                    </div>
+                    <button onClick={() => setBookingTour(true)}
+                      className="flex items-center gap-2 border border-input px-4 py-2 rounded-md text-sm font-medium hover:bg-muted/50">
+                      <CalendarClock size={14} /> Reschedule &amp; re-send invite
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Lock in a time you've agreed on the phone. Emails them a calendar invitation with the address
+                      and parking, and puts it in the leasing team's calendars.
+                    </p>
+                    <button onClick={() => setBookingTour(true)}
+                      className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90">
+                      <CalendarClock size={14} /> Book a tour
+                    </button>
+                  </>
+                )}
+              </div>
+
               <div className="bg-card border border-border rounded-xl shadow-sm p-4">
                 <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-1">Invite to tour</h3>
                 <p className="text-xs text-muted-foreground mb-3">
@@ -711,6 +748,10 @@ export default function LeadDetail({ lead, store, onClose }) {
           )}
         </div>
       </div>
+
+      {bookingTour && (
+        <TourBookingModal store={store} lead={lead} onClose={() => setBookingTour(false)} onBooked={() => setTab('tour')} />
+      )}
 
       {/* Close-deal modal */}
       {showClose && (
@@ -916,6 +957,7 @@ const ACT = {
   stage: { icon: ArrowRight, bg: 'bg-purple-100', fg: 'text-purple-600' },
   convert: { icon: CheckCircle2, bg: 'bg-green-100', fg: 'text-green-600' },
   commission: { icon: DollarSign, bg: 'bg-emerald-100', fg: 'text-emerald-600' },
+  tour: { icon: CalendarClock, bg: 'bg-teal-100', fg: 'text-teal-600' },
 }
 
 function Prop({ icon: Icon, label, value }) {

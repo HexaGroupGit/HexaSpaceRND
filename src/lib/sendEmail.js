@@ -397,6 +397,28 @@ export const DEFAULT_TOUR_CONFIRMATION_HTML = brandShell(
   bP("We've received your tour request{{tourWhen}} and will be in touch shortly to confirm a time.") +
   bP('Looking forward to showing you around Hexa Space.'))
 
+// ── Editable TOUR-BOOKED email TEMPLATE (Templates → Emails) ────────────────────
+// Sent when staff lock in a tour time — typically a phone enquiry booked through
+// CRM → "Book a Tour". Carries the .ics calendar invitation, so this body is the
+// human-readable half: when, where, and how to park.
+// {{company}} {{name}} {{businessName}} {{tourWhen}} {{tourDate}} {{tourTime}}
+// {{durationLabel}} {{host}} {{address}} {{arrival}} {{parking}} {{message}}
+// {{calendarLink}} {{website}}.
+export const DEFAULT_TOUR_BOOKED_SUBJECT = 'Your {{company}} tour — {{tourWhen}}'
+export const DEFAULT_TOUR_BOOKED_HTML = brandShell(
+  bKicker('Tour confirmed') +
+  bH1("You're booked in.") +
+  bP('Hi {{name}},') +
+  bP('Thanks for the call. Your tour of {{company}} is locked in for <strong>{{tourWhen}}</strong> — allow about {{durationLabel}}.') +
+  '{{message}}' +
+  bP('<strong>Where to find us</strong>') +
+  bP('{{address}}<br>{{arrival}}') +
+  bP('<strong>Parking</strong>') +
+  '{{parking}}' +
+  bBtn('Add to calendar', '{{calendarLink}}') +
+  bP("If anything changes, just reply to this email or give us a call and we'll move it.") +
+  bSmall('A calendar invitation is attached — open it to add the tour to your calendar.'))
+
 // ── Editable PROPOSAL email TEMPLATE (Templates → Emails) ───────────────────────
 // Cover email for the proposal PDF (attached). {{company}} {{name}} {{website}}.
 export const DEFAULT_PROPOSAL_EMAIL_SUBJECT = 'Your office suites & pricing — {{company}}'

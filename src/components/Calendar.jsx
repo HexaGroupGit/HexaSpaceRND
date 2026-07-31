@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, X, Users, Clock } from 'lucide-react'
+import { Link, useOutletContext } from 'react-router-dom'
+import { ChevronLeft, ChevronRight, X, Users, Clock, CalendarClock } from 'lucide-react'
 import { format, addDays } from 'date-fns'
-import { bookingFeeName, afterHoursConfig } from '../lib/credits.js'
+import { bookingFeeName, afterHoursConfig, spendableCredits, hasActiveMembership, creditMonthKey } from '../lib/credits.js'
+import { bookingRate, bookingWasUsed } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
+import { to12h, durationLabel, addMinutes } from '../lib/tourInvite.js'
 
 const HOUR_H = 52
 const CREDIT_VALUE = 40 // $40 per credit
@@ -22,7 +24,7 @@ const round2 = (n) => Math.round(n * 100) / 100
 const ROOM_COLORS = ['#7c8b2f', '#10b981', '#7c3aed', '#b45309', '#1d4ed8', '#d97706', '#374151', '#9d174d']
 
 export default function Calendar() {
-  const { bookings = [], spaces = [], members = [], tenants = [], settings = {}, addBooking, updateBooking, deleteBooking, updateMember, addMember, updateTenant, addFee, deleteFee } = useOutletContext()
+  const { bookings = [], spaces = [], members = [], tenants = [], leases = [], leads = [], settings = {}, addBooking, updateBooking, deleteBooking, updateMember, addMember, updateTenant, addFee, deleteFee } = useOutletContext()
   // Grid spans the extended (after-hours) window so after-hours bookings are
   // visible to staff. Admins can create bookings at any time — no gating here.
   const ahCfg = afterHoursConfig(settings)
@@ -37,6 +39,12 @@ export default function Calendar() {
   const dayStr = format(day, 'yyyy-MM-dd')
   const rooms = spaces.filter((s) => s.type === resType)
   const dayBookings = bookings.filter((b) => b.date === dayStr)
+
+  // Tours booked for this day (CRM leads, not room bookings — they don't hold a
+  // room, so they sit above the grid rather than in it).
+  const dayTours = leads
+    .filter((l) => l.tourDate === dayStr && l.tourStatus === 'confirmed')
+    .sort((a, b) => (a.tourTime || '').localeCompare(b.tourTime || ''))
 
   // The room dropdown in the modal is scoped to the section's resource type
   // (Meeting Rooms shows only meeting rooms, Studios only studios, etc.).
@@ -58,18 +66,38 @@ export default function Calendar() {
     const tenant = tenants.find((t) => t.id === companyId)
 
     // Start from the current balance, refund the old spend, drop its overage fee.
-    let available = Number(tenant?.creditsRemaining ?? 0)
-    if (oldB?.creditsUsed) available = round2(available + oldB.creditsUsed)
-    if (oldB?.feeId) deleteFee?.(oldB.feeId)
+    // Drop-ins have no pool (spendableCredits → 0), and the refund of a credit
+    // that was wrongly granted before must not hand them one back either — so the
+    // refund only applies to a company that actually holds a membership.
+    // A booking that's already been used (door opened, or its window started)
+    // keeps its charge: cancelling it frees the room but doesn't undo the spend.
+    const isMember = hasActiveMembership(companyId, leases)
+    const alreadyUsed = bookingWasUsed(oldB)
+    let available = spendableCredits(tenant, leases)
+    if (isMember && !alreadyUsed && oldB?.creditsUsed) available = round2(available + oldB.creditsUsed)
+    if (oldB?.feeId && !alreadyUsed) deleteFee?.(oldB.feeId)
 
     let creditsUsed = 0, paidBy = 'free', feeAmount = 0, feeId = null
     if (next) {
-      if (next.status === 'Cancelled') paidBy = 'cancelled'
+      if (next.status === 'Cancelled') {
+        paidBy = 'cancelled'
+        // Used-then-cancelled: the room was had, so the spend and its overage
+        // fee stay on the booking rather than being zeroed out.
+        if (alreadyUsed) {
+          creditsUsed = Number(oldB?.creditsUsed ?? 0)
+          feeAmount = Number(oldB?.feeAmount ?? 0)
+          feeId = oldB?.feeId ?? null
+          paidBy = oldB?.paidBy ?? 'cancelled'
+        }
+      }
       else if (next.free) paidBy = 'free'
       else {
         const room = spaces.find((s) => s.id === next.resourceId)
         const hrs = Math.max(0, toDec(next.endTime) - toDec(next.startTime))
-        const need = round2(hrs * (room?.hourlyRate || 0) / CREDIT_VALUE)
+        // The member discount is a MEMBERSHIP benefit, not a "has a company
+        // record" one — a drop-in with a client record still pays list rate.
+        const rate = bookingRate(room, companyId, leases)
+        const need = round2(hrs * rate / CREDIT_VALUE)
         if (need <= 0) paidBy = 'free'
         else {
           creditsUsed = Math.max(0, Math.min(available, need))
@@ -78,7 +106,7 @@ export default function Calendar() {
           if (shortfall > 0) {
             feeAmount = round2(shortfall * CREDIT_VALUE)
             const fee = addFee?.({
-              name: bookingFeeName({ roomName: room?.unitNumber, rate: room?.hourlyRate, date: next.date, startTime: next.startTime, endTime: next.endTime, usedCredits: creditsUsed }),
+              name: bookingFeeName({ roomName: room?.unitNumber, rate, date: next.date, startTime: next.startTime, endTime: next.endTime, usedCredits: creditsUsed }),
               type: 'Booking Fee', memberId: next.memberId ?? null, companyId,
               date: next.date || new Date().toISOString().split('T')[0],
               price: feeAmount, status: 'Not Paid',
@@ -91,8 +119,10 @@ export default function Calendar() {
       }
     }
 
-    // Persist the company's new balance once (absolute value).
-    if (companyId && tenant) updateTenant?.(companyId, { creditsRemaining: available })
+    // Persist the company's new balance once (absolute value). Stamp the period
+    // too — without it a company whose creditsPeriod is stale reads its full
+    // monthlyAllowance again on the next booking and never actually spends down.
+    if (companyId && tenant && isMember) updateTenant?.(companyId, { creditsRemaining: available, creditsPeriod: creditMonthKey() })
     return { creditsUsed, paidBy, feeAmount, feeId }
   }
 
@@ -149,6 +179,33 @@ export default function Calendar() {
           {RESOURCE_TYPES.map((r) => <option key={r.type} value={r.type}>{r.label}</option>)}
         </select>
       </div>
+
+      {dayTours.length > 0 && (
+        <div className="mb-4 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-teal-800 uppercase tracking-wide flex items-center gap-1.5">
+              <CalendarClock size={13} /> Tours today
+            </span>
+            <Link to="/crm" className="text-xs text-teal-700 hover:underline">Open CRM</Link>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {dayTours.map((l) => (
+              <div key={l.id} className="bg-card border border-teal-200 rounded-md px-3 py-1.5 text-xs">
+                <span className="font-semibold text-foreground">
+                  {to12h(l.tourTime)}–{to12h(addMinutes(l.tourTime, l.tourDurationMinutes || 30))}
+                </span>
+                <span className="text-foreground"> · {l.businessName || l.name}</span>
+                <span className="text-muted-foreground">
+                  {l.businessName && l.name ? ` (${l.name})` : ''}
+                  {l.enquiryType ? ` · ${l.enquiryType}` : ''}
+                  {l.tourHost ? ` · ${l.tourHost}` : ''}
+                  {` · ${durationLabel(l.tourDurationMinutes || 30)}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {rooms.length === 0 ? (
         <div className="bg-card border border-border rounded-xl shadow-sm p-12 text-center text-muted-foreground text-sm">No {RESOURCE_TYPES.find((r) => r.type === resType)?.label.toLowerCase()} yet. Add spaces of this type in Spaces.</div>
@@ -228,6 +285,7 @@ export default function Calendar() {
           roomLabel={modalLabel}
           members={members}
           tenants={tenants}
+          leases={leases}
           addMember={addMember}
           onClose={() => setModal(null)}
           onSave={handleSave}
@@ -242,7 +300,7 @@ export default function Calendar() {
 const ic = 'w-full border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40'
 const lbl = 'block text-xs font-medium text-muted-foreground mb-1'
 
-function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, addMember, onClose, onSave, onCancelBooking, onDelete }) {
+function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, leases = [], addMember, onClose, onSave, onCancelBooking, onDelete }) {
   const edit = init.mode === 'edit'
   const [f, setF] = useState({
     companyId: init.companyId || '',
@@ -270,11 +328,14 @@ function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, addMe
   // members filtered by chosen company (or all when none chosen)
   const memberOpts = f.companyId ? members.filter((m) => m.companyId === f.companyId) : members
   const hrs = Math.max(0, toDec(f.endTime) - toDec(f.startTime))
-  const cost = f.free ? 0 : hrs * (room?.hourlyRate || 0)
-  const credits = round2(cost / CREDIT_VALUE)
   // Balance is the COMPANY's monthly allowance pool, not the individual member.
-  const company = tenants.find((t) => t.id === (f.companyId || member?.companyId))
-  const bal = Number(company?.creditsRemaining ?? 0)
+  const companyId = f.companyId || member?.companyId
+  const company = tenants.find((t) => t.id === companyId)
+  // Preview mirrors the reconcile charge exactly: members get 30% off and can
+  // draw on the pool; a drop-in pays list rate with no credits.
+  const cost = f.free ? 0 : hrs * bookingRate(room, companyId, leases)
+  const credits = round2(cost / CREDIT_VALUE)
+  const bal = spendableCredits(company, leases)
 
   function pickCompany(e) {
     const companyId = e.target.value

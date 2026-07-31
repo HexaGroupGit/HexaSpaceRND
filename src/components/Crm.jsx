@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Users } from 'lucide-react'
+import { Users, CalendarClock } from 'lucide-react'
 import LeadsBoard from './LeadsBoard.jsx'
 import EnquiriesInbox from './EnquiriesInbox.jsx'
 import ReferralsPanel from './ReferralsPanel.jsx'
 import FunctionEnquiries from './FunctionEnquiries.jsx'
+import TourBookingModal from './TourBookingModal.jsx'
 
 // CRM — the customer pipeline. Leads & Enquiries are the core; Referrals feed it.
 const TABS = [
@@ -17,6 +18,7 @@ const TABS = [
 export default function Crm() {
   const store = useOutletContext()
   const [tab, setTab] = useState('leads')
+  const [bookingTour, setBookingTour] = useState(false)
 
   const { leads = [], pipelineStages = [] } = store
   const wonStageId = pipelineStages.find((s) => s.category === 'won')?.id
@@ -25,18 +27,28 @@ export default function Crm() {
   const monthKey = new Date().toISOString().slice(0, 7)
   const wonThisMonth = leads.filter((l) => l.stageId === wonStageId && (l.stageEnteredAt ?? '').startsWith(monthKey)).length
   const unreadEnquiries = leads.filter((l) => !l.read).length
+  const todayIso = new Date().toISOString().split('T')[0]
+  const upcomingTours = leads.filter((l) => l.tourDate >= todayIso && l.tourStatus === 'confirmed').length
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Users size={22} /> CRM
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             {openLeads} open {openLeads === 1 ? 'lead' : 'leads'} · {unreadEnquiries} new {unreadEnquiries === 1 ? 'enquiry' : 'enquiries'} · {wonThisMonth} won this month
+            {upcomingTours > 0 && ` · ${upcomingTours} tour${upcomingTours === 1 ? '' : 's'} booked`}
           </p>
         </div>
+        <button
+          onClick={() => setBookingTour(true)}
+          title="Take a phone enquiry and send them a calendar invitation"
+          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90 shrink-0"
+        >
+          <CalendarClock size={15} /> Book a Tour
+        </button>
       </div>
 
       {/* Sub-tab bar */}
@@ -61,6 +73,10 @@ export default function Crm() {
       {tab === 'enquiries' && <EnquiriesInbox store={store} />}
       {tab === 'functions' && <FunctionEnquiries store={store} />}
       {tab === 'referrals' && <ReferralsPanel store={store} />}
+
+      {bookingTour && (
+        <TourBookingModal store={store} onClose={() => setBookingTour(false)} onBooked={() => setTab('leads')} />
+      )}
     </div>
   )
 }
