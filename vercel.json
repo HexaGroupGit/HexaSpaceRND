@@ -38,7 +38,7 @@
     },
     {
       "path": "/api/auto-billing",
-      "schedule": "0 0 1 * *"
+      "schedule": "30 21 1 * *"
     },
     {
       "path": "/api/event-reminders",

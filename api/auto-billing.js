@@ -1,8 +1,18 @@
 // POST /api/auto-billing  — manual trigger from admin
-// GET  /api/auto-billing  — Vercel cron (runs 1st of each month)
+// GET  /api/auto-billing  — Vercel cron, 30 21 1 * * (21:30 UTC on the 1st)
 //
 // Creates invoices for all active leases that don't have one for the current month,
 // then emails each tenant their invoice.
+//
+// SCHEDULING: this MUST run after /api/reconcile's nightly 20:30 UTC pass, which
+// is what rolls an auto-renewing lease forward. Reconcile only rolls once the
+// endDate is strictly in the past, so a lease ending on the last day of a month
+// renews during the 1st. Billing used to run at 00:00 UTC on the 1st — some 20
+// hours BEFORE that roll — so buildMonthlyInvoiceForLease saw the term as already
+// ended and skipped the month entirely (Canwealth, Aug 2026: $2,100 ex GST of
+// office rent silently unbilled). Invoice issueDate is derived from the period
+// start, not the run time, so invoices are still dated the 1st either way.
+// If you move either cron, keep this one later than reconcile.
 
 import { createClient } from '@supabase/supabase-js'
 import { randomBytes } from 'crypto'
