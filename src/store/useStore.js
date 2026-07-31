@@ -1195,7 +1195,16 @@ export function useStore() {
       })
       const gateTenant = tenants.find((t) => t.id === lease.tenantId)
       if (shouldOnboard(lease, invoices, gateTenant)) {
-        if (alreadyOccupied) {
+        // "Was the space already occupied" is a proxy for "they moved in long
+        // ago" — and it breaks the moment a lease is moved to a different space,
+        // because the NEW space isn't occupied yet. That re-onboards a
+        // long-standing tenant: Azura was moved 406 → 423 and got the welcome
+        // email three times. Anchor on the lease itself instead: a genuine
+        // move-in onboards within minutes of activation, so anything activated
+        // more than a day ago is a data change, not a new arrival.
+        const activatedLongAgo = lease.activatedAt
+          && (Date.now() - new Date(lease.activatedAt).getTime()) > 24 * 3600 * 1000
+        if (alreadyOccupied || activatedLongAgo) {
           // Pre-existing move-in — suppress retroactive onboarding (no email/invite).
           updateLease(lease.id, { onboardedAt: lease.activatedAt ?? new Date().toISOString() })
         } else {

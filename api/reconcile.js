@@ -199,7 +199,12 @@ export default async function handler(req, res) {
         // gate cleared means the tenant moved in long ago — stamp, don't email.
         // (Freshly cron-flipped spaces in step 1 record their leases in
         // out.occupied, so they still onboard normally below.)
-        if (space?.status === 'occupied' && !flippedLeaseIds.has(lease.id)) {
+        // Same anchor as the admin app: a lease activated more than a day ago is
+        // an existing tenant, not a new arrival, whatever its space now says.
+        // Without this a suite move re-onboards them (Azura, 30 Jul 2026).
+        const activatedLongAgo = lease.activatedAt
+          && (Date.now() - new Date(lease.activatedAt).getTime()) > 24 * 3600 * 1000
+        if (activatedLongAgo || (space?.status === 'occupied' && !flippedLeaseIds.has(lease.id))) {
           await saveRow('leases', lease.id, { ...lease, onboardedAt: lease.activatedAt ?? new Date().toISOString() })
           out.onboardedSuppressed.push(label)
           continue
