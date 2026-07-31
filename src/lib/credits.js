@@ -69,16 +69,46 @@ export const round2 = (n) => Math.round(Number(n || 0) * 100) / 100
 export const creditMonthKey = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 
+/** A company is a member if it holds an active lease/membership. */
+export function hasActiveMembership(companyId, leases) {
+  if (!companyId) return false
+  return (leases ?? []).some((l) => l.tenantId === companyId && l.status === 'active')
+}
+
+/** A drop-in is anyone with no active membership. */
+export function isDropIn(companyId, leases) {
+  return !hasActiveMembership(companyId, leases)
+}
+
 /**
- * Credits a company has left this month. A `creditsPeriod` from an earlier month
+ * The stored monthly pool as-recorded. A `creditsPeriod` from an earlier month
  * means the pool hasn't been touched yet this month, so the full allowance is
- * available. Lives here (dependency-free) so the app, portal and serverless
- * endpoints all price a booking off ONE definition.
+ * available.
+ *
+ * This is the RAW figure and says nothing about entitlement — a company that has
+ * since ended its membership keeps whatever number was last written here (the
+ * monthly reset in useStore only runs when an admin opens the app). Price off
+ * `spendableCredits` instead; this is for display of the stored value only.
  */
 export function creditBalance(company) {
   return company?.creditsPeriod === creditMonthKey()
     ? Number(company?.creditsRemaining ?? 0)
     : Number(company?.monthlyAllowance ?? company?.creditsRemaining ?? 0)
+}
+
+/**
+ * Credits this company may actually SPEND on a booking. Credits are a membership
+ * benefit, so a drop-in has none no matter what the stored pool says — a stale
+ * `creditsRemaining` from a lapsed membership (or one an admin typed in) must not
+ * discount a walk-in's room hire. Every pricing path — admin calendar, portal,
+ * member app, serverless — reads the balance through here so one rule governs.
+ *
+ * Fails CLOSED: no `leases` passed means no active membership can be proven, so
+ * the answer is 0 rather than a free-credit hole.
+ */
+export function spendableCredits(company, leases) {
+  if (isDropIn(company?.id, leases)) return 0
+  return creditBalance(company)
 }
 
 // Members get 30% off the listed meeting-room hourly rate. room.hourlyRate is
