@@ -171,9 +171,39 @@ export default async function handler(req, res) {
   const writeLog = (result) =>
     sb.from('salto_open_log').upsert({ ...logRow, result }).then(() => {}, () => {})
 
+  /**
+   * Stamp a room booking the moment its door is opened. The room door unlocks
+   * from 15 minutes BEFORE the start, but a booking stays cancellable right up
+   * to the start — so without this a member could let themselves in, cancel at
+   * 09:59 and get the whole charge refunded. The stamp lives on the booking (not
+   * just salto_open_log) so the app, portal and admin calendar can all see it
+   * without a second round-trip, and members can't read the log table anyway.
+   */
+  const stampBookingOpened = async () => {
+    if (door.kind !== 'room') return
+    const bookingId = String(doorId).startsWith('room:') ? String(doorId).slice(5) : null
+    if (!bookingId) return
+    try {
+      const { data } = await sb.from('bookings').select('data').eq('id', bookingId).limit(1)
+      const b = data?.[0]?.data
+      if (!b) return
+      const nowIso = new Date().toISOString()
+      await sb.from('bookings').update({
+        data: {
+          ...b,
+          doorOpenedAt: b.doorOpenedAt ?? nowIso, // first open wins
+          doorOpenCount: Number(b.doorOpenCount ?? 0) + 1,
+          doorOpenedBy: b.doorOpenedBy ?? auth.user.email,
+        },
+        updated_at: nowIso,
+      }).eq('id', bookingId)
+    } catch { /* the unlock itself must not fail because the stamp did */ }
+  }
+
   const webhook = process.env.SALTO_REMOTE_OPEN_WEBHOOK
   if (!webhook) {
     await writeLog('mock')
+    await stampBookingOpened()
     return res.status(200).json({ mock: true, dispatched: true, door: door.label, requestId,
       note: 'SALTO_REMOTE_OPEN_WEBHOOK not set — no unlock sent.' })
   }
@@ -200,6 +230,7 @@ export default async function handler(req, res) {
       }),
     })
     if (!r.ok) throw new Error(`hook ${r.status}`)
+    await stampBookingOpened()
     return res.status(200).json({ dispatched: true, door: door.label, requestId, remaining })
   } catch (err) {
     console.error('salto remote open failed:', err)
