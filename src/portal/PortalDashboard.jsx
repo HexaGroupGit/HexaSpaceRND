@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowRight, CalendarCheck, PartyPopper, Mailbox, Package } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { Page, Card, Eyebrow, StatusBadge, fmt, money, to12, bookingName } from './ui.jsx'
+import { spendableCredits } from '../lib/credits.js'
 
 function calcTotal(invoice) {
   let taxable = 0, exempt = 0
@@ -32,8 +33,9 @@ export default function PortalDashboard({ data }) {
     .filter(b => b.date && b.date >= todayStr && b.status !== 'Cancelled')
     .sort((a, b) => (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || '')))
     .slice(0, 3)
-  // Booking allowance is the company's monthly credit pool.
-  const credits = company?.creditsRemaining ?? company?.monthlyAllowance ?? null
+  // Booking allowance is the company's monthly credit pool — a membership
+  // benefit, so a drop-in signed into the portal shows none.
+  const credits = activeLeases.length ? spendableCredits(company, leases) : null
 
   const who = (member?.name || company?.contactName || company?.businessName || '').split(' ')[0]
 

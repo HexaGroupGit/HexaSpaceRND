@@ -7,7 +7,7 @@ import InvoiceForm from './InvoiceForm.jsx'
 import DocumentsPanel from './DocumentsPanel.jsx'
 import { jsPDF } from 'jspdf'
 import { supabase } from '../lib/supabase.js'
-import { computeMonthlyAllowance, effectiveAllowance } from '../lib/credits.js'
+import { computeMonthlyAllowance, effectiveAllowance, spendableCredits } from '../lib/credits.js'
 
 const SIG_BADGE = {
   manually_signed:   { label: 'Signed',       cls: 'bg-green-100 text-green-700' },
@@ -121,7 +121,10 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
   // an admin can override the monthly allowance or top up the remaining balance.
   const computedAllowance = computeMonthlyAllowance(tenant.id, leases, spaces)
   const effAllowance = effectiveAllowance(tenant, computedAllowance)
-  const creditsRemaining = Number(tenant.creditsRemaining ?? effAllowance)
+  // What bookings will actually draw on — 0 once the memberships have ended,
+  // however the stored figure was left. The override editor below still shows
+  // and writes the raw fields.
+  const creditsRemaining = spendableCredits(tenant, leases)
 
   function generateStatement() {
     const taxRate = (settings?.billingRules?.taxRate ?? 10) / 100

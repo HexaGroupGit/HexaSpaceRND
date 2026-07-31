@@ -59,7 +59,7 @@ export default function BookingSheet({ booking, onClose }) {
     if (!window.confirm('Cancel this booking? Any credits used will return to your allowance.')) return
     setBusy(true); setError('')
     try {
-      const { booking: updated, company: updatedCompany } = await cancelBooking({ booking, company })
+      const { booking: updated, company: updatedCompany } = await cancelBooking({ booking, company, leases })
       patch((prev) => ({
         ...prev,
         company: updatedCompany,

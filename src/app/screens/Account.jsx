@@ -3,7 +3,7 @@ import { useApp } from '../context.js'
 import { supabase } from '../../lib/supabase.js'
 import { usePrintPin } from '../lib/usePrintPin.js'
 import { Screen, BackHeader, Label, Card, Chip, fmt } from '../ui.jsx'
-import { creditBalance, CREDIT_VALUE } from '../lib/bookingActions.js'
+import { spendableCredits, CREDIT_VALUE } from '../lib/bookingActions.js'
 
 // Account — who you are, your company, your allowance. Mostly read-only; changes
 // go through the team, except the community messaging preference below.
@@ -11,7 +11,7 @@ export default function Account() {
   const { data, signOut, patch } = useApp()
   const { company, member, leases } = data
   const activeLease = (leases ?? []).find((l) => l.status === 'active')
-  const credits = creditBalance(company)
+  const credits = spendableCredits(company, leases)
   const pin = usePrintPin()
 
   const allowMessages = member?.allowMessages !== false

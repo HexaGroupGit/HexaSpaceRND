@@ -5,6 +5,7 @@ import { ArrowLeft, Pencil, Check, KeyRound } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { displayStatus, accessRoles, memberHasActiveMembership } from './Members.jsx'
 import { FOB_STATUS, DEPOSIT_STATUS, depositState, money } from '../lib/fobs.js'
+import { spendableCredits } from '../lib/credits.js'
 
 const TABS = ['Overview', 'Memberships', 'Bookings', 'Credits', 'One-off Fees', 'Invoices', 'Comments']
 
@@ -98,9 +99,9 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
   const companyLeases = leases.filter((l) => l.tenantId === member.companyId)
     .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''))
   const monthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
-  const creditsRemaining = company
-    ? (company.creditsPeriod === monthKey ? Number(company.creditsRemaining ?? 0) : Number(company.monthlyAllowance ?? company.creditsRemaining ?? 0))
-    : 0
+  // Spendable, not stored: a company with no active membership has no pool, so
+  // staff see the same 0 the booking screens will charge against.
+  const creditsRemaining = spendableCredits(company, leases)
   const memberFees = fees.filter((f) => f.memberId === member.id || (member.companyId && f.companyId === member.companyId))
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
   const feeBillable = (f) => f.companyId && Number(f.price) > 0 && !['Paid', 'Waived', 'Invoiced'].includes(f.status)

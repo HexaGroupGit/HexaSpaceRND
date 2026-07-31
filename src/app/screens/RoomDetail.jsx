@@ -3,9 +3,9 @@ import { format, addDays } from 'date-fns'
 import { Check, Users, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
 import { useApp } from '../context.js'
 import { Screen, BackHeader, Label, Rule, Chip, Sheet, BigButton, RoomPhoto, fmt, to12, money0 } from '../ui.jsx'
-import { toDec, fromDec, isFree, creditBalance, createBooking, CREDIT_VALUE } from '../lib/bookingActions.js'
+import { toDec, fromDec, isFree, spendableCredits, createBooking, CREDIT_VALUE } from '../lib/bookingActions.js'
 import { blockingResourceIds } from '../../lib/roomConflicts.js'
-import { priceBooking, requiresUpfrontPayment } from '../../lib/dropIn.js'
+import { priceBooking, requiresUpfrontPayment, bookingRate } from '../../lib/dropIn.js'
 import { apiUrl, openPayment } from '../lib/native.js'
 import { isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow, afterHoursConfig } from '../../lib/credits.js'
 
@@ -52,8 +52,8 @@ export default function RoomDetail({ room, onBack }) {
       .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''))
   }, [allBookings, room.id, date, spaces])
 
-  const rate = room.hourlyRate ?? room.rate ?? 0
-  const balance = creditBalance(company)
+  const rate = bookingRate(room, company?.id, leases) // members 30% off, drop-ins list rate
+  const balance = spendableCredits(company, leases)
 
   // Half-hour cells across the grid window
   const cells = []

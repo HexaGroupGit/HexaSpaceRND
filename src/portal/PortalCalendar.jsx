@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight, X, Repeat, Check, User } from 'lucide-react'
 import { format, addDays, addMonths } from 'date-fns'
 import { supabase } from '../lib/supabase.js'
-import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig, memberRoomRate } from '../lib/credits.js'
+import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig, spendableCredits, hasActiveMembership, creditMonthKey } from '../lib/credits.js'
+import { bookingRate, bookingWasUsed } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
 import { Card } from './ui.jsx'
 
@@ -44,12 +45,10 @@ export default function PortalCalendar({ resources, allBookings, member, company
   // Live company credit balance (deducted as bookings are made this session).
   // On a new month the pool tops back up to the company's monthly allowance —
   // mirrors the admin app's monthly reset, keyed on creditsPeriod so the two agree.
-  const monthKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })()
-  const [remaining, setRemaining] = useState(() =>
-    company?.creditsPeriod === monthKey
-      ? Number(company?.creditsRemaining ?? 0)
-      : Number(company?.monthlyAllowance ?? company?.creditsRemaining ?? 0)
-  )
+  // A drop-in signed into the portal has no pool at all, whatever the stored
+  // figure says — credits come with a membership.
+  const monthKey = creditMonthKey()
+  const [remaining, setRemaining] = useState(() => spendableCredits(company, leases))
 
   const dayStr = format(day, 'yyyy-MM-dd')
   // Cancelled bookings free their slot — never draw them (a cancel would
@@ -94,7 +93,7 @@ export default function PortalCalendar({ resources, allBookings, member, company
           {resources.map((room) => {
             const blockIds = new Set(blockingResourceIds(room.id, allSpaces ?? resources))
             const roomBookings = dayBookings.filter((b) => blockIds.has(b.resourceId))
-            const rate = memberRoomRate(room) // member portal — show the 30%-off member rate
+            const rate = bookingRate(room, company?.id, leases) // members see the 30%-off rate, drop-ins list
             const cap = capacityOf(room)
             return (
               <div key={room.id} className="flex-1 min-w-0 border-r border-ink/10 last:border-r-0">
@@ -252,7 +251,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
 
   const room = resources.find((r) => r.id === f.resourceId)
-  const rate = memberRoomRate(room) // member portal — 30% off the listed rate
+  const rate = bookingRate(room, company?.id, leases) // members 30% off, drop-ins list rate
   const hrs = Math.max(0, toDec(f.endTime) - toDec(f.startTime))
   // Office perk: private-office (suite) companies get Sky/Earth/Sun/Moon free,
   // capped per booking + per company per day. When it applies, no credits/fee.
@@ -266,8 +265,8 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
   const count = f.repeat === 'none' ? 1 : Math.max(1, Math.min(12, Number(f.occurrences) || 1))
   const totalCost = perCost * count
   const totalCredits = Math.round((totalCost / CREDIT_VALUE) * 100) / 100
-  // Balance is the COMPANY's monthly allowance pool.
-  const balance = Number(remaining ?? company?.creditsRemaining ?? 0)
+  // Balance is the COMPANY's monthly allowance pool — nil for a drop-in.
+  const balance = remaining != null ? Number(remaining) : spendableCredits(company, leases)
 
   function occurrenceDates() {
     const base = new Date(f.date + 'T00:00:00')
@@ -350,7 +349,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
 
     // Perk bookings are FREE (no credits, no fee). Otherwise deduct the company's
     // credit allowance per booking; any overage becomes a month-end Booking Fee.
-    let bal = Number(remaining ?? company?.creditsRemaining ?? 0)
+    let bal = remaining != null ? Number(remaining) : spendableCredits(company, leases)
     let shortfallCredits = 0
     if (isPerk) {
       created.forEach((b) => { b.creditsUsed = 0; b.paidBy = 'included' })
@@ -382,7 +381,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
       const fee = {
         id: feeId,
         name: bookingFeeName({
-          roomName: feeRoom?.unitNumber, rate: memberRoomRate(feeRoom),
+          roomName: feeRoom?.unitNumber, rate: bookingRate(feeRoom, company?.id, leases),
           date: created[0]?.date, startTime: f.startTime, endTime: f.endTime,
           usedCredits: created.reduce((s, b) => s + (b.creditsUsed || 0), 0),
         }),
@@ -420,7 +419,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
           <div>
             <label className="hx-eyebrow block mb-1.5">Space</label>
             <select value={f.resourceId} onChange={up('resourceId')} className="hx-input">
-              {resources.map((r) => <option key={r.id} value={r.id}>{r.unitNumber}{memberRoomRate(r) ? ` — A$${memberRoomRate(r)}/hr` : ''}</option>)}
+              {resources.map((r) => { const rr = bookingRate(r, company?.id, leases); return <option key={r.id} value={r.id}>{r.unitNumber}{rr ? ` — A$${rr}/hr` : ''}</option> })}
             </select>
           </div>
           <div>
@@ -516,7 +515,7 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
 
   const room = resources.find((r) => r.id === b.resourceId)
-  const rate = memberRoomRate(room) // member portal — 30% off the listed rate
+  const rate = bookingRate(room, company?.id, leases) // members 30% off, drop-ins list rate
   const round2c = (n) => Math.round(n * 100) / 100
   const perk = companyPerk(company?.id, leases, allSpaces ?? resources, settings)
   const isPerk = isPerkRoom(room, perk)
@@ -530,7 +529,12 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
 
   const newHrs = Math.max(0, toDec(f.endTime) - toDec(f.startTime))
   const newNeed = round2c(newHrs * rate / CREDIT_VALUE)
-  const pool = round2c(Number(remaining ?? 0) + oldUsed) // refund the old spend first
+  // Refund the old spend first — but only into a pool the company is actually
+  // entitled to; a drop-in's wrongly-granted credits don't come back as a balance,
+  // and neither does a booking that's already been used (see saveChanges' guard).
+  const isMember = hasActiveMembership(company?.id, leases)
+  const alreadyUsed = bookingWasUsed(b)
+  const pool = (isMember && !alreadyUsed) ? round2c(Number(remaining ?? 0) + oldUsed) : 0
   const newUsed = Math.max(0, Math.min(pool, newNeed))
   const newPool = round2c(pool - newUsed)
   const extraFee = Math.max(0, round2c((newNeed - newUsed) - oldShort))
@@ -549,6 +553,11 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
 
   async function saveChanges() {
     setError('')
+    // A booking that's under way (or whose door has been opened) can't be moved
+    // — otherwise "change the time" becomes a refund by another route.
+    if (alreadyUsed) {
+      return setError('This booking has already started, so it can no longer be moved. Please book a new time instead.')
+    }
     if (newHrs <= 0) return setError('End time must be after start time.')
     if (toDec(f.startTime) < win.start || toDec(f.endTime) > win.end) {
       return setError(win.studioGated
@@ -612,17 +621,26 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
     onSaved(updated, poolAfter)
   }
 
+  // Cancelling always frees the slot. The refund is what's gated: once the room
+  // has been opened, or the booked window has started, the charge stands —
+  // otherwise a member can walk in, use the room and cancel on the way out.
   async function cancelBooking() {
-    if (!window.confirm('Cancel this booking? Credits used will return to your allowance.')) return
+    const used = bookingWasUsed(b)
+    const msg = used
+      ? 'This booking has already started (or the room has been opened), so the credits used stay charged. Cancel it anyway to free the room?'
+      : 'Cancel this booking? Credits used will return to your allowance.'
+    if (!window.confirm(msg)) return
     setSaving(true)
-    const updated = { ...b, status: 'Cancelled', cancelledAt: nowIso(), creditsUsed: 0 }
-    const refundedPool = round2c(Number(remaining ?? 0) + oldUsed)
-    const err = await persist(updated, refundedPool, null)
+    const updated = used
+      ? { ...b, status: 'Cancelled', cancelledAt: nowIso(), chargedAfterEntry: true }
+      : { ...b, status: 'Cancelled', cancelledAt: nowIso(), creditsUsed: 0 }
+    const poolAfter = used ? Number(remaining ?? 0) : round2c(Number(remaining ?? 0) + oldUsed)
+    const err = await persist(updated, poolAfter, null)
     setSaving(false)
     if (err) return setError(err.message)
     if ((b.attendees ?? []).length) notifyAttendees(b.id, 'cancelled')
     notifyOps(b.id, 'cancelled')
-    onSaved(updated, refundedPool)
+    onSaved(updated, poolAfter)
   }
 
   return (

@@ -4,7 +4,8 @@ import { ChevronRight, Users, KeyRound, Check } from 'lucide-react'
 import { useApp } from '../context.js'
 import { isFunctionSpace } from '../../portal/functionSpace.js'
 import { Screen, Label, Display, Rule, Chip, RoomPhoto, to12, money0, bookingName } from '../ui.jsx'
-import { creditBalance, CREDIT_VALUE, bookingPhase } from '../lib/bookingActions.js'
+import { spendableCredits, CREDIT_VALUE, bookingPhase } from '../lib/bookingActions.js'
+import { bookingRate } from '../../lib/dropIn.js'
 import { useRoomUnlock } from '../lib/useRoomUnlock.js'
 import RoomDetail from '../screens/RoomDetail.jsx'
 import BookingSheet from '../screens/BookingSheet.jsx'
@@ -15,7 +16,7 @@ import BookingSheet from '../screens/BookingSheet.jsx'
 
 export default function Book() {
   const { data } = useApp()
-  const { spaces, bookings, company, settings } = data
+  const { spaces, bookings, company, leases, settings } = data
 
   const rooms = useMemo(() => (spaces ?? [])
     .filter((s) => s.type === 'meeting' && !isFunctionSpace(s))
@@ -50,7 +51,7 @@ export default function Book() {
     if (podcast.length) groups.push({ label: 'Podcast', items: podcast })
   }
 
-  const balance = creditBalance(company)
+  const balance = spendableCredits(company, leases)
 
   return (
     <Screen>
@@ -85,7 +86,7 @@ export default function Book() {
           <section key={label} className="mb-7">
             <Label className="mb-2">{label}</Label>
             <div className="divide-y divide-ink/5 border-y border-ink/10">
-              {items.map((room) => <RoomRow key={room.id} room={room} onOpen={() => setSelected(room)} />)}
+              {items.map((room) => <RoomRow key={room.id} room={room} rate={bookingRate(room, company?.id, leases)} onOpen={() => setSelected(room)} />)}
             </div>
           </section>
         ))
@@ -98,8 +99,8 @@ export default function Book() {
   )
 }
 
-function RoomRow({ room, onOpen }) {
-  const rate = room.hourlyRate ?? room.rate
+// `rate` is resolved by the caller — members see the 30%-off rate, drop-ins list.
+function RoomRow({ room, rate, onOpen }) {
   return (
     <button onClick={onOpen} className="w-full flex items-center gap-4 py-4 min-h-[68px] active:opacity-60 transition-opacity">
       <RoomPhoto room={room} className="h-14 w-14 shrink-0 text-xl" />

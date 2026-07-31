@@ -1,7 +1,7 @@
 import { supabase } from '../../lib/supabase.js'
-import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow } from '../../lib/credits.js'
+import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow, spendableCredits, hasActiveMembership } from '../../lib/credits.js'
 import { blockingResourceIds } from '../../lib/roomConflicts.js'
-import { priceBooking, requiresUpfrontPayment } from '../../lib/dropIn.js'
+import { priceBooking, requiresUpfrontPayment, bookingRate, bookingWasUsed } from '../../lib/dropIn.js'
 import { apiUrl } from './native.js'
 
 // Booking writes for the app — mirrors the portal's PortalCalendar confirm()
@@ -75,15 +75,28 @@ export function canModifyBooking(b) {
   return Date.now() < bookingWindowMs(b).from
 }
 
-/** Cancel an upcoming booking: refunds its credits to the company pool. */
-export async function cancelBooking({ booking, company }) {
+/**
+ * Cancel an upcoming booking: refunds its credits to the company pool. Only a
+ * member has a pool — a drop-in paid cash up front, so cancelling gives them
+ * nothing to spend later (refunding a card is a separate, admin-side action).
+ *
+ * If the room has already been opened for this booking the slot still frees up,
+ * but the charge stands: they've had the room.
+ */
+export async function cancelBooking({ booking, company, leases }) {
   if (!canModifyBooking(booking)) {
     throw new Error('This booking has already started — it can no longer be cancelled.')
   }
   const nowIso = new Date().toISOString()
-  const refund = Number(booking.creditsUsed ?? 0)
-  const updated = { ...booking, status: 'Cancelled', cancelledAt: nowIso, creditsUsed: 0 }
-  const newBal = Math.round((creditBalance(company) + refund) * 100) / 100
+  const used = bookingWasUsed(booking)
+  const isMember = hasActiveMembership(company?.id, leases)
+  const refund = (isMember && !used) ? Number(booking.creditsUsed ?? 0) : 0
+  const updated = used
+    // Keep creditsUsed and the fee exactly as they were — the booking is
+    // cancelled for scheduling, charged as if it ran.
+    ? { ...booking, status: 'Cancelled', cancelledAt: nowIso, chargedAfterEntry: true }
+    : { ...booking, status: 'Cancelled', cancelledAt: nowIso, creditsUsed: 0 }
+  const newBal = Math.round((spendableCredits(company, leases) + refund) * 100) / 100
   const updatedCompany = company?.id ? { ...company, creditsRemaining: newBal, creditsPeriod: monthKey() } : company
 
   const writes = [supabase.from('bookings').upsert({ id: booking.id, data: updated, updated_at: nowIso })]
@@ -143,12 +156,13 @@ export async function amendBooking({ booking, room, date, startTime, endTime, me
     }
   }
 
-  const rate = room.hourlyRate ?? room.rate ?? 0
+  const rate = bookingRate(room, company?.id, leases) // members 30% off, drop-ins list rate
   const cost = isPerk ? 0 : hrs * rate
   const perCredits = Math.round((cost / CREDIT_VALUE) * 100) / 100
   // Refund the old credits first, then re-charge the new window from that pool.
-  const oldUsed = Number(booking.creditsUsed ?? 0)
-  const basePool = Math.round((creditBalance(company) + oldUsed) * 100) / 100
+  // Drop-ins have no pool, so nothing to refund into and nothing to draw down.
+  const oldUsed = hasActiveMembership(company?.id, leases) ? Number(booking.creditsUsed ?? 0) : 0
+  const basePool = Math.round((spendableCredits(company, leases) + oldUsed) * 100) / 100
   const used = isPerk ? 0 : Math.max(0, Math.min(basePool, perCredits))
   const newBal = isPerk ? basePool : Math.round((basePool - used) * 100) / 100
   const shortfall = isPerk ? 0 : Math.round((perCredits - used) * 100) / 100
@@ -205,7 +219,9 @@ export async function amendBooking({ booking, room, date, startTime, endTime, me
 /** Company credit balance right now (monthly pool, resets on a new month). */
 // Re-exported so existing app screens keep importing it from here, while the
 // single definition lives in the dependency-free lib (shared with the server).
-export { creditBalance } from '../../lib/credits.js'
+// Screens should prefer spendableCredits — creditBalance is the raw stored
+// figure and doesn't know whether the company still holds a membership.
+export { creditBalance, spendableCredits } from '../../lib/credits.js'
 
 /**
  * Create a single booking request: writes the booking, deducts the company's

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Pencil, Trash2, CalendarPlus } from 'lucide-react'
 import { FLOORS, floorLabel, StatusPill, money, Field, Modal, ic, memberOptions } from './shared.jsx'
+import { bookingRate } from '../../lib/dropIn.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 const EMPTY_ROOM = { unitNumber: '', floor: 'l4', capacity: '', hourlyRate: '', attributes: '', saltoLockId: '', saltoDoors: '' }
@@ -16,7 +17,7 @@ function hoursBetween(s, e) {
 // Meeting Rooms — bookable resources with an hourly rate. Booking writes to the
 // shared Bookings/calendar store so it shows up everywhere.
 export default function MeetingRoomsTab({ ctx }) {
-  const { spaces, members, tenants, bookings = [], addSpace, updateSpace, deleteSpace, addBooking } = ctx
+  const { spaces, members, tenants, bookings = [], leases = [], addSpace, updateSpace, deleteSpace, addBooking } = ctx
   const navigate = useNavigate()
   const [editId, setEditId] = useState(undefined) // undefined=closed, null=new
   const [form, setForm] = useState(EMPTY_ROOM)
@@ -80,6 +81,12 @@ export default function MeetingRoomsTab({ ctx }) {
   }
 
   const memberOpts = memberOptions(members, tenants)
+
+  // Quote preview for the booking modal. The 30% discount follows an active
+  // MEMBERSHIP — a drop-in picked from the list still pays the listed rate.
+  const bookCompanyId = members.find((m) => m.id === book.memberId)?.companyId
+  const bookRate = bookingRate(bookRoom, bookCompanyId, leases)
+  const bookIsMember = bookRate !== Number(bookRoom?.hourlyRate ?? bookRoom?.rate ?? 0)
 
   return (
     <div>
@@ -192,8 +199,8 @@ export default function MeetingRoomsTab({ ctx }) {
               <Field label="End"><input type="time" value={book.endTime} onChange={(e) => setBook({ ...book, endTime: e.target.value })} className={ic} /></Field>
             </div>
             <div className="bg-muted/50 rounded-md px-3 py-2 text-sm text-muted-foreground flex justify-between">
-              <span>{hoursBetween(book.startTime, book.endTime)} hour(s) × {money(bookRoom.hourlyRate || 0)}/hr</span>
-              <span className="font-semibold text-foreground">{money(hoursBetween(book.startTime, book.endTime) * (bookRoom.hourlyRate || 0))}</span>
+              <span>{hoursBetween(book.startTime, book.endTime)} hour(s) × {money(bookRate)}/hr{bookIsMember ? ' (member)' : ''}</span>
+              <span className="font-semibold text-foreground">{money(hoursBetween(book.startTime, book.endTime) * bookRate)}</span>
             </div>
             <div className="flex justify-end gap-3 pt-1">
               <button onClick={() => setBookRoom(null)} className="px-4 py-2 text-sm text-foreground border border-input rounded-md hover:bg-muted/50">Cancel</button>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { Plus, X, Trash2 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
+import { bookingRate } from '../lib/dropIn.js'
 
 const STATUS_STYLE = {
   Confirmed: 'bg-green-100 text-green-800',
@@ -30,7 +31,7 @@ function to12(t) {
 }
 
 export default function Bookings() {
-  const { bookings = [], spaces = [], members = [], tenants = [], addBooking, deleteBooking } = useOutletContext()
+  const { bookings = [], spaces = [], members = [], tenants = [], leases = [], addBooking, deleteBooking } = useOutletContext()
   const [search, setSearch] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -48,7 +49,9 @@ export default function Bookings() {
       const room = resource(b.resourceId)
       const m = member(b.memberId)
       const hrs = hoursBetween(b.startTime, b.endTime)
-      const cost = room?.hourlyRate ? hrs * room.hourlyRate : 0
+      // The 30% discount follows an active MEMBERSHIP, not merely having a
+      // company record — drop-ins and externals both pay the listed rate.
+      const cost = room?.hourlyRate ? hrs * bookingRate(room, b.companyId || m?.companyId, leases) : 0
       return { ...b, room, memberName: m?.name, companyName: companyName(b.companyId), hrs, cost }
     })
     .filter((b) => {
