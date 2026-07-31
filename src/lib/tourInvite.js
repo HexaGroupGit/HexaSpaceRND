@@ -9,7 +9,7 @@
 // Everything renders client-side and goes out through sendEmail() → the
 // admin-gated /api/send-email, so safe mode, the suppression list and the
 // email log all apply exactly as they do everywhere else.
-import { brandShell, bKicker, bH1, bP, bBtn, bSmall } from './sendEmail.js'
+import { brandShell, bKicker, bH1, bP, bSmall } from './sendEmail.js'
 
 const TZID = 'Australia/Melbourne'
 
@@ -207,14 +207,44 @@ export function icsBase64(ics) {
   return btoa(bin)
 }
 
-// "Add to calendar" fallback for anyone whose client ignores the attachment.
+// "Add to calendar" fallbacks, for anyone whose client ignores the attachment.
+// The .ics itself is client-agnostic — these are just one-click links into the
+// major web calendars. Outlook has two hosts: outlook.live.com for personal
+// accounts, outlook.office.com for work/school (Microsoft 365) ones, and a link
+// to the wrong host lands on a sign-in wall, so both are offered.
 export function googleCalendarLink({ date, startTime, endTime, title, details, location }) {
   const s = melbourneToDate(date, startTime)
   const e = melbourneToDate(date, endTime)
   if (!s || !e) return ''
-  const stamp = (d) => icsUtc(d)
   const q = encodeURIComponent
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${q(title)}&dates=${stamp(s)}/${stamp(e)}&details=${q(details)}&location=${q(location)}`
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${q(title)}&dates=${icsUtc(s)}/${icsUtc(e)}&details=${q(details)}&location=${q(location)}`
+}
+
+export function outlookCalendarLink({ date, startTime, endTime, title, details, location, work = false }) {
+  const s = melbourneToDate(date, startTime)
+  const e = melbourneToDate(date, endTime)
+  if (!s || !e) return ''
+  const q = encodeURIComponent
+  const host = work ? 'outlook.office.com' : 'outlook.live.com'
+  // Outlook wants real ISO-8601 here, not the compact .ics stamp.
+  return `https://${host}/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent`
+    + `&subject=${q(title)}&startdt=${q(s.toISOString())}&enddt=${q(e.toISOString())}`
+    + `&body=${q(details)}&location=${q(location)}`
+}
+
+// A row of add-to-calendar links — the {{calendarLinks}} merge field.
+export function calendarLinksHtml({ google, outlook, office365 }) {
+  const pill = (label, href) => `<a href="${href}" style="display:inline-block;border:1px solid #d8d6dc;border-radius:6px;padding:9px 16px;margin:0 6px 8px 0;font-family:Arial,sans-serif;font-size:12px;letter-spacing:.06em;color:#1a1a1a;text-decoration:none">${label}</a>`
+  const links = [
+    google && pill('Google Calendar', google),
+    outlook && pill('Outlook.com', outlook),
+    office365 && pill('Outlook (work)', office365),
+  ].filter(Boolean)
+  if (!links.length) return ''
+  return `<div style="margin:22px 0 18px">
+      <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#8a8a86;margin:0 0 10px">Add to calendar</div>
+      ${links.join('')}
+    </div>`
 }
 
 // ── Emails ───────────────────────────────────────────────────────────────────
@@ -233,6 +263,10 @@ export function tourVars({ lead, date, startTime, endTime, durationMinutes, host
   const cfg = tourConfig(settings)
   const company = settings?.company?.name || 'Hexa Space'
   const title = `${company} tour`
+  const ev = { date, startTime, endTime, title, details: `Your tour of ${company}. ${cfg.arrival}`, location: cfg.address }
+  const google = googleCalendarLink(ev)
+  const outlook = outlookCalendarLink(ev)
+  const office365 = outlookCalendarLink({ ...ev, work: true })
   return {
     company,
     name: (lead?.name || '').trim().split(/\s+/)[0] || 'there',
@@ -248,11 +282,12 @@ export function tourVars({ lead, date, startTime, endTime, durationMinutes, host
     arrival: cfg.arrival,
     parking: parkingHtml(cfg.parking),
     message: message ? `<p style="font-family:Arial,sans-serif;font-size:15px;line-height:1.65;color:#3a3a3a;margin:0 0 16px">${esc4(message)}</p>` : '',
-    calendarLink: googleCalendarLink({
-      date, startTime, endTime, title,
-      details: `Your tour of ${company}. ${cfg.arrival}`,
-      location: cfg.address,
-    }),
+    // calendarLink stays Google-only for templates written against the old
+    // field; calendarLinks is the full row and is what the defaults use.
+    calendarLink: google,
+    outlookLink: outlook,
+    office365Link: office365,
+    calendarLinks: calendarLinksHtml({ google, outlook, office365 }),
     website: settings?.company?.website || 'hexaspace.com.au',
   }
 }
@@ -283,12 +318,12 @@ export function tourConfirmedEmail({ template, vars, rescheduled = false }) {
       ['Where', esc4(vars.address)],
       vars.host ? ['Meeting', esc4(vars.host)] : null,
     ].filter(Boolean)) +
-    (vars.calendarLink ? bBtn('Add to calendar', vars.calendarLink) : '') +
+    vars.calendarLinks +
     bP('<strong>Getting here</strong>') +
     (vars.arrival ? bP(esc4(vars.arrival)) : '') +
     (vars.parking ? bP('Parking:') + vars.parking : '') +
     bP('If anything changes, just reply to this email or give us a call and we\'ll move it.') +
-    bSmall('A calendar invitation is attached — open it to add the tour to your calendar.')
+    bSmall('A calendar invitation is attached — open it in Outlook, Gmail, Apple Mail or any other calendar to accept.')
   return {
     subject: rescheduled
       ? `Updated: your ${vars.company} tour — ${vars.tourWhen}`

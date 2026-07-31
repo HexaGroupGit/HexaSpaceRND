@@ -415,9 +415,9 @@ export const DEFAULT_TOUR_BOOKED_HTML = brandShell(
   bP('{{address}}<br>{{arrival}}') +
   bP('<strong>Parking</strong>') +
   '{{parking}}' +
-  bBtn('Add to calendar', '{{calendarLink}}') +
+  '{{calendarLinks}}' +
   bP("If anything changes, just reply to this email or give us a call and we'll move it.") +
-  bSmall('A calendar invitation is attached — open it to add the tour to your calendar.'))
+  bSmall('A calendar invitation is attached — open it in Outlook, Gmail, Apple Mail or any other calendar to accept.'))
 
 // ── Editable PROPOSAL email TEMPLATE (Templates → Emails) ───────────────────────
 // Cover email for the proposal PDF (attached). {{company}} {{name}} {{website}}.
