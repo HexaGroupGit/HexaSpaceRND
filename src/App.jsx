@@ -9,6 +9,7 @@ import ProposalAccept from './components/ProposalAccept.jsx'
 import GiveNoticePage from './components/GiveNoticePage.jsx'
 import PayInvoicePage from './components/PayInvoicePage.jsx'
 import DirectoryNamePage from './components/DirectoryNamePage.jsx'
+import RefundDetailsPage from './components/RefundDetailsPage.jsx'
 import DirectoryDisplay from './components/DirectoryDisplay.jsx'
 import PortalApp from './portal/PortalApp.jsx'
 import AdminApp from './AdminApp.jsx'
@@ -119,6 +120,9 @@ export default function App() {
 
   const dirNameMatch = path.match(/^\/directory-name\/([^/]+)/)
   if (dirNameMatch) return <DirectoryNamePage token={dirNameMatch[1]} />
+
+  const refundMatch = path.match(/^\/refund-details\/([^/]+)/)
+  if (refundMatch) return <RefundDetailsPage token={refundMatch[1]} />
 
 
   return <RootAuth />

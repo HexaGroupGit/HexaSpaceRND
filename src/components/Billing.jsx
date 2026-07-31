@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext, useLocation, useNavigate } from 'react-router-dom'
 import { format, parseISO, startOfMonth, isBefore, addMonths, differenceInDays } from 'date-fns'
-import { Plus, Search, X, Check, Download, Send, Ban, BellRing } from 'lucide-react'
+import { Plus, Search, X, Check, Download, Send, Ban, BellRing, RotateCcw } from 'lucide-react'
+import { authHeaders } from '../lib/apiFetch.js'
 import InvoiceDetail from './InvoiceDetail.jsx'
 import InvoiceForm from './InvoiceForm.jsx'
 import { sendEmail, invoiceEmailHtml, makePayToken, invoicePayLink, brandShell, bKicker, bH1, bP, bSmall, bBtn, BRAND } from '../lib/sendEmail.js'
@@ -47,6 +48,42 @@ export default function Billing() {
   const refundsAwaitingPayout = invoices.filter((i) => i.invoiceType === 'bond_refund' && i.approvalStatus === 'approved' && i.status !== 'paid' && !i.refundedAt)
   const refundOverdue = (inv) => inv.approvedAt && differenceInDays(new Date(), parseISO(inv.approvedAt)) > 45
 
+  // One button for both rails. The server decides which applies from how the
+  // original deposit was paid: a card payment is refunded through Stripe there
+  // and then; a bank transfer can only be done by hand, so we make sure we have
+  // the client's account — asking them for it if we don't.
+  async function payOutRefund(inv) {
+    setBusyRefund(inv.id)
+    try {
+      const r = await fetch('/api/refunds/deposit', {
+        method: 'POST', headers: await authHeaders(), body: JSON.stringify({ invoiceId: inv.id }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d.error ?? 'The refund could not be processed.')
+
+      if (d.rail === 'card') {
+        updateInvoice(inv.id, d.invoice)
+        window.alert(d.message)
+        return
+      }
+      if (d.needsBankDetails) {
+        if (!window.confirm(`${d.message}\n\nEmail ${inv.clientEmail || 'the client'} a secure link to enter them?`)) return
+        const q = await fetch('/api/refund-bank-details', {
+          method: 'POST', headers: await authHeaders(), body: JSON.stringify({ action: 'request', invoiceId: inv.id }),
+        })
+        const qd = await q.json().catch(() => ({}))
+        if (!q.ok) throw new Error(qd.error ?? 'Could not send the request.')
+        window.alert('Sent — they’ll get a link to enter their bank details. It appears here once they do.')
+        return
+      }
+      window.alert(`${d.message}\n\n${d.bank.accountName}\nBSB ${d.bank.bsb}\nACC ${d.bank.accountNumber}`)
+    } catch (e) {
+      window.alert(e.message)
+    } finally {
+      setBusyRefund(null)
+    }
+  }
+
   function markBondRefunded(inv) {
     const reference = window.prompt('Bank transfer reference for this refund (optional):')
     if (reference === null) return
@@ -67,6 +104,7 @@ export default function Billing() {
     })
   }
 
+  const [busyRefund, setBusyRefund] = useState(null) // invoice id being paid out
   const [subTab, setSubTab] = useState('invoices')
   const [filterStatus, setFilterStatus] = useState('all')
   const [search, setSearch] = useState('')
@@ -507,12 +545,29 @@ export default function Billing() {
                           <span className="ml-2 text-[11px] font-semibold uppercase bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Refund overdue</span>
                         )}
                       </div>
-                      <button
-                        onClick={() => markBondRefunded(inv)}
-                        className="flex items-center gap-1.5 text-xs bg-primary text-primary-foreground rounded px-3 py-1.5 font-medium hover:bg-primary/90"
-                      >
-                        <Check size={13} /> Mark refunded
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        {inv.refundBank && (
+                          <span className="text-[11px] text-muted-foreground" title={`${inv.refundBank.accountName} · BSB ${inv.refundBank.bsb} · ${inv.refundBank.accountNumber}`}>
+                            bank details on file
+                          </span>
+                        )}
+                        {/* Card-paid deposits go straight back to the card; bank
+                            transfers need the client's account first. payOutRefund
+                            works out which from the original payment. */}
+                        <button
+                          onClick={() => payOutRefund(inv)}
+                          disabled={busyRefund === inv.id}
+                          className="flex items-center gap-1.5 text-xs bg-primary text-primary-foreground rounded px-3 py-1.5 font-medium hover:bg-primary/90 disabled:opacity-60"
+                        >
+                          <RotateCcw size={13} /> {busyRefund === inv.id ? 'Working…' : 'Refund deposit'}
+                        </button>
+                        <button
+                          onClick={() => markBondRefunded(inv)}
+                          className="flex items-center gap-1.5 text-xs border border-input rounded px-3 py-1.5 font-medium hover:bg-muted/50"
+                        >
+                          <Check size={13} /> Mark refunded
+                        </button>
+                      </div>
                     </div>
                   )
                 })}

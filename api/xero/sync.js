@@ -366,16 +366,22 @@ export default async function handler(req, res) {
     // this, a July-raised invoice has nothing in Xero to reconcile its bank
     // payment against.
     const NEW_INVOICE_PUSH_FROM = '2026-07-01'
-    const eligible = [], skipped = []
+    const eligible = [], creditNotes = [], skipped = []
     for (const i of invoices) {
       if (i.status === 'voided' || i.xeroSync) continue
-      // Already linked to a Xero invoice (migration backfill or the pull's
-      // number-adoption) — pushing again would create a duplicate.
-      if (i.xeroInvoiceId) continue
       if (!['pending', 'paid', 'overdue'].includes(i.status)) continue
       if (gateDate(i) < syncFrom && (i.issueDate ?? '') < NEW_INVOICE_PUSH_FROM) { continue } // pre-go-live history stays out of Xero
       const total = invoiceTotal(i)
-      if (total < 0) { skipped.push({ number: i.number, reason: 'credit note — push manually as ACCRECCREDIT' }); continue }
+      // A refund is a NEGATIVE-total invoice here; Xero models it as a CreditNote,
+      // not an Invoice. These used to be skipped and raised by hand.
+      if (total < 0) {
+        if (i.xeroCreditNoteId || i.xeroInvoiceId) continue
+        creditNotes.push(i)
+        continue
+      }
+      // Already linked to a Xero invoice (migration backfill or the pull's
+      // number-adoption) — pushing again would create a duplicate.
+      if (i.xeroInvoiceId) continue
       eligible.push(i)
     }
 
@@ -471,6 +477,12 @@ export default async function handler(req, res) {
           total: Math.round(invoiceTotal(p.inv) * 100) / 100,
           accounts: [...new Set(p.xero.LineItems.map((l) => l.AccountCode))],
         })),
+        wouldPushCreditNotes: creditNotes.map((i) => ({
+          number: i.number,
+          reference: i.reference ?? '',
+          amount: Math.abs(Math.round(invoiceTotal(i) * 100) / 100),
+          allocateAgainst: invoices.find((x) => x.id === i.creditNoteForId)?.number ?? '(standing credit)',
+        })),
         wouldLink: results.linked,
         skipped, errors: results.errors,
       })
@@ -499,6 +511,100 @@ export default async function handler(req, res) {
             error: validationErrors.map((e) => e.Message).join('; ') || `Xero rejected the batch (HTTP ${r.status})`,
           })
         }
+      }
+    }
+
+    // ── PUSH: credit notes (deposit / bond refunds) as ACCRECCREDIT ──────────
+    // Xero carries the sign in the document TYPE, so line amounts must be
+    // POSITIVE here even though ours are negative. Where the original invoice
+    // still has an amount owing we allocate the credit against it so the two net
+    // off; if it was already paid the credit stays on the contact as a standing
+    // credit and the cash going back out is recorded separately.
+    for (const batch of chunk(creditNotes, 40)) {
+      const payload = []
+      for (const inv of batch) {
+        const tenant = tenants.find((t) => t.id === inv.tenantId)
+        if (!tenant) { results.errors.push({ number: inv.number, error: 'No tenant on platform' }); continue }
+        let contactId = null
+        try { contactId = await ensureContact(supabase, tenant, false) } catch (err) {
+          results.errors.push({ number: inv.number, error: err.message }); continue
+        }
+        const lease = leases.find((l) => l.id === inv.leaseId)
+        const space = spaces.find((s) => s.id === lease?.spaceId)
+        // A held deposit was never a taxable supply, so returning it isn't either.
+        const isDeposit = /deposit|bond/i.test(`${inv.invoiceType ?? ''} ${inv.reference ?? ''}`)
+        const taxType = isDeposit ? 'EXEMPTOUTPUT'
+          : (taxRate && inv.vatEnabled !== false ? 'OUTPUT' : 'EXEMPTOUTPUT')
+        payload.push({
+          inv,
+          xero: {
+            Type: 'ACCRECCREDIT',
+            Contact: { ContactID: contactId },
+            CreditNoteNumber: inv.number,
+            Reference: inv.reference ?? '',
+            Date: inv.issueDate,
+            Status: 'AUTHORISED',
+            LineAmountTypes: 'Exclusive',
+            CurrencyCode: 'AUD',
+            LineItems: (inv.lineItems ?? []).map((li) => ({
+              Description: li.description,
+              Quantity: Number(li.qty ?? 1),
+              UnitAmount: Math.abs(Number(li.unitPrice ?? 0)),
+              AccountCode: lineAccountCode(li, inv, space, settings),
+              TaxType: taxType,
+            })),
+          },
+        })
+      }
+      if (!payload.length) continue
+
+      const r = await xeroFetch(supabase, '/CreditNotes?SummarizeErrors=false', {
+        method: 'POST',
+        body: { CreditNotes: payload.map((p) => p.xero) },
+      })
+      const returned = r.json?.CreditNotes ?? []
+      for (let idx = 0; idx < payload.length; idx++) {
+        const { inv } = payload[idx]
+        const xc = returned[idx]
+        const validationErrors = xc?.ValidationErrors ?? []
+        if (!xc?.CreditNoteID || validationErrors.length) {
+          results.errors.push({
+            number: inv.number,
+            error: validationErrors.map((e) => e.Message).join('; ') || `Xero rejected the credit note (HTTP ${r.status})`,
+          })
+          continue
+        }
+        inv.xeroSync = true
+        inv.xeroCreditNoteId = xc.CreditNoteID
+        inv.xeroSyncedAt = new Date().toISOString()
+
+        // Allocate against the invoice it credits, if that invoice still owes.
+        const target = invoices.find((x) => x.id === inv.creditNoteForId)
+        if (target?.xeroInvoiceId) {
+          const t = await xeroFetch(supabase, `/Invoices/${target.xeroInvoiceId}`)
+          const due = Number(t.json?.Invoices?.[0]?.AmountDue ?? 0)
+          const credit = Math.abs(Math.round(invoiceTotal(inv) * 100) / 100)
+          const amount = Math.min(due, credit)
+          if (amount > 0) {
+            const a = await xeroFetch(supabase, `/CreditNotes/${xc.CreditNoteID}/Allocations`, {
+              method: 'PUT',
+              body: { Allocations: [{ Invoice: { InvoiceID: target.xeroInvoiceId }, Amount: amount }] },
+            })
+            if (a.ok) {
+              inv.xeroAllocatedTo = target.number
+              inv.xeroAllocatedAmount = amount
+              results.creditNotesAllocated = results.creditNotesAllocated ?? []
+              results.creditNotesAllocated.push({ number: inv.number, against: target.number, amount })
+            } else {
+              results.errors.push({ number: inv.number, error: `credit note created but allocation failed (HTTP ${a.status})` })
+            }
+          } else {
+            inv.xeroAllocationNote = `${target.number} had nothing owing — left as a standing credit`
+          }
+        }
+        await saveRow(supabase, 'invoices', inv.id, inv)
+        results.creditNotesPushed = results.creditNotesPushed ?? []
+        results.creditNotesPushed.push({ number: inv.number, xeroCreditNoteId: xc.CreditNoteID })
       }
     }
 
