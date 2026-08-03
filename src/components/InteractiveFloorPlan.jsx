@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { format, parseISO, isValid, differenceInDays } from 'date-fns'
-import { X, MapPin, Crosshair, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
+import { X, MapPin, Crosshair, ZoomIn, ZoomOut, Maximize2, Presentation } from 'lucide-react'
 import { moveOutDate } from './spaces/shared.jsx'
 
 // Image-based interactive floorplan: your real plan as the backdrop, with each
@@ -22,21 +22,38 @@ function statusDot(state) {
   return 'bg-green-500 text-white border-green-600'
 }
 
+// Seeded rooms carry `size` ("Up to 8"); rooms added via the Meeting Rooms tab
+// carry a numeric `capacity`. Show whichever is there.
+function roomSeats(s) {
+  if (s.capacity != null && s.capacity !== '') return `Up to ${s.capacity}`
+  return s.size || ''
+}
+function roomTitle(s) {
+  const bits = [roomSeats(s), s.hourlyRate ? `$${s.hourlyRate}/hr` : ''].filter(Boolean)
+  return `${s.unitNumber} meeting room${bits.length ? ' — ' + bits.join(' · ') : ''}`
+}
+
 export default function InteractiveFloorPlan({ spaces, leases, tenants, updateSpace, onNewContract }) {
   const [planId, setPlanId] = useState(FLOORPLANS[0].id)
   const [zoom, setZoom] = useState(1)
   const [placingId, setPlacingId] = useState(null) // space currently being pinned
   const [selectedId, setSelectedId] = useState(null)
   const [imgError, setImgError] = useState(false)
+  const [showRooms, setShowRooms] = useState(true) // meeting-room name labels
   const imgWrapRef = useRef(null)
 
   const plan = FLOORPLANS.find((p) => p.id === planId)
-  // Floor plan is for private offices only — not virtual, desks, parking or studios.
-  const planSpaces = spaces.filter((s) => (s.location || 'whitehorse') === plan.location && s.type === 'office')
+  // Floor plan carries private offices (status markers) and meeting rooms (name
+  // labels, so staff can tell West from Central) — not virtual, desks or parking.
+  const planSpaces = spaces.filter(
+    (s) => (s.location || 'whitehorse') === plan.location && (s.type === 'office' || s.type === 'meeting')
+  )
+  const isRoom = (s) => s.type === 'meeting'
+  const visible = planSpaces.filter((s) => showRooms || !isRoom(s))
   // pinned to THIS floor
-  const placed = planSpaces.filter((s) => s.pos && typeof s.pos.x === 'number' && s.floor === plan.floor)
+  const placed = visible.filter((s) => s.pos && typeof s.pos.x === 'number' && s.floor === plan.floor)
   // not yet pinned anywhere — can be dropped onto any floor
-  const unplaced = planSpaces.filter((s) => !s.pos || typeof s.pos.x !== 'number')
+  const unplaced = visible.filter((s) => !s.pos || typeof s.pos.x !== 'number')
 
   const getActiveLease = (spaceId) => leases.find((l) => l.spaceId === spaceId && l.status === 'active')
   const getTenant = (spaceId) => {
@@ -61,9 +78,10 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, updateSp
   }
 
   const selected = selectedId ? planSpaces.find((s) => s.id === selectedId) : null
-  const selectedTenant = selected ? getTenant(selected.id) : null
-  const selectedLease = selected ? getActiveLease(selected.id) : null
-  const selState = selected ? spaceState(selected) : null
+  const selRoom = selected ? isRoom(selected) : false
+  const selectedTenant = selected && !selRoom ? getTenant(selected.id) : null
+  const selectedLease = selected && !selRoom ? getActiveLease(selected.id) : null
+  const selState = selected && !selRoom ? spaceState(selected) : null
   const selStateLabel = selState === 'ending' ? 'Lease ending soon' : selState === 'occupied' ? 'Occupied' : 'Vacant'
 
   function handleImageClick(e) {
@@ -91,7 +109,16 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, updateSp
               {p.label}
             </button>
           ))}
-          <div className="ml-auto flex items-center gap-1 border border-border rounded-md overflow-hidden">
+          <button
+            onClick={() => { setShowRooms((v) => !v); setPlacingId(null) }}
+            title="Show meeting-room name labels on the plan"
+            className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+              showRooms ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-card border-border text-muted-foreground hover:bg-muted/50'
+            }`}
+          >
+            <Presentation size={14} /> Meeting rooms
+          </button>
+          <div className="flex items-center gap-1 border border-border rounded-md overflow-hidden">
             <button onClick={() => setZoom((z) => ZOOM_STEPS[Math.max(0, ZOOM_STEPS.indexOf(z) - 1)])} className="px-2.5 py-1.5 hover:bg-muted" title="Zoom out"><ZoomOut size={14} /></button>
             <span className="text-xs text-muted-foreground px-2 min-w-[42px] text-center font-medium">{Math.round(zoom * 100)}%</span>
             <button onClick={() => setZoom((z) => ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, ZOOM_STEPS.indexOf(z) + 1)])} className="px-2.5 py-1.5 hover:bg-muted" title="Zoom in"><ZoomIn size={14} /></button>
@@ -128,13 +155,16 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, updateSp
                 <img src={plan.src} alt={plan.label} className="w-full h-auto block select-none" draggable={false}
                   onError={() => setImgError(true)} onLoad={() => setImgError(false)} />
                 {placed.map((s) => {
-                  const tenant = getTenant(s.id)
+                  const room = isRoom(s)
+                  const tenant = room ? null : getTenant(s.id)
                   return (
                     <button
                       key={s.id}
                       onClick={(e) => { e.stopPropagation(); setSelectedId((p) => (p === s.id ? null : s.id)) }}
-                      title={`${s.unitNumber}${tenant ? ' — ' + tenant.businessName : ''}`}
-                      className={`absolute -translate-x-1/2 -translate-y-1/2 border shadow-sm rounded-full text-[10px] font-bold px-2 py-1 leading-none whitespace-nowrap transition-transform hover:scale-110 ${statusDot(spaceState(s))} ${selectedId === s.id ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
+                      title={room ? roomTitle(s) : `${s.unitNumber}${tenant ? ' — ' + tenant.businessName : ''}`}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 border shadow-sm text-[10px] font-bold px-2 py-1 leading-none whitespace-nowrap transition-transform hover:scale-110 ${
+                        room ? 'rounded-md bg-indigo-600 text-white border-indigo-700 uppercase tracking-wide' : `rounded-full ${statusDot(spaceState(s))}`
+                      } ${selectedId === s.id ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
                       style={{ left: `${s.pos.x}%`, top: `${s.pos.y}%` }}
                     >
                       {s.unitNumber}
@@ -151,6 +181,7 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, updateSp
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-gray-900 inline-block" /> Occupied</span>
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-400 inline-block" /> Lease ending ≤3 months</span>
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> Vacant</span>
+          {showRooms && <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-indigo-600 inline-block" /> Meeting room</span>}
         </div>
 
         {unplaced.length > 0 && (
@@ -159,17 +190,24 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, updateSp
               Unplaced spaces ({unplaced.length}) — click to pin onto the plan
             </div>
             <div className="flex flex-wrap gap-2">
-              {unplaced.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => setPlacingId(s.id)}
-                  className={`text-xs px-2.5 py-1 rounded border transition-colors ${
-                    placingId === s.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-card border-input text-foreground hover:bg-muted/50'
-                  }`}
-                >
-                  <MapPin size={11} className="inline mr-1" />{s.unitNumber}
-                </button>
-              ))}
+              {unplaced.map((s) => {
+                const room = isRoom(s)
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setPlacingId(s.id)}
+                    title={room ? roomTitle(s) : undefined}
+                    className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                      placingId === s.id ? 'bg-blue-600 text-white border-blue-600'
+                      : room ? 'bg-indigo-50 border-indigo-200 text-indigo-800 hover:bg-indigo-100'
+                      : 'bg-card border-input text-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    {room ? <Presentation size={11} className="inline mr-1" /> : <MapPin size={11} className="inline mr-1" />}
+                    {s.unitNumber}
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
@@ -182,6 +220,22 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, updateSp
             <div className="font-bold text-foreground text-base">{selected.unitNumber}</div>
             <button onClick={() => setSelectedId(null)} className="text-muted-foreground hover:text-foreground"><X size={14} /></button>
           </div>
+          {selRoom ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Type</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-600 text-white">Meeting room</span>
+              </div>
+              {roomSeats(selected) && (
+                <div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">Capacity</span><span className="text-sm text-foreground">{roomSeats(selected)}</span></div>
+              )}
+              {selected.hourlyRate > 0 && (
+                <div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">Hourly</span><span className="text-sm font-semibold text-foreground">${Number(selected.hourlyRate).toLocaleString('en-AU')}</span></div>
+              )}
+              {selected.attributes && <p className="text-xs text-muted-foreground pt-1 leading-relaxed">{selected.attributes}</p>}
+            </div>
+          ) : (
+          <>
           <div className="space-y-2 mb-3">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Status</span>
@@ -205,6 +259,8 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, updateSp
               <p className="text-xs text-green-700 font-semibold mb-2">Available now</p>
               <button onClick={() => onNewContract(selected)} className="w-full bg-primary text-primary-foreground text-xs font-semibold py-2 rounded hover:bg-primary/90">+ New Contract</button>
             </div>
+          )}
+          </>
           )}
           <div className="pt-3 mt-1 border-t border-border">
             <button onClick={() => { updateSpace(selected.id, { pos: null, floor: null }); setSelectedId(null) }} className="text-xs text-muted-foreground hover:text-red-600">Unpin from plan</button>
