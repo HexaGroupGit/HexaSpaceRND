@@ -32,12 +32,30 @@ A member can't share their screen. Usually two minutes before something starts, 
 The CX-20 is Barco's entry Conference unit, built for **huddle and small meeting rooms**, and ships with **one Button** (USB-C, usually with a USB-A adapter in the box). It supports fewer simultaneous connections than the CX-30 or CX-50 — fine for a small room, worth knowing if it's been put in a large one.
 
 > **NEEDS INPUT — quick check:** confirm the label on the unit reads **CX-20**. "CS-20" isn't a Barco model, and the difference matters: if it turns out to be a C-series or CSE unit, it's presentation-only and the camera/mic section below does not apply.
->
-> Also still open: **which rooms** have a unit, how many Buttons each, and where spare Buttons are kept.
+
+## Which rooms have it
+
+All on **Level 4**, all Button-based, all **USB-C**:
+
+| Room | Rate | Note |
+|---|---|---|
+| **North** | $60/hr | Part of the Function Space |
+| **South** | $60/hr | Part of the Function Space |
+| **West** | $60/hr | Part of the Function Space |
+| **East - Tea Room** | $120/hr | Separate room — the Chinese tearoom, up to 6 |
+
+**East is not part of the Function Space.** North, South and West combine into it; East is its own room and books independently. See [Why booking one Function Space room blocks the others](../bookings/function-room-conflicts.md).
+
+Note the system name is **"East - Tea Room"**, not "East" — that's what you'll search for in Bookings.
+
+> **NEEDS INPUT:**
+> - Do **Sky** and **Earth** (Level 4), or **Sun**, **Moon** and **Central** (Level 2) have ClickShare? If not, say so here — staff need to know before promising wireless in those rooms.
+> - When the **Function Space** is booked as one room, which unit drives the display — North's, or a separate one? Members hiring the whole space will ask.
+> - How many Buttons per room, and where are spares kept?
 
 ## Steps — the Button
 
-1. Plug the Button into the laptop. Check the connector — **USB-C or USB-A**, and whether the member's laptop needs an adapter.
+1. Plug the Button into the laptop. The Buttons here are **USB-C**. A member on an older Windows laptop with only USB-A will need an adapter — keep some at reception.
 2. **Wait for the LED to go solid white.** It's loading a small app off the Button itself. Pressing early is the single most common reason "it doesn't work".
 3. If the laptop prompts, run the ClickShare app from the Button. Nothing installs; no admin rights needed.
 4. **Press the big button.** The LED goes red and the screen appears.
@@ -89,7 +107,8 @@ This is why Buttons should be labelled per room and returned after functions.
 | LED blinks white forever | Button paired to a different room — re-pair it |
 | Black screen but "sharing" | Mac screen-recording permission, or Windows extended display |
 | Room not in the Desktop App | Wrong Wi-Fi — must be **Hexa Spaces** |
-| LED never lights | Wrong port or a dead Button — try another |
+| LED never lights | USB-C not seated, a dead port, or a dead Button — try another |
+| Button from another room won't connect | North, South, West and East each have their own Base Unit — re-pair it |
 | Room camera/mic not available | Not selected in the meeting app — see step 7. Selecting it in ClickShare does nothing |
 | Others can't hear them | Mic still set to the laptop, not ClickShare |
 | Second person can't connect | CX-20 is the entry unit — connection limits are low. One sharer at a time is normal |
