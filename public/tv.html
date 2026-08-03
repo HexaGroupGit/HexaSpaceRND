@@ -264,7 +264,10 @@
     paint(h, false);
   }
 
+  var rendered = false;   // once a board is on screen, never blank it again
+
   function paint(html, lobby) {
+    rendered = true;
     var wrap = document.createElement("div");
     wrap.id = "wrap";
     if (lobby) wrap.className = "lobby";
@@ -316,7 +319,16 @@
             for (var i = 0; i < rows.length; i++) {
               if (rows[i] && rows[i].data) boards[String(rows[i].id)] = rows[i].data;
             }
-            if (boards[level]) render(boards[level], boards);
+            if (boards[level]) {
+              render(boards[level], boards);
+            } else if (!rendered) {
+              // The fetch worked, this board just hasn't been saved yet. Say so
+              // instead of sitting on "LOADING DIRECTORY…" forever — and keep
+              // polling, so it appears by itself once someone hits Save.
+              document.getElementById("app").innerHTML =
+                '<div class="msg">' + esc(level === "G" ? "GROUND" : "LEVEL " + level) +
+                " BOARD NOT PUBLISHED YET<br><br>ADMIN &rarr; DIRECTORY &rarr; SAVE &amp; GENERATE</div>";
+            }
           } catch (e) { /* keep last good render */ }
         }
         // on error: leave whatever is on screen (don't blank the TV)
