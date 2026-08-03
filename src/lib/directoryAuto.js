@@ -22,9 +22,10 @@ const norm = (s) =>
     .replace(/\b(pty|ltd|limited|p\/l)\b/g, '')
     .replace(/[^a-z0-9一-鿿]/g, '')
 
-// Which office floors feed each board. Level 5 offices are deliberately not
-// shown (no L5 board exists) — add 'l5' here if one ever goes up.
-const BOARD_FLOORS = { 4: ['l4'], 2: ['l2'] }
+// Which office floors feed each board. The ground board has no suite rows of
+// its own — it borrows them from the level boards when it renders (see
+// directoryHtml.js) — but it does carry the community list.
+const BOARD_FLOORS = { 4: ['l4'], 2: ['l2'], 5: ['l5'], G: [] }
 
 // Alphabetise by the English part — bilingual names lead with Chinese.
 const sortKeyOf = (n) => n.replace(/^[^A-Za-z0-9]+/, '') || n

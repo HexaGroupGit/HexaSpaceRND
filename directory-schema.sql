@@ -1,8 +1,8 @@
--- Digital Directory boards (Level 4 / Level 2 lobby TVs)
+-- Digital Directory boards (ground-floor building board + the Level 2/4/5 TVs)
 -- Run this once in the Supabase SQL Editor.
 --
 -- Holds ONLY public lobby-board display text (suite -> shown business name, and
--- the Level 4 community list). No member/company/private data, so anon SELECT is
+-- the community list). No member/company/private data, so anon SELECT is
 -- safe and does not reintroduce the IDOR surface fixed in the RLS remediation.
 -- Anon is read-only (the TVs view the board without logging in); only an
 -- authenticated admin can write.
@@ -10,7 +10,7 @@
 drop table if exists directory_boards cascade;
 
 create table directory_boards (
-  id text primary key,            -- '4' or '2'
+  id text primary key,            -- 'G' (ground), '2', '4' or '5'
   data jsonb not null,
   updated_at timestamptz default now()
 );

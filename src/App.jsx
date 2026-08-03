@@ -92,8 +92,8 @@ export default function App() {
   }
 
   // Public pages — no auth needed.
-  const dirMatch = path.match(/^\/directory\/(2|4)\/?$/)
-  if (dirMatch) return <DirectoryDisplay level={dirMatch[1]} />
+  const dirMatch = path.match(/^\/directory\/(2|4|5|[Gg])\/?$/)
+  if (dirMatch) return <DirectoryDisplay level={dirMatch[1].toUpperCase()} />
 
   if (path.startsWith('/book-function')) return <FunctionBookPage />
 

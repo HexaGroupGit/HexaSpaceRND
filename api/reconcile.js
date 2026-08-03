@@ -625,7 +625,13 @@ export default async function handler(req, res) {
         const next = buildDirectoryBoard(row.id, row.data, { tenants, leases, spaces })
         if (JSON.stringify(next) !== JSON.stringify(row.data)) {
           await saveRow('directory_boards', row.id, next) // saveRow no-ops on dryRun
-          out.directorySynced.push(`Level ${row.id} board refreshed (${next.suites.length} suites, ${next.community.length} community)`)
+          // The ground board has no suites of its own — it borrows them from
+          // the level boards when it renders — so only report its community.
+          out.directorySynced.push(
+            row.id === 'G'
+              ? `Ground board refreshed (${next.community.length} community) — re-download its offline copy from Admin → Directory`
+              : `Level ${row.id} board refreshed (${next.suites.length} suites, ${next.community.length} community)`
+          )
         }
       }
     } catch (e) { out.errors.push(`directory sync: ${e.message}`) }
