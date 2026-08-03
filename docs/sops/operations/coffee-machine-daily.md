@@ -1,82 +1,86 @@
 ---
 slug: coffee-machine-daily
-title: Coffee machine — daily routine
+title: Coffee machine (Dr. Coffee Mini Bar) — daily routine
 category: operations
 audience: [reception, ops]
 route: /
 relatedCode: []
 relatedSops: [coffee-machine-deep-clean, kitchen-and-lounge, consumables-restocking]
-version: 1
+version: 2
 reviewDue: 2027-02-01
 ---
 
 ## Purpose
 
-Keep the coffee good and the machine alive. Barista-style coffee is something members are promised in their welcome pack — when it's off, they notice immediately.
+Keep the coffee good and the machine alive. Barista-style coffee is promised in every member's welcome pack — when it's off, they notice that morning.
 
 ## When to do this
 
 Morning open and end of day, every day.
 
-> **NEEDS INPUT — answer this first and the rest becomes exact.**
->
-> - Make and model of the machine:
-> - Grinder — separate, or built in? Make and model:
-> - Is it a bean-to-cup (automatic) or a traditional espresso machine with a group head?
-> - Milk — jug and steam wand, or an automatic milk system with a fridge line?
-> - Is there a second machine (Level 2, Level 5)?
->
-> The daily routine is genuinely different between a bean-to-cup and a traditional machine — the steps below cover both, so delete the half that doesn't apply.
+## What this machine is
+
+A **Dr. Coffee Mini Bar** — a super-automatic **bean-to-cup** machine with an **automatic milk system**.
+
+That matters for what you *don't* do:
+
+- **No portafilter, no tamping, no blind-filter backflush.** Those are traditional-espresso jobs and don't apply.
+- **The machine prompts for its own cleaning.** Your job is to respond to prompts rather than remember a calendar.
+- **The milk system is the weak point.** Milk in tubes overnight is the fastest way to ruin both the coffee and the machine. The end-of-day milk clean is the single most important thing on this page.
+
+> **NEEDS INPUT:** is the milk fridge integrated or a separate under-bench unit, and is milk drawn from a carton or a jug? Also — is there a second machine on Level 2 or 5?
 
 ## Morning
 
-1. Check the machine is **on and up to temperature**. A traditional machine needs 20–30 minutes; switch it on first, before anything else in the opening walk.
-2. Check the **water** — mains-plumbed or tank. If tank, fill it.
-3. Check **beans** in the hopper. Top up rather than letting it run to empty; an empty grinder pulls air and the first cups after are bad.
-4. **Purge** — run a short shot to waste and steam the wand briefly, to clear overnight standing water.
-5. Wipe the drip tray and the bench.
-6. **Milk** out of the fridge and into position. Check the date.
+1. **Power on** and let it complete its automatic warm-up and rinse. It flushes the brew and milk circuits itself — let it finish before serving.
+2. **Water** — check the tank or, if plumbed, that the supply is on.
+   > **NEEDS INPUT:** plumbed in, or tank fill?
+3. **Beans** — top up the hopper. Don't let it run to empty; the grinder pulls air and the next few cups are bad.
+4. **Milk** — fresh milk in, check the date, and make sure the pickup tube is properly seated in the milk.
+5. **Empty the grounds container and drip tray** if last night's weren't done.
+6. **Pull one coffee and taste it.** Thirty seconds, and it's how you find a problem before a member does.
+7. Wipe the spouts, drip tray and front panel.
 
 ## Through the day
 
-- Wipe the **steam wand immediately after every use** — purge it, then wipe with the dedicated cloth. Milk baked onto a wand is both a hygiene problem and the reason wands block.
-- Empty the **grounds bin** before it packs solid.
+- **Respond to prompts when they appear** — rinse, empty grounds, fill beans, add water. The machine will refuse to serve if ignored, usually at the worst moment.
+- **Empty the grounds container** before it packs solid. On a busy day this is more than once.
+- Wipe the coffee and milk **spouts** — they drip and it shows.
 - Keep the drip tray from overflowing.
 
-## End of day
+## End of day — the one that matters
 
-This is the one that matters for machine life.
-
-7. **Backflush / rinse cycle.**
-   > **NEEDS INPUT:** traditional machines need a blind-filter backflush with cleaning powder — daily or weekly? Bean-to-cup machines run their own rinse. Which applies, which product, and how much?
-8. **Milk system.** Rinse the wand and purge. An automatic milk system needs its own clean cycle run — not optional, and not weekly.
-9. **Empty and rinse** the grounds bin and drip tray.
-10. **Wipe down** — group head, wand, body, bench.
-11. Milk back in the fridge or discarded.
-    > **NEEDS INPUT:** is opened milk kept overnight or binned?
-12. Leave the machine **on or off overnight?**
-    > **NEEDS INPUT:** many machines are better left on; some are on a timer. Which?
+8. **Run the milk-system clean cycle.** Not the rinse — the actual clean, with milk-system cleaner. Every day, without exception.
+   > **NEEDS INPUT:** the exact menu path on the Mini Bar, and which cleaner product is used. Both should be written here once confirmed.
+9. **Milk out.** Take the milk out of the fridge or discard it.
+   > **NEEDS INPUT:** is opened milk kept overnight or binned?
+10. **Rinse the milk tube** and any removable milk parts in warm water.
+11. **Empty and rinse** the grounds container and drip tray, and dry them.
+12. **Wipe down** — spouts, tray, panel, body, bench.
+13. **Leave it on or off overnight?**
+    > **NEEDS INPUT:** many bean-to-cup machines are better left on so they run their automatic wake rinse. Check what's wanted here.
 
 ## Common mistakes
 
-- **Skipping the end-of-day clean because it looks clean.** Milk residue and coffee oils are invisible and are what kill machines.
-- **Wiping the steam wand without purging it.** Milk gets drawn back up into the wand.
-- **Letting the hopper run empty**, then blaming the beans for bad coffee.
-- **Using the wrong cleaning product.** Descaler and backflush detergent are different things and are not interchangeable.
+- **Skipping the milk clean because the machine looks clean.** Milk residue in the tubes is invisible, goes sour, and is what kills these machines.
+- **Ignoring a prompt** and leaving it for the next person. It'll stop mid-service.
+- **Letting the hopper run empty**, then blaming the beans.
+- **Rinsing when the machine asked for a clean.** They're different cycles with different jobs.
+- **Using the wrong product.** Milk-system cleaner, brew-unit tablets and descaler are three different chemicals and are not interchangeable.
 - **Leaving it for the cleaners.** Cleaners do the kitchen; the machine is ours.
 
 ## If something goes wrong
 
-- **No pressure / weak shots** — usually a blocked group head or a grind problem. Backflush, then check the grind.
-- **Steam wand blocked** — purge hot; if it won't clear, it needs the tip removed and soaked.
-- **Leaking water** — turn it off at the machine and log it under Maintenance. Don't keep serving.
-- **Grinding but no coffee** — hopper empty, or the burrs need attention.
-- **Anything electrical, or water where it shouldn't be** — off at the wall, log it, escalate the same day.
+- **Weak, thin or sour coffee** — usually stale beans, a grind setting, or a brew unit needing a clean. See [deep clean](coffee-machine-deep-clean.md).
+- **Milk not frothing or not drawing** — pickup tube not seated, tube blocked, or milk empty. Check seating first.
+- **Machine refuses to serve** — read the screen; it's almost always telling you exactly what it wants.
+- **Water where it shouldn't be** — off at the wall, log under Maintenance, stop serving.
+- **Anything electrical** — off at the wall, log it, escalate the same day.
 
-> **NEEDS INPUT:** who services the machine, how often, and the contact. Worth having on the SOP so nobody has to hunt for it when it fails on a Monday.
+> **NEEDS INPUT:** who services the Mini Bar, how often, and the contact number. Put it here so nobody has to hunt for it when it fails on a Monday morning.
 
 ## Related
 
 - [Coffee machine — deep clean and descale](coffee-machine-deep-clean.md)
-- [Kitchen and lounge](kitchen-and-lounge.md)
+- [Kitchen and lounge routine](kitchen-and-lounge.md)
 - [Consumables and restocking](consumables-restocking.md)

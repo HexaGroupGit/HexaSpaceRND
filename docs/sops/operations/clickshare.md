@@ -1,12 +1,12 @@
 ---
 slug: clickshare
-title: ClickShare — get a member presenting (Windows and Mac)
+title: Barco ClickShare — get a member presenting (Windows and Mac)
 category: operations
 audience: [reception, ops]
 route: /bookings
 relatedCode: []
 relatedSops: [meeting-room-av, meeting-room-door-access]
-version: 1
+version: 2
 reviewDue: 2027-02-01
 ---
 
@@ -18,70 +18,91 @@ Get someone's screen on the meeting-room display, fast, while their meeting is w
 
 A member can't share their screen. Usually two minutes before something starts, with people watching.
 
-> **NEEDS INPUT — this is the important one.** Which ClickShare model is installed, and in which rooms? The procedure differs between the Button (physical USB dongle) and the app-only models, and between generations. Answer this and the steps below become exact rather than general.
+## The kit
+
+**Barco ClickShare.** Two ways to share, and both work on Windows and Mac:
+
+- **The Button** — the orange puck. Plug into the laptop, press, share. No install, no admin rights, no network needed on the member's side. This is the one to reach for.
+- **The ClickShare Desktop App** — software instead of a Button. Needs the member on the **Hexa Spaces** Wi-Fi.
+
+> **NEEDS INPUT:** which Barco model, and in which rooms? It changes what's possible:
+> - **CX series** (CX-20 / CX-30 / CX-50) or **ClickShare Bar** — *Conference* models. The Button also passes the room's **camera, mic and speakers** through to the laptop, so Teams and Zoom run off the room's AV. Worth knowing — members ask for this constantly.
+> - **C series** (C-5 / C-10) or **CSE** — *Presentation* models. Screen sharing only; the laptop keeps using its own camera and mic.
 >
-> - Model / generation (e.g. CX-30, C-5, CSE-200):
-> - Which rooms have it (Sky, Earth, Sun, Moon, North, South, West, Function Space?):
-> - Are there physical Buttons, or app-only, or both?
-> - How many Buttons per room, and where are they kept?
+> Also: how many Buttons per room, where they're kept, and USB-C or USB-A?
 
-## Steps — with a Button (USB dongle)
+## Steps — the Button
 
-1. Member plugs the Button into their laptop — **USB-C or USB-A**, check which the room has.
-2. Wait for the Button's ring light to go **solid white**. It's loading a small app off the dongle.
-3. If the laptop asks, run the ClickShare app from the Button. **No install and no admin rights needed** — this is why the Button exists.
-4. Press the big button on the dongle. Screen appears on the display.
-5. Press again to stop sharing.
+1. Plug the Button into the laptop. Check the connector — **USB-C or USB-A**, and whether the member's laptop needs an adapter.
+2. **Wait for the LED to go solid white.** It's loading a small app off the Button itself. Pressing early is the single most common reason "it doesn't work".
+3. If the laptop prompts, run the ClickShare app from the Button. Nothing installs; no admin rights needed.
+4. **Press the big button.** The LED goes red and the screen appears.
+5. Press again to stop.
 
-Works the same on Windows and Mac.
+### On a Conference model (CX / Bar)
 
-## Steps — app or wireless (no Button)
+6. Once shared, the member picks the room's camera and speaker in Teams or Zoom — usually offered automatically as **ClickShare** or the room's name.
+7. If the meeting still uses the laptop's own mic, it's selected in the meeting app's audio settings, not in ClickShare.
 
-1. Member joins the **Hexa Spaces** Wi-Fi. It will not find the room otherwise.
-2. Open the ClickShare **Desktop App**, or go to the address shown on the room display.
-3. Pick the room — the name is on screen.
-4. Enter the PIN if the display shows one.
+## Steps — the Desktop App (no Button)
+
+1. Member joins the **Hexa Spaces** Wi-Fi. Without it, the room won't be found.
+2. Open the **ClickShare Desktop App**, or go to the address shown on the room display.
+3. Pick the room — the name is on the display wallpaper.
+4. Enter the **PIN** if the display shows one.
 5. Share.
 
-> **NEEDS INPUT:** do the rooms show a PIN? And is the Desktop App pre-installed on anything, or does each member install their own?
+## The failure everyone hits: Buttons are paired to a room
+
+**A Button only works with the Base Unit it was paired to.** Move a Button from Sky into Earth and it will sit there blinking and never connect.
+
+To re-pair: plug the Button into the **USB port on the Base Unit** of the room you want it in, wait for it to confirm, then unplug.
+
+> **NEEDS INPUT:** is the Base Unit reachable in each room, or is it above the ceiling / behind the screen? If it's not reachable, Buttons must not leave their room — and that should be labelled on them.
+
+This is why Buttons should be labelled per room and returned after functions.
 
 ## Mac-specific
 
-- macOS will ask for **Screen Recording** permission the first time: **System Settings → Privacy & Security → Screen Recording** → tick ClickShare, then **restart the app**. It will not share until this is granted, and the app often looks like it's working while showing a black screen.
-- On Apple Silicon the app may ask to install Rosetta depending on version.
+- macOS asks for **Screen Recording** permission on first use: **System Settings → Privacy & Security → Screen Recording** → tick ClickShare → **restart the app**. Until that's done and restarted, it often *looks* like it's sharing while showing a black screen.
+- On Apple Silicon, older ClickShare versions may prompt to install Rosetta. Allow it.
 
 ## Windows-specific
 
-- Windows may show a firewall prompt on first run — allow it on **private** networks.
-- If the display shows a black screen, it's usually a second-monitor arrangement problem: **Win + P** → Duplicate.
+- A firewall prompt on first run — allow on **private** networks.
+- Black screen but "sharing" is usually the extended-display arrangement: **Win + P** → **Duplicate**.
 
-## Quick triage when it won't work
+## Quick triage
 
-| Symptom | Most likely |
+| Symptom | Most likely cause |
 |---|---|
-| Nothing happens when the Button is pressed | Not fully loaded — wait for solid white |
+| Press does nothing | Not loaded yet — wait for solid white |
+| LED blinks white forever | Button paired to a different room — re-pair it |
 | Black screen but "sharing" | Mac screen-recording permission, or Windows extended display |
-| Room not listed in the app | Wrong Wi-Fi — must be **Hexa Spaces** |
-| Button won't light at all | Try the other USB port / adapter, then a different Button |
-| Audio not carrying | Sharing sends video only unless audio is enabled in the app |
+| Room not in the Desktop App | Wrong Wi-Fi — must be **Hexa Spaces** |
+| LED never lights | Wrong port or a dead Button — try another |
+| Camera/mic not available | Presentation-only model, or not selected in Teams/Zoom |
 
-**If it isn't fixed in two minutes, stop debugging.** Get them presenting on an HDMI cable and sort the wireless afterwards — see [Meeting-room AV](meeting-room-av.md).
+**If it isn't fixed in two minutes, stop.** Get them on an HDMI cable and sort the wireless after — see [Meeting-room AV](meeting-room-av.md).
 
-> **NEEDS INPUT:** is there an HDMI fallback cable in each room? That's the single most useful thing to know here.
+> **NEEDS INPUT:** is there an HDMI cable in every room, and which adapters are kept at reception? This is the single most useful thing to nail down here.
 
 ## Common mistakes
 
-- **Debugging in front of a waiting room.** Fall back to cable, fix later.
-- **Assuming the member's Wi-Fi is right.** Guest or phone hotspot is the usual cause.
-- **Not granting Mac screen recording, then restarting the app.** The restart is required.
-- **Handing over a Button without checking the port.** USB-C laptop, USB-A Button, no adapter.
-- **Leaving Buttons in the room after a function.** They walk.
+- **Pressing before the LED is solid white.**
+- **Moving Buttons between rooms.** They stop working until re-paired.
+- **Debugging in front of a waiting room.** Cable first, fix after.
+- **Assuming the member's Wi-Fi is right** for the Desktop App. Guest network or a phone hotspot is the usual cause.
+- **Not restarting the app after granting Mac permission.** The restart is required.
+- **Letting Buttons leave after a function.** They walk, and they're expensive.
 
 ## If something goes wrong
 
-- **A Button is lost or broken** — log it under Maintenance and note the room. They're not cheap.
+- **A Button is lost or broken** — log it under Maintenance with the room. Replacements are not cheap.
 - **A whole room won't display** — that's AV, not ClickShare. See [Meeting-room AV](meeting-room-av.md).
-- **It fails repeatedly in one room** — log it as a pattern rather than fixing it ad hoc each time.
+- **One room fails repeatedly** — log it as a pattern rather than rescuing it daily. A Base Unit that needs a firmware update or a reboot will keep doing it.
+
+> **NEEDS INPUT:** who maintains the ClickShare units — us, the building, or an AV contractor? Base Units occasionally need a firmware update, and it's worth knowing whose job that is before one fails mid-function.
 
 ## Related
 
