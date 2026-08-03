@@ -178,7 +178,12 @@ const main = async () => {
         content: html,
         searchText: plain(html).toLowerCase(),
         sourceFile: relative(ROOT, file).replace(/\\/g, '/'),
+        // Two different kinds of gap, badged separately in the Training tab:
+        //   hasTodo    — I could not confirm this against the system
+        //   needsInput — only Eric/the team knows this (equipment, timings, contacts)
         hasTodo: /TODO\(verify\)/.test(body),
+        needsInput: /NEEDS INPUT/.test(body),
+        openGaps: (body.match(/NEEDS INPUT/g) ?? []).length,
         updatedAt: new Date().toISOString(),
       },
       updated_at: new Date().toISOString(),
@@ -189,6 +194,8 @@ const main = async () => {
   console.log(`Parsed ${rows.length} SOPs:`)
   for (const [c, n] of Object.entries(byCat).sort()) console.log(`  ${String(n).padStart(3)}  ${c}`)
   console.log(`  ${rows.filter((r) => r.data.hasTodo).length} carry a TODO(verify) marker`)
+  const gaps = rows.filter((r) => r.data.needsInput)
+  console.log(`  ${gaps.length} await your input (${gaps.reduce((s, r) => s + r.data.openGaps, 0)} gaps total)`)
 
   if (DRY) { console.log('\n--dry: nothing written.'); return }
 

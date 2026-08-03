@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { format, parseISO, differenceInDays } from 'date-fns'
-import { Search, ArrowLeft, Pencil, Check, AlertTriangle, FileText, ExternalLink, ShieldCheck } from 'lucide-react'
+import { Search, ArrowLeft, Pencil, PencilLine, Check, AlertTriangle, FileText, ExternalLink, ShieldCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { getSession } from '../lib/auth.js'
 import RichTextEditor from './RichTextEditor.jsx'
@@ -12,11 +12,12 @@ import RichTextEditor from './RichTextEditor.jsx'
 // rather than leaving a stale one in place.
 
 const CATEGORY_ORDER = [
-  'start-here', 'companies-members', 'contracts', 'billing', 'spaces-access',
-  'bookings', 'front-of-house', 'growth', 'system-administration',
+  'start-here', 'operations', 'companies-members', 'contracts', 'billing',
+  'spaces-access', 'bookings', 'front-of-house', 'growth', 'system-administration',
 ]
 const CATEGORY_LABEL = {
   'start-here': 'Start here',
+  operations: 'Running the space',
   'companies-members': 'Companies & members',
   contracts: 'Contracts',
   billing: 'Billing',
@@ -151,7 +152,20 @@ export default function Training() {
               <AlertTriangle size={11} /> Unverified step
             </span>
           )}
+          {open.needsInput && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">
+              <PencilLine size={11} /> {open.openGaps || ''} needs input
+            </span>
+          )}
         </div>
+
+        {open.needsInput && !editing && (
+          <div className="mb-5 border border-blue-200 bg-blue-50 rounded-md px-4 py-3 text-sm text-blue-900">
+            This procedure is scaffolded but not finished. The bits only you can answer — equipment
+            models, timings, contacts — are marked <strong>NEEDS INPUT</strong> below. Fill them in with
+            <strong> Edit</strong>, or in <code className="text-[11px]">{open.sourceFile}</code> and re-seed.
+          </div>
+        )}
 
         {open.hasTodo && !editing && (
           <div className="mb-5 border border-amber-200 bg-amber-50 rounded-md px-4 py-3 text-sm text-amber-900">
@@ -209,6 +223,7 @@ export default function Training() {
   // ── Library ───────────────────────────────────────────────────────────────
   const unread = sops.filter((s) => !ackedByMe(s)).length
   const needsReview = sops.filter((s) => reviewState(s)).length
+  const gapCount = sops.filter((s) => s.needsInput).length
 
   return (
     <div className="p-8">
@@ -218,6 +233,7 @@ export default function Training() {
           {sops.length} standard operating procedures
           {me && unread > 0 && <> · <span className="text-amber-700 font-medium">{unread} you haven't confirmed</span></>}
           {needsReview > 0 && <> · {needsReview} due for review</>}
+          {gapCount > 0 && <> · <span className="text-blue-700 font-medium">{gapCount} awaiting your input</span></>}
         </p>
       </div>
 
@@ -285,6 +301,11 @@ export default function Training() {
                           {s.hasTodo && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
                               <AlertTriangle size={9} /> Unverified
+                            </span>
+                          )}
+                          {s.needsInput && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">
+                              <PencilLine size={9} /> Needs input
                             </span>
                           )}
                           {review && (
