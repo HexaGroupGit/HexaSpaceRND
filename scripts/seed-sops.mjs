@@ -8,11 +8,23 @@
 // is safe: edits to the markdown flow through, and anything edited in-app is
 // overwritten (edit the markdown, or edit in-app — pick one per SOP).
 //
-// Needs SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in the environment (same as the
-// other scripts/ tools).
+// Reads SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY from .env.local (same as the
+// other scripts/ tools), falling back to the process environment.
 import { readFile, readdir } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
+
+function loadEnv(root) {
+  try {
+    return Object.fromEntries(
+      readFileSync(join(root, '.env.local'), 'utf8')
+        .split('\n')
+        .filter((l) => l && !l.trimStart().startsWith('#') && l.includes('='))
+        .map((l) => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] })
+    )
+  } catch { return {} }
+}
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 const SOPS_DIR = join(ROOT, 'docs', 'sops')
@@ -180,10 +192,12 @@ const main = async () => {
 
   if (DRY) { console.log('\n--dry: nothing written.'); return }
 
-  const url = process.env.SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const env = { ...loadEnv(ROOT), ...process.env }
+  const url = env.SUPABASE_URL
+  const key = env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) {
-    console.error('\nSUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set. Re-run with --dry to parse only.')
+    console.error('\nSUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be in .env.local or the environment.')
+    console.error('Re-run with --dry to parse only.')
     process.exit(1)
   }
   const sb = createClient(url, key, { auth: { persistSession: false } })
