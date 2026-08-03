@@ -37,8 +37,11 @@ export function buildMonthlyInvoiceForLease(lease, monthStart, { invoices = [], 
 
   // Dedup on the month KEY, not an exact periodStart match — a prorated
   // invoice's periodStart lands mid-month and must still block a re-bill.
+  // A combined invoice (see combineTenantInvoices) covers several contracts, so
+  // check its leaseIds too or every contract but the first would re-bill.
+  const covers = (i) => i.leaseId === lease.id || (i.leaseIds ?? []).includes(lease.id)
   const already = invoices.some((i) =>
-    i.leaseId === lease.id && i.status !== 'voided' &&
+    covers(i) && i.status !== 'voided' &&
     !['deposit', 'bond_refund'].includes(i.invoiceType) &&
     String(i.periodStart || '').startsWith(key)
   )
@@ -133,6 +136,40 @@ export function buildMonthlyInvoiceForLease(lease, monthStart, { invoices = [], 
     },
     reason: null,
   }
+}
+
+// Members holding more than one contract normally get one invoice per contract.
+// With `combineInvoices` ticked on the company profile they get a single
+// invoice for the month instead, carrying a line per contract — e.g. Wehome,
+// who licenses Suite 7 and Suite 24 and asked for one bill covering both.
+//
+// Takes the invoices a bill run just built (in lease order) and returns the list
+// to actually create. The merged invoice keeps the first contract's leaseId for
+// compatibility and lists every contract in `leaseIds`, which is what the dedup
+// above reads — so a second run doesn't re-bill the contracts folded into it.
+export function combineTenantInvoices(built = [], tenants = []) {
+  const combining = new Set(tenants.filter((t) => t?.combineInvoices).map((t) => t.id))
+  if (!combining.size) return built
+  const firstFor = new Map()
+  const out = []
+  for (const inv of built) {
+    if (!combining.has(inv.tenantId)) { out.push(inv); continue }
+    const first = firstFor.get(inv.tenantId)
+    if (!first) {
+      const merged = { ...inv, leaseIds: [inv.leaseId] }
+      firstFor.set(inv.tenantId, merged)
+      out.push(merged)               // merged is mutated in place below
+      continue
+    }
+    first.lineItems = [...(first.lineItems ?? []), ...(inv.lineItems ?? [])]
+    first.leaseIds.push(inv.leaseId)
+    // Widest period across the contracts, earliest due date, prorated if any is.
+    if (inv.periodStart < first.periodStart) first.periodStart = inv.periodStart
+    if (inv.periodEnd > first.periodEnd) first.periodEnd = inv.periodEnd
+    if (inv.dueDate < first.dueDate) first.dueDate = inv.dueDate
+    first.isProrated = first.isProrated || inv.isProrated
+  }
+  return out
 }
 
 // Net subtotal of an invoice's line items after line-level discounts.

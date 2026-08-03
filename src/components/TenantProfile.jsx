@@ -671,6 +671,27 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
                 <Plus size={12} /> Add Invoice
               </button>
             }>
+              {/* One bill for a company holding several contracts — the monthly
+                  run puts a line per contract on a single invoice instead of
+                  sending one invoice per suite. */}
+              {activeLeases.length > 1 && (
+                <label className="flex items-start gap-2.5 px-5 py-3 border-b border-border text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={!!tenant.combineInvoices}
+                    onChange={(e) => updateTenant(tenant.id, { combineInvoices: e.target.checked })}
+                  />
+                  <span>
+                    <span className="font-medium text-foreground">Combine into one invoice</span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">
+                      {activeLeases.length} active contracts — bill them on a single monthly invoice with a
+                      line for each ({activeLeases.map((l) => l.resource || l.contractNumber || l.id).join(', ')}),
+                      rather than one invoice per contract. Applies from the next bill run.
+                    </span>
+                  </span>
+                </label>
+              )}
               {tenantInvoices.length === 0 ? (
                 <p className="px-5 py-5 text-sm text-muted-foreground">No invoices.</p>
               ) : (

@@ -8,7 +8,7 @@ import InvoiceForm from './InvoiceForm.jsx'
 import { sendEmail, invoiceEmailHtml, makePayToken, invoicePayLink, brandShell, bKicker, bH1, bP, bSmall, bBtn, BRAND } from '../lib/sendEmail.js'
 import { billingContactFor } from '../lib/credits.js'
 import { invoiceLease, invoiceSpace, locationLabel } from '../lib/billing.js'
-import { buildMonthlyInvoiceForLease } from '../lib/billingEngine.js'
+import { buildMonthlyInvoiceForLease, combineTenantInvoices } from '../lib/billingEngine.js'
 import { jsPDF } from 'jspdf'
 
 const STATUS_STYLE = {
@@ -146,15 +146,17 @@ export default function Billing() {
   function handleBillRun() {
     const currentMonthStart = startOfMonth(today)
 
-    let generated = 0
-    const newInvoices = []
+    const built = []
     for (const lease of leases) {
       if (lease.status !== 'active') continue
       const { invoice } = buildMonthlyInvoiceForLease(lease, currentMonthStart, { invoices, spaces, settings, source: 'bill-run' })
       if (!invoice) continue
-      newInvoices.push(invoice)
-      generated++
+      built.push(invoice)
     }
+    // Companies set to "one combined invoice" get their contracts on a single
+    // bill, one line each, instead of an invoice per contract.
+    const newInvoices = combineTenantInvoices(built, tenants)
+    const generated = newInvoices.length
 
     if (generated === 0) {
       alert('All active leases are already billed for this month.')

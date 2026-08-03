@@ -18,7 +18,7 @@ import { createClient } from '@supabase/supabase-js'
 import { randomBytes } from 'crypto'
 import { sendResendEmail, billingEmailFor } from './_email.js'
 import { brandFrame, bKicker, bH1, bH2, bSmall, bBtn, bPanel, bTable, SANS, INK, MUTE } from './_brand.js'
-import { buildMonthlyInvoiceForLease, lineItemsSubtotal } from '../src/lib/billingEngine.js'
+import { buildMonthlyInvoiceForLease, combineTenantInvoices, lineItemsSubtotal } from '../src/lib/billingEngine.js'
 import { selectAllRows } from './_db.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
@@ -135,6 +135,11 @@ export default async function handler(req, res) {
 
   const created = [], skipped = [], errors = []
 
+  // Two passes: price every contract first, then merge the bills of companies
+  // set to "one combined invoice" (combineTenantInvoices) before anything is
+  // numbered, saved or emailed — a merged bill must take one number and send
+  // one email, not one per contract.
+  const priced = []
   for (const lease of leases) {
     const tenant = tenants.find(t => t.id === lease.tenantId)
     if (!tenant) { errors.push({ leaseId: lease.id, reason: 'No tenant found' }); continue }
@@ -148,6 +153,12 @@ export default async function handler(req, res) {
       skipped.push(reason === 'already-billed' ? tenant.businessName : `${tenant.businessName} (${String(reason).replace(/-/g, ' ')})`)
       continue
     }
+    priced.push(built)
+  }
+
+  for (const built of combineTenantInvoices(priced, tenants)) {
+    const tenant = tenants.find(t => t.id === built.tenantId)
+    if (!tenant) { errors.push({ leaseId: built.leaseId, reason: 'No tenant found' }); continue }
 
     // Fresh number allocation, kept monotonic within this run.
     lastAllocated = Math.max(await highestNumber(), lastAllocated) + 1
