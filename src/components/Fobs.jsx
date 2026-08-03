@@ -93,10 +93,12 @@ export default function Fobs() {
       issuedAt: nowIso(), expectedReturnAt: expectedReturnAt || null, returnedAt: null,
       depositAmount: deposit, depositStatus: 'pending', lost: false, issueNotes: notes || '', createdAt: today(),
     }
-    await persist('fob_assignments', assignment)
+    const rA = await persist('fob_assignments', assignment)
+    if (rA.error) return alert(`Could not issue the device — the assignment didn't save.\n\n${rA.error.message}\n\nIf this keeps happening, check you're signed in as an admin.`)
     setAssignments((prev) => [assignment, ...prev])
     const upFob = { ...fob, status: 'assigned', currentMemberId: member.id, currentCompanyId: member.companyId, currentAssignmentId: assignment.id }
-    await persist('fobs', upFob)
+    const rF = await persist('fobs', upFob)
+    if (rF.error) return alert(`The assignment saved, but the device status didn't update:\n\n${rF.error.message}`)
     setFobs((prev) => prev.map((f) => (f.id === fob.id ? upFob : f)))
     // Refundable deposit invoice (billed to the member's company, no GST).
     if (member.companyId) addInvoice?.({
@@ -342,16 +344,24 @@ function IssueModal({ fobs, preFob, members, tenants, requestMemberId, requestTy
         </div>
       )}
       <div>
-        <label className="block text-xs text-muted-foreground mb-1">Member</label>
+        <label className="block text-xs text-muted-foreground mb-1">Member <span className="text-red-500">*</span> <span className="text-muted-foreground/70">(click a name)</span></label>
         <input value={mq} onChange={(e) => setMq(e.target.value)} placeholder="Search members…" className={`${field} mb-1.5`} />
-        <select value={memberId} onChange={(e) => setMemberId(e.target.value)} className={field} size={5}>
-          {memberOpts.map((m) => { const c = tenants.find((t) => t.id === m.companyId); return <option key={m.id} value={m.id}>{m.name}{c ? ` — ${c.businessName}` : ''}</option> })}
-        </select>
+        {members.length === 0 ? (
+          <p className="text-xs text-amber-700 border border-amber-200 bg-amber-50 rounded px-2 py-1.5">No members loaded — add a member first, then issue the device.</p>
+        ) : (
+          <select value={memberId} onChange={(e) => setMemberId(e.target.value)} className={`${field} ${memberId ? 'ring-1 ring-primary/40' : ''}`} size={5}>
+            {memberOpts.length === 0 && <option value="" disabled>No members match “{mq}”.</option>}
+            {memberOpts.map((m) => { const c = tenants.find((t) => t.id === m.companyId); return <option key={m.id} value={m.id}>{m.name}{c ? ` — ${c.businessName}` : ''}</option> })}
+          </select>
+        )}
       </div>
       <div><label className="block text-xs text-muted-foreground mb-1">Expected return (optional)</label><input type="date" value={expectedReturnAt} onChange={(e) => setExpectedReturnAt(e.target.value)} className={field} /></div>
       <div><label className="block text-xs text-muted-foreground mb-1">Issue notes</label><input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} /></div>
       {fob && <p className="text-xs text-muted-foreground">A refundable <strong>{money(depositFor(fob.type))}</strong> deposit invoice will be raised to the member's company.</p>}
-      <div className="flex justify-end pt-1"><button disabled={!fob || !memberId} onClick={() => onIssue({ fob, memberId, expectedReturnAt, notes })} className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:bg-primary/90 disabled:opacity-40">Issue device</button></div>
+      <div className="flex items-center justify-end gap-3 pt-1">
+        {(!fob || !memberId) && <span className="text-xs text-muted-foreground">{!fob ? 'Choose a device' : 'Select a member'} to enable</span>}
+        <button disabled={!fob || !memberId} onClick={() => onIssue({ fob, memberId, expectedReturnAt, notes })} className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:bg-primary/90 disabled:opacity-40">Issue device</button>
+      </div>
     </ModalShell>
   )
 }
