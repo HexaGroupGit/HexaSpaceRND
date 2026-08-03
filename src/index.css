@@ -320,3 +320,46 @@
   height: 0;
   pointer-events: none;
 }
+
+/* ── Training / SOP body ──────────────────────────────────────────────────
+   Rendered HTML for a standard operating procedure (seeded from the markdown
+   in docs/sops by scripts/seed-sops.mjs). Theme tokens rather than fixed
+   colours, so it follows the admin reskin. */
+.sop-body h2 { font-size: 1.0625rem; font-weight: 700; margin: 1.75rem 0 0.6rem; color: var(--foreground); }
+.sop-body h2:first-child { margin-top: 0; }
+.sop-body h3 { font-size: 0.9375rem; font-weight: 650; margin: 1.35rem 0 0.45rem; color: var(--foreground); }
+.sop-body h4 { font-size: 0.875rem; font-weight: 600; margin: 1.1rem 0 0.35rem; color: var(--foreground); }
+.sop-body p  { margin: 0 0 0.7rem; line-height: 1.65; color: var(--muted-foreground); }
+.sop-body strong { font-weight: 650; color: var(--foreground); }
+.sop-body a { color: #2563eb; text-decoration: none; }
+.sop-body a:hover { text-decoration: underline; }
+.sop-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125em; padding: 0.1em 0.35em; border-radius: 4px;
+  background: var(--muted); color: var(--foreground);
+}
+.sop-body ul { list-style: disc;    padding-left: 1.35rem; margin: 0.4rem 0 0.9rem; }
+.sop-body ol { list-style: decimal; padding-left: 1.35rem; margin: 0.4rem 0 0.9rem; }
+.sop-body li { margin-bottom: 0.35rem; line-height: 1.6; color: var(--muted-foreground); }
+.sop-body li::marker { color: var(--muted-foreground); }
+.sop-body hr { border: 0; border-top: 1px solid var(--border); margin: 1.6rem 0; }
+.sop-body blockquote {
+  margin: 0.9rem 0; padding: 0.7rem 1rem;
+  border-left: 3px solid #f59e0b; background: rgb(254 252 232 / 0.7);
+  border-radius: 0 6px 6px 0; font-size: 0.8125rem; line-height: 1.6; color: #78350f;
+}
+/* Wide tables scroll inside the article rather than pushing the page sideways. */
+.sop-body table {
+  width: 100%; border-collapse: collapse; margin: 0.6rem 0 1.1rem;
+  font-size: 0.8125rem; display: block; overflow-x: auto;
+}
+.sop-body thead th {
+  text-align: left; font-weight: 600; color: var(--foreground);
+  background: var(--muted); border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.75rem; white-space: nowrap;
+}
+.sop-body tbody td {
+  padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground); vertical-align: top;
+}
+.sop-body tbody tr:last-child td { border-bottom: 0; }

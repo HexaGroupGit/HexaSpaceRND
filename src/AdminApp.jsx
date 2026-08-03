@@ -7,6 +7,7 @@ import PricingRequests from './components/PricingRequests.jsx'
 import Leases from './components/Leases.jsx'
 import Renewals from './components/Renewals.jsx'
 import Templates from './components/Templates.jsx'
+import Training from './components/Training.jsx'
 import Billing from './components/Billing.jsx'
 import Settings from './components/Settings.jsx'
 import Maintenance from './components/Maintenance.jsx'
@@ -68,6 +69,7 @@ export default function AdminApp({ onLogout }) {
           <Route path="billing" element={<Billing />} />
           <Route path="renewals" element={<Renewals />} />
           <Route path="templates" element={<Templates />} />
+          <Route path="training" element={<Training />} />
           <Route path="maintenance" element={<Maintenance />} />
           <Route path="reports" element={<Reports />} />
           <Route path="crm" element={<Crm />} />

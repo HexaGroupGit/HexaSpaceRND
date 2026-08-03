@@ -798,6 +798,7 @@ export function useStore() {
   const [spaces, setSpaces] = useState([])
   const [leases, setLeases] = useState([])
   const [templates, setTemplates] = useState([])
+  const [sops, setSops] = useState([])
   const [invoices, setInvoices] = useState([])
   const [discounts, setDiscounts] = useState([])
   const [maintenance, setMaintenance] = useState([])
@@ -855,6 +856,7 @@ export function useStore() {
           { data: leadData }, { data: stageData }, { data: regData },
           { data: campData }, { data: refData }, { data: commData },
           { data: memData }, { data: feeData }, { data: bkData },
+          { data: sopData },
         ] = await Promise.all([
           supabase.from('tenants').select('data'),
           supabase.from('spaces').select('data'),
@@ -874,6 +876,10 @@ export function useStore() {
           supabase.from('members').select('data'),
           supabase.from('fees').select('data'),
           fetchAll('bookings'),
+          // Training SOPs — admin-only table (sops-schema.sql). Errors are
+          // swallowed to null by the destructure, so an install that hasn't run
+          // the schema yet just shows an empty Training tab.
+          supabase.from('sops').select('data'),
         ])
 
         // 'seeded' flag — once set, we NEVER fall back to sample data again
@@ -895,6 +901,7 @@ export function useStore() {
         const loadedMembers       = memData?.length ? extractRows(memData) : []
         const loadedFees          = feeData?.length ? extractRows(feeData) : []
         const loadedBookings      = bkData?.length ? extractRows(bkData) : []
+        const loadedSops          = sopData?.length ? extractRows(sopData) : []
         const loadedSettings    = settData?.[0]?.data ?? DEFAULT_SETTINGS
         const lastBillRun     = metaData?.find((m) => m.key === 'last_bill_run')?.value ?? null
 
@@ -952,6 +959,7 @@ export function useStore() {
         setSpaces(loadedSpaces)
         setLeases(loadedLeases)
         setTemplates(loadedTemplates)
+        setSops(loadedSops)
         setDiscounts(loadedDiscounts)
         setMaintenance(loadedMaintenance)
         // Pricing requests load on their own round trip rather than joining the
@@ -1619,6 +1627,38 @@ export function useStore() {
   const deleteTemplate = useCallback((id) => {
     setTemplates((prev) => prev.filter((t) => t.id !== id))
     deleteRow('templates', id)
+  }, [])
+
+  // ── Training SOPs ─────────────────────────────────────────────────────────
+  // Authored in docs/sops/**.md and loaded by scripts/seed-sops.mjs; editable
+  // here too. A content edit bumps `version`, which re-opens acknowledgements.
+  const addSop = useCallback((sop) => {
+    const item = { ...sop, id: sop.id ?? `sop_${Date.now()}`, updatedAt: new Date().toISOString() }
+    setSops((prev) => [...prev, item])
+    syncRow('sops', item.id, item)
+    logAudit('create', 'sop', item.id, item.title ?? item.slug ?? item.id)
+    return item
+  }, [])
+
+  const updateSop = useCallback((id, updates) => {
+    setSops((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, ...updates, updatedAt: new Date().toISOString() } : s))
+      const updated = next.find((s) => s.id === id)
+      if (updated) {
+        syncRow('sops', id, updated)
+        logAudit('update', 'sop', id, updated.title ?? updated.slug ?? id, Object.keys(updates).join(', '))
+      }
+      return next
+    })
+  }, [])
+
+  const deleteSop = useCallback((id) => {
+    setSops((prev) => {
+      const gone = prev.find((s) => s.id === id)
+      if (gone) logAudit('delete', 'sop', id, gone.title ?? gone.slug ?? id)
+      return prev.filter((s) => s.id !== id)
+    })
+    deleteRow('sops', id)
   }, [])
 
   // ── Invoices ──────────────────────────────────────────────────────────────
@@ -2435,6 +2475,7 @@ export function useStore() {
     spaces, addSpace, updateSpace, deleteSpace,
     leases, addLease, updateLease, deleteLease, provisionAndOnboardLease,
     templates, addTemplate, updateTemplate, deleteTemplate,
+    sops, addSop, updateSop, deleteSop,
     invoices, addInvoice, updateInvoice, voidInvoice, deleteInvoice, addPaymentToInvoice, addCommentToInvoice, approveBondRefund, runAutoBillRun,
     discounts, addDiscount, updateDiscount, deleteDiscount,
     maintenance, addMaintenanceIssue, updateMaintenanceIssue, deleteMaintenanceIssue,
