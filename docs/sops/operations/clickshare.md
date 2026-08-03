@@ -20,16 +20,20 @@ A member can't share their screen. Usually two minutes before something starts, 
 
 ## The kit
 
-**Barco ClickShare.** Two ways to share, and both work on Windows and Mac:
+**Barco ClickShare CX-20.** Two ways to share, both working on Windows and Mac:
 
-- **The Button** — the orange puck. Plug into the laptop, press, share. No install, no admin rights, no network needed on the member's side. This is the one to reach for.
+- **The Button** — the puck. Plug into the laptop, press, share. No install, no admin rights, no network needed on the member's side. This is the one to reach for.
 - **The ClickShare Desktop App** — software instead of a Button. Needs the member on the **Hexa Spaces** Wi-Fi.
 
-> **NEEDS INPUT:** which Barco model, and in which rooms? It changes what's possible:
-> - **CX series** (CX-20 / CX-30 / CX-50) or **ClickShare Bar** — *Conference* models. The Button also passes the room's **camera, mic and speakers** through to the laptop, so Teams and Zoom run off the room's AV. Worth knowing — members ask for this constantly.
-> - **C series** (C-5 / C-10) or **CSE** — *Presentation* models. Screen sharing only; the laptop keeps using its own camera and mic.
+**The CX-20 is a *Conference* model.** That's the thing worth knowing, because members ask for it constantly:
+
+> Once a member is sharing via the Button, the room's **camera, microphone and speakers become available to their laptop** — so Teams, Zoom and Meet run off the room's AV instead of their laptop's. One connection, wireless, no cable to the camera.
+
+The CX-20 is Barco's entry Conference unit, built for **huddle and small meeting rooms**, and ships with **one Button** (USB-C, usually with a USB-A adapter in the box). It supports fewer simultaneous connections than the CX-30 or CX-50 — fine for a small room, worth knowing if it's been put in a large one.
+
+> **NEEDS INPUT — quick check:** confirm the label on the unit reads **CX-20**. "CS-20" isn't a Barco model, and the difference matters: if it turns out to be a C-series or CSE unit, it's presentation-only and the camera/mic section below does not apply.
 >
-> Also: how many Buttons per room, where they're kept, and USB-C or USB-A?
+> Also still open: **which rooms** have a unit, how many Buttons each, and where spare Buttons are kept.
 
 ## Steps — the Button
 
@@ -39,10 +43,15 @@ A member can't share their screen. Usually two minutes before something starts, 
 4. **Press the big button.** The LED goes red and the screen appears.
 5. Press again to stop.
 
-### On a Conference model (CX / Bar)
+### Using the room's camera and mic (this is a CX-20, so this works)
 
-6. Once shared, the member picks the room's camera and speaker in Teams or Zoom — usually offered automatically as **ClickShare** or the room's name.
-7. If the meeting still uses the laptop's own mic, it's selected in the meeting app's audio settings, not in ClickShare.
+6. With the Button connected, the member opens their meeting in **Teams, Zoom or Meet**.
+7. In the meeting app, set **camera** and **speaker/microphone** to **ClickShare** (it may appear as the room name).
+   - **Teams** — ⋯ → Settings → Devices
+   - **Zoom** — the ^ arrows next to Mute and Stop Video
+   - **Meet** — ⋮ → Settings → Audio / Video
+8. It is selected **in the meeting app, not in ClickShare**. This trips people up constantly: the Button is connected, the screen is sharing, and they're still on the laptop's own mic because nothing told them to switch.
+9. Their laptop lid can stay open — the room camera and their laptop camera are separate devices; the meeting uses whichever is selected.
 
 ## Steps — the Desktop App (no Button)
 
@@ -81,7 +90,9 @@ This is why Buttons should be labelled per room and returned after functions.
 | Black screen but "sharing" | Mac screen-recording permission, or Windows extended display |
 | Room not in the Desktop App | Wrong Wi-Fi — must be **Hexa Spaces** |
 | LED never lights | Wrong port or a dead Button — try another |
-| Camera/mic not available | Presentation-only model, or not selected in Teams/Zoom |
+| Room camera/mic not available | Not selected in the meeting app — see step 7. Selecting it in ClickShare does nothing |
+| Others can't hear them | Mic still set to the laptop, not ClickShare |
+| Second person can't connect | CX-20 is the entry unit — connection limits are low. One sharer at a time is normal |
 
 **If it isn't fixed in two minutes, stop.** Get them on an HDMI cable and sort the wireless after — see [Meeting-room AV](meeting-room-av.md).
 
