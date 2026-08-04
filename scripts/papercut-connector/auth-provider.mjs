@@ -34,10 +34,78 @@
 // so revoking portal access also revokes password-based printing.
 // Requires Node 18+ (built-in fetch). No npm dependencies.
 
-import { readFileSync } from 'fs'
+import { readFileSync, writeSync, appendFileSync, mkdirSync } from 'fs'
+import { dirname } from 'path'
 
-const fail = () => { process.stdout.write('ERROR\n'); process.stderr.write('Invalid username or password\n'); process.exit(0) }
-const ok = (username) => { process.stdout.write(`OK\n${username}\n`); process.exit(0) }
+// Audit trail — ALWAYS ON, unlike HEXA_AUTH_DEBUG below.
+//
+// PaperCut only logs an auth failure when the handler exits non-zero; a clean
+// ERROR verdict is logged NOWHERE, so "member says it won't let them in" is
+// otherwise undiagnosable, and you cannot even tell whether PaperCut invoked
+// this program at all. One line per invocation fixes that. It also answers the
+// question that matters operationally: who is signing in to print, and when.
+//
+// Records: time, outcome, username as typed, and the stage reached. NEVER the
+// password, the token, or the Supabase response. Any failure to write is
+// swallowed — logging must never be the reason someone cannot print.
+let stage = 'start'
+let sawUsername = '-'
+const auditLog = (outcome) => {
+  try {
+    const path = process.env.HEXA_AUTH_LOG || 'C:\\ProgramData\\Hexa\\papercut-auth.log'
+    mkdirSync(dirname(path), { recursive: true })
+    appendFileSync(path, `${new Date().toISOString()}\t${outcome}\t${sawUsername}\t${stage}\n`)
+  } catch { /* never break auth over a log line */ }
+}
+
+// Answer PaperCut and exit cleanly.
+//
+// Two things this has to get right. First, the verdict must actually reach
+// PaperCut: process.stdout.write() is asynchronous on a pipe, so an immediate
+// process.exit() can drop it — writeSync flushes before we go. Second, PaperCut
+// keeps the stdin pipe open, and exiting while that handle is mid-close trips a
+// libuv assertion on Windows (noisy stderr, exit 127); tearing stdin down first
+// avoids it. Control flow is unchanged — process.exit() never returns, so the
+// trailing fail() after a successful ok() still can't run.
+const DONE = Symbol('answered')
+let answered = false
+
+// Opt-in diagnostics. Production returns one opaque "Invalid username or
+// password" for EVERY failure on purpose — an unreadable config, an unknown
+// user and a wrong password must be indistinguishable, or the provider becomes
+// an account-enumeration oracle. That also makes a broken cutover impossible to
+// debug, so: set HEXA_AUTH_DEBUG=1 to get the failing STAGE on stderr.
+// Never prints the password, the token, or the Supabase response body.
+// PaperCut's auth.source.env-vars does not set this, so it stays off in
+// production unless someone deliberately turns it on for a single manual run.
+const DEBUG = process.env.HEXA_AUTH_DEBUG === '1'
+const dbg = (msg) => { if (DEBUG) { try { writeSync(2, `[debug] ${msg}\n`) } catch { /* stderr gone */ } } }
+
+const finish = (out, err) => {
+  if (!answered) {
+    answered = true
+    auditLog(out.startsWith('OK') ? 'OK' : 'ERROR')
+    // writeSync, not process.stdout.write: the latter is async on a pipe, so the
+    // verdict could be lost if the process goes away first.
+    if (err) { try { writeSync(2, err) } catch { /* stderr gone */ } }
+    try { writeSync(1, out) } catch { /* stdout gone — nothing we can do */ }
+    // Exit NATURALLY. On Node 24 / Windows, process.exit() after any HTTPS
+    // request trips a libuv teardown assertion — stderr noise and exit 127.
+    // PaperCut ignores the exit code, but a clean exit is one less thing to
+    // misread in an auth log. Verified: same fetch, natural exit, code 0.
+    // Releasing stdin lets the loop drain; the unref'd timer is a backstop that
+    // only fires if something else is holding it open, so it never adds latency.
+    try { process.stdin.pause(); process.stdin.removeAllListeners(); process.stdin.unref?.() } catch { /* nothing to close */ }
+    process.exitCode = 0
+    setTimeout(() => process.exit(0), 2000).unref()
+  }
+  // Stop the caller dead. Without process.exit() the old code would run on past
+  // its own decision — e.g. validating a password after already failing.
+  throw DONE
+}
+
+const fail = () => finish('ERROR\n', 'Invalid username or password\n')
+const ok = (username) => finish(`OK\n${username}\n`)
 
 // Read exactly two newline-terminated lines from stdin (PaperCut may keep the
 // pipe open, so don't wait for EOF). Hard 10s ceiling.
@@ -81,24 +149,36 @@ async function main() {
   const password = String(creds[1])
   if (!username || !password) fail()
 
+  sawUsername = username
+  stage = 'read-config'
+  dbg(`username as received: "${username}" (password ${password.length} chars, not shown)`)
+
   let cfg
   try {
     cfg = JSON.parse(readFileSync(process.env.HEXA_AUTH_CONFIG, 'utf8'))
     if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) throw new Error('incomplete')
-  } catch { fail() }
+  } catch (e) {
+    dbg(`CONFIG read failed for HEXA_AUTH_CONFIG="${process.env.HEXA_AUTH_CONFIG ?? '(unset)'}": ${e.message}`)
+    dbg('  (EACCES/EPERM here means the caller cannot read the ACL-locked config — run elevated, or point at the source copy.)')
+    fail()
+  }
   cfg.papercutServer = cfg.papercutServer || 'http://localhost:9191'
 
   // Resolve what they typed → { portal email to validate, PaperCut username to credit }.
   let email = username.toLowerCase()
   let pcUsername = username
   try {
+    stage = 'resolve-username'
+    dbg(`resolving "${username}" -> PaperCut account`)
     if (username.includes('@')) {
       // Email given. New provisioned users have username == email; legacy
       // OfficeRnD-era accounts have a non-email username — resolve it so the
       // job lands on the account that owns their card number + balance.
       const exists = cfg.papercutAuthToken ? await pc(cfg, 'api.isUserExists', [username]).catch(() => '') : 'skip'
+      dbg(`  api.isUserExists("${username}") -> "${exists}"`)
       if (exists !== 'true' && exists !== '1' && exists !== 'skip') {
-        const found = await pc(cfg, 'api.lookUpUserNameByEmail', [email]).catch(() => '')
+        const found = await pc(cfg, 'api.lookUpUserNameByEmail', [email]).catch((e) => { dbg(`  lookUpUserNameByEmail faulted: ${e.message}`); return '' })
+        dbg(`  api.lookUpUserNameByEmail("${email}") -> "${found}"`)
         if (found) pcUsername = found
         // Unknown to PaperCut entirely → still validate the portal login and
         // return the email; PaperCut treats unknown users per its own policy.
@@ -111,9 +191,16 @@ async function main() {
     } else {
       fail() // non-email username and no way to resolve it
     }
-  } catch { /* resolution is best-effort; validation below still gates access */ }
+  } catch (e) {
+    // Username resolution is best-effort — a lookup failure falls through to the
+    // password check below, which is the real gate. But a fail() in here is a
+    // verdict, not a hiccup: let it unwind instead of validating a password we've
+    // already refused.
+    if (e === DONE) throw e
+  }
 
   // The actual gate: the member's portal (Supabase) email + password.
+  stage = 'verify-portal-password'
   try {
     const r = await fetch(`${cfg.supabaseUrl.replace(/\/$/, '')}/auth/v1/token?grant_type=password`, {
       method: 'POST',
@@ -121,9 +208,22 @@ async function main() {
       body: JSON.stringify({ email, password }),
       signal: AbortSignal.timeout(8000),
     })
-    if (r.ok) ok(pcUsername)
+    // Drain the body even though we only care about the status. An unconsumed
+    // response leaves the socket open, and exiting on top of that trips a libuv
+    // teardown assertion on Windows (stderr noise + exit 127). The token in this
+    // body is deliberately never parsed, logged or stored.
+    const body = await r.text().catch(() => '')
+    if (r.ok) { dbg(`Supabase accepted the password; returning PaperCut username "${pcUsername}"`); ok(pcUsername) }
+    // Only the error CODE, never the body's tokens. 400 invalid_grant = the
+    // password is genuinely wrong for that email; 400 validation_failed = the
+    // email was malformed by the time it got here; 429 = rate limited.
+    let code = ''
+    try { const j = JSON.parse(body); code = j.error_code || j.error || j.msg || '' } catch { /* not JSON */ }
+    dbg(`Supabase REFUSED: HTTP ${r.status}${code ? ` (${code})` : ''} for email "${email}"`)
   } catch { /* network error → fail closed */ }
   fail()
 }
 
-main().catch(() => fail())
+// DONE just unwinds the stack after an answer is written. Anything else is an
+// unexpected error — fail closed, but only if we haven't already answered.
+main().catch(() => { if (!answered) { try { fail() } catch { /* answered now */ } } })

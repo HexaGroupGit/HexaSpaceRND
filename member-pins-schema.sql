@@ -11,9 +11,16 @@
 
 create table if not exists member_pins (
   email text primary key,          -- lowercased member email
-  pin text not null,               -- PaperCut login PIN
+  pin text not null,               -- PaperCut login PIN (primary-card-number)
   updated_at timestamptz default now()
 );
+
+-- The member's PaperCut personal-account balance ($30 allowance counting down;
+-- negative = print overage owing), pushed by sync-pins.mjs and shown to them in
+-- the app/portal and to staff on the member profile. Added after the initial
+-- table, so these run as idempotent alters.
+alter table member_pins add column if not exists balance numeric;
+alter table member_pins add column if not exists balance_updated_at timestamptz;
 
 alter table member_pins enable row level security;
 

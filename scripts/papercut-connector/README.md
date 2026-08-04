@@ -43,9 +43,19 @@ time to be folded onto the month-end invoices.
 
 - **provision-members.mjs** — Hexa roster → PaperCut users/groups/card numbers (dry-run by
   default; `PAPERCUT_PROVISION_APPLY=1` to write). Run nightly or after onboarding.
+  **Pilot one member before any bulk run:** `PAPERCUT_ONLY=someone@example.com` limits the run to
+  those emails and reports any that aren't on the roster (the usual cause is a typo or
+  `portalAccess = false`). It:
+  matches members to PaperCut users **by email**; keeps an existing PIN, otherwise restores the
+  one Hexa already showed the member, otherwise generates a unique new one; **pushes every PIN
+  back to Hexa** at the end of an apply run so it appears in the member's portal and the admin
+  portal straight away (`PAPERCUT_SKIP_PIN_PUSH=1` to opt out); and **reports who has no portal
+  password** — after the auth switch that password is their Mobility Print sign-in, so those
+  members need a portal invite before they can log in to the client (their PIN still releases
+  jobs at the copier). Extra env: `HEXA_ROSTER_URL`, `HEXA_PINS_URL`.
 - **sync-pins.mjs** — reads each user's card number + personal balance back into Hexa
   (`member_pins`) so members see their own print PIN and printing balance in the app/portal.
-  Schedule daily-ish to keep the balance fresh.
+  Schedule daily-ish to keep the **balance** fresh (provisioning already handles the PIN).
 - **sync-print-jobs.mjs** — parses PaperCut's daily CSV job logs
   (`[app-path]\server\logs\csv\daily`, override with `PAPERCUT_CSV_DIR`) and pushes each
   member's print jobs to `/api/papercut/jobs` → the portal's **Printing** tab (job history +

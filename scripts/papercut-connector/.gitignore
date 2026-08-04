@@ -1,0 +1,18 @@
+# Secrets - NEVER commit. hexa-config.json holds the Supabase anon key, the
+# PaperCut Web Services token and the Hexa sync token; .env holds the same.
+.env
+hexa-config.json
+node_modules
+
+# Member data - active-printer-emails.txt is a list of real member email
+# addresses produced by active-printers.mjs.
+active-printer-emails.txt
+
+# Local operational state, written by the cutover scripts on this box only.
+cutover-rollback.json
+cutover-usersource-rollback.json
+
+# Logs and scratch output from dry runs.
+*.log
+all-users.txt
+test-*

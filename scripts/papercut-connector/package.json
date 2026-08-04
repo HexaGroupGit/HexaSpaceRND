@@ -1,0 +1,10 @@
+{
+  "name": "hexa-papercut-connector",
+  "private": true,
+  "version": "1.0.0",
+  "description": "On-prem PaperCut MF connector for Hexa Space: user source, auth provider, PIN + print-job sync, monthly print billing. Runs on the Box Hill LAN, never in the cloud.",
+  "type": "module",
+  "dependencies": {
+    "xmlrpc": "^1.3.2"
+  }
+}
