@@ -33,18 +33,25 @@ create or replace function public.is_billing_authority() returns boolean
 
 grant execute on function public.is_billing_authority() to authenticated;
 
+-- NB: the LIVE policy uses current_companies() (plural — phase3b multi-company),
+-- not the current_company() shown in phase7. Keep the plural or a member who
+-- acts for two companies loses one of them. This only ANDs the second gate on.
 drop policy if exists mem_sel_invoices on public.invoices;
 create policy mem_sel_invoices on public.invoices for select to authenticated
   using (
-    data->>'tenantId' = (select public.current_company())
+    data->>'tenantId' in (select public.current_companies())
     and (select public.is_billing_authority())
   );
 
--- Verify (run as the member, not the service role):
+-- Verify without touching auth — impersonate the JWT claim the policy reads:
+--   begin;
+--   select set_config('request.jwt.claims','{"email":"someone@x.com","role":"authenticated"}',true);
+--   set local role authenticated;
 --   select count(*) from invoices;
+--   rollback;
 -- Expect: >0 for a billing/contact person or a company login, 0 for a teammate.
 --
 -- Rollback:
 --   drop policy if exists mem_sel_invoices on public.invoices;
 --   create policy mem_sel_invoices on public.invoices for select to authenticated
---     using (data->>'tenantId' = (select public.current_company()));
+--     using (data->>'tenantId' in (select public.current_companies()));
