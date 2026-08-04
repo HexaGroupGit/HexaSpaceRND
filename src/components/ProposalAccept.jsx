@@ -57,7 +57,7 @@ export default function ProposalAccept({ token }) {
 
   async function submit(e) {
     e.preventDefault()
-    if (selOffices.length === 0) { setErr('Please choose an office.'); return }
+    if (!isMembership && selOffices.length === 0) { setErr('Please choose an office.'); return }
     if (!form.businessName.trim() || !form.contactName.trim() || !form.email.trim()) { setErr('Company name, your name and email are required.'); return }
     setSubmitting(true); setErr('')
     try {
@@ -71,7 +71,12 @@ export default function ProposalAccept({ token }) {
 
   const offices = data?.offices || []
   const parking = data?.parking || []
-  const total = [...offices.filter((o) => selOffices.includes(o.spaceId)), ...parking.filter((o) => selParking.includes(o.spaceId))].reduce((s, o) => s + Number(o.price || 0), 0)
+  // A desk / virtual-office proposal offers a plan rather than a choice of
+  // suites: there is nothing to tick, and its price is the whole offer.
+  const isMembership = offices.length === 0 && Number(data?.price) > 0
+  const total = isMembership
+    ? Number(data.price)
+    : [...offices.filter((o) => selOffices.includes(o.spaceId)), ...parking.filter((o) => selParking.includes(o.spaceId))].reduce((s, o) => s + Number(o.price || 0), 0)
   const TERM_LABEL = { mtm: 'Month-to-month', '6mo': '6-month term', '12mo': '12-month term' }
   const termMonths = data?.term === '6mo' ? 6 : 12
   const endFrom = (s) => { if (!s) return ''; const d = new Date(`${s}T00:00:00`); d.setMonth(d.getMonth() + termMonths); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0] }
@@ -117,6 +122,15 @@ export default function ProposalAccept({ token }) {
               <div>
                 <div className="hx-eyebrow mb-2">{offices.length > 1 ? 'Choose your office' : (data.typeLabel || 'Private Office')}</div>
                 <div className="space-y-2">
+                  {isMembership && (
+                    <div className="w-full flex items-center gap-3 border border-hexa-green bg-bone p-3">
+                      <span className="flex-1 min-w-0">
+                        <span className="block font-heading uppercase tracking-nav text-[12px] text-ink">{data.typeLabel || 'Membership'}</span>
+                        <span className="block hx-prose text-[12px] text-portal-muted mt-0.5">Your membership</span>
+                      </span>
+                      <span className="font-body text-[15px] text-ink tabular-nums">{money(data.price)}<span className="text-portal-muted">/mo</span></span>
+                    </div>
+                  )}
                   {offices.map((o) => {
                     const on = selOffices.includes(o.spaceId)
                     const meta = [o.level, o.pax ? `${o.pax} pax` : '', o.note].filter(Boolean).join(' · ')

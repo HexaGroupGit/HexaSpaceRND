@@ -60,6 +60,11 @@ export default async function handler(req, res) {
       freeMonths: Number(p.freeMonths || 0),
       membershipType: p.membershipType || 'office',
       typeLabel: p.typeLabel || 'Private Office',
+      // A desk / virtual-office proposal offers a PLAN, not a list of suites:
+      // it carries no `offices`, so its price is the only thing to show and
+      // the only thing the accept can price the contract from.
+      price: Number(p.price || 0),
+      vpkg: p.vpkg || '',
       today: new Date().toISOString().split('T')[0],
     })
   } catch (err) {

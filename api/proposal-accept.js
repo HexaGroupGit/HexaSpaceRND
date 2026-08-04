@@ -60,7 +60,16 @@ export default async function handler(req, res) {
     const stages = (stageRows ?? []).map((r) => r.data)
     const allOffices = lead.proposal?.offices || []
     const allParking = lead.proposal?.parking || []
-    if (allOffices.length === 0) return res.status(400).json({ error: 'Proposal has no offices' })
+    // Two shapes of proposal reach this endpoint. A PRIVATE OFFICE proposal
+    // offers specific suites to choose from. A MEMBERSHIP proposal (desk,
+    // virtual office) offers a plan at a price and carries no `offices` at all
+    // — it used to be rejected here, and the accept page wouldn't even submit,
+    // so those clients had no way to accept.
+    const membershipPrice = Number(lead.proposal?.price || 0)
+    const isMembership = allOffices.length === 0
+    if (isMembership && !(membershipPrice > 0)) {
+      return res.status(400).json({ error: 'This proposal has no offices or price — please contact us for a new one.' })
+    }
     // Offered offices are OPTIONS — the client picks which one(s) + optional parking.
     // Submitted ids must be a subset of what was actually offered.
     const offeredOfficeIds = allOffices.map((o) => o.spaceId)
@@ -73,12 +82,15 @@ export default async function handler(req, res) {
     }
     const offices = (Array.isArray(officeIds) && officeIds.length) ? allOffices.filter((o) => officeIds.includes(o.spaceId)) : allOffices
     const parking = (Array.isArray(parkingIds) && parkingIds.length) ? allParking.filter((o) => parkingIds.includes(o.spaceId)) : []
-    if (offices.length === 0) return res.status(400).json({ error: 'Please choose at least one office' })
+    if (!isMembership && offices.length === 0) return res.status(400).json({ error: 'Please choose at least one office' })
     const contractItems = [...offices, ...parking]
 
     // Re-check availability: an office can be taken between proposal and accept
     // (the same unit is often offered to several leads; first accept wins).
-    const { data: spaceRows } = await supabase.from('spaces').select('id, data').in('id', contractItems.map((o) => o.spaceId))
+    // A membership has no space to check or hold.
+    const { data: spaceRows } = contractItems.length
+      ? await supabase.from('spaces').select('id, data').in('id', contractItems.map((o) => o.spaceId))
+      : { data: [] }
     const spacesById = Object.fromEntries((spaceRows ?? []).map((r) => [r.id, r.data]))
     const unavailable = contractItems.filter((o) => {
       const s = spacesById[o.spaceId]
@@ -132,17 +144,28 @@ export default async function handler(req, res) {
     const nums = numStrs.map((s) => parseInt(s, 10)).filter((n) => !isNaN(n) && n < 100000)
     const pad = Math.max(3, ...numStrs.filter((s) => parseInt(s, 10) < 100000).map((s) => s.length))
     const contractNumber = `CON-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(pad, '0')}`
-    const monthlyRent = contractItems.reduce((s, o) => s + Number(o.price || 0), 0)
-    const deposit = monthlyRent // one month's rent as the security deposit
+    const monthlyRent = isMembership ? membershipPrice : contractItems.reduce((s, o) => s + Number(o.price || 0), 0)
+    // One month's rent as the security deposit on an office. A membership
+    // proposal quotes no deposit, so don't invent one.
+    const deposit = isMembership ? 0 : monthlyRent
+    // No items on a membership: it holds no space, so the billing engine's
+    // single-rate fallback (lease.monthlyRent) is the right schedule for it.
     const items = contractItems.map((o, i) => ({ spaceId: o.spaceId, deposit: i === 0 ? deposit : 0, steps: [{ startDate, endDate, listPrice: Number(o.price || 0), qty: 1, discount: '' }] }))
+    const MEMBERSHIP_LABEL = { virtual: 'Virtual Office', flexi: 'Flexible Desk', dedicated: 'Dedicated Desk' }
+    const membershipLabel = MEMBERSHIP_LABEL[lead.proposal?.membershipType] || 'Membership'
     const leaseId = contractNumber
     const eToken = rid('sign')
     const portalBase = settings?.portalUrl || `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || req.headers.host}`
     const memberLink = `${portalBase}/sign/${eToken}`
     const lease = {
       id: leaseId, contractNumber, tenantId, memberId, memberName: contactName, companyName: businessName,
-      spaceId: contractItems[0].spaceId, resource: contractItems.map((o) => o.unit).filter(Boolean).join(', '),
-      membershipType: 'Private Office', documentType: 'License Agreement', contractType: 'New',
+      ...(isMembership ? {} : { spaceId: contractItems[0].spaceId }),
+      resource: isMembership
+        ? (lead.proposal?.typeLabel || membershipLabel)
+        : contractItems.map((o) => o.unit).filter(Boolean).join(', '),
+      membershipType: isMembership ? membershipLabel : 'Private Office',
+      documentType: isMembership ? 'Membership Agreement' : 'License Agreement',
+      contractType: 'New',
       startDate, endDate, monthlyRent, bondAmount: deposit, discount: '',
       termMonths, rentFreeMonths,
       status: 'pending', signatureStatus: 'out_for_signature',
@@ -199,7 +222,7 @@ export default async function handler(req, res) {
 
       const adminTo = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
       if (adminTo.length) {
-        const adminHtml = `<div style="font-family:Arial,sans-serif;padding:24px;max-width:560px"><h2 style="font-size:16px">Proposal accepted 🎉</h2><p><strong>${businessName}</strong> (${contactName}, ${email}) accepted their proposal.</p><p>Client created, contract <strong>${contractNumber}</strong> raised for ${offices.map((o) => o.unit).join(', ')} at $${monthlyRent.toLocaleString('en-AU')}/mo (${termMonths}-month term from ${startDate}${rentFreeMonths ? `, ${rentFreeMonths} month${rentFreeMonths > 1 ? 's' : ''} rent-free` : ''}) and sent for e-signature. Countersign it once they've signed.</p>${warnings.length ? `<p style="color:#b45309"><strong>Warning:</strong> ${warnings.join(' ')}</p>` : ''}</div>`
+        const adminHtml = `<div style="font-family:Arial,sans-serif;padding:24px;max-width:560px"><h2 style="font-size:16px">Proposal accepted 🎉</h2><p><strong>${businessName}</strong> (${contactName}, ${email}) accepted their proposal.</p><p>Client created, contract <strong>${contractNumber}</strong> raised for ${isMembership ? (lead.proposal?.typeLabel || membershipLabel) : offices.map((o) => o.unit).join(', ')} at $${monthlyRent.toLocaleString('en-AU')}/mo (${termMonths}-month term from ${startDate}${rentFreeMonths ? `, ${rentFreeMonths} month${rentFreeMonths > 1 ? 's' : ''} rent-free` : ''}) and sent for e-signature. Countersign it once they've signed.</p>${warnings.length ? `<p style="color:#b45309"><strong>Warning:</strong> ${warnings.join(' ')}</p>` : ''}</div>`
         await sendResend(resendKey, { fromName, fromEmail, to: adminTo, subject: `Proposal accepted — ${businessName} (${contractNumber})`, html: adminHtml, replyTo }).catch(() => {})
       }
     }
