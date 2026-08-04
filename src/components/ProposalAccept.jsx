@@ -120,13 +120,13 @@ export default function ProposalAccept({ token }) {
               <p className="hx-prose text-[15px]">Hi {data.leadName || 'there'}, here's the proposal we've put together for you.</p>
 
               <div>
-                <div className="hx-eyebrow mb-2">{offices.length > 1 ? 'Choose your office' : (data.typeLabel || 'Private Office')}</div>
+                <div className="hx-eyebrow mb-2">{offices.length > 1 ? 'Choose your office' : isMembership ? 'Your membership' : (data.typeLabel || 'Private Office')}</div>
                 <div className="space-y-2">
                   {isMembership && (
                     <div className="w-full flex items-center gap-3 border border-hexa-green bg-bone p-3">
                       <span className="flex-1 min-w-0">
                         <span className="block font-heading uppercase tracking-nav text-[12px] text-ink">{data.typeLabel || 'Membership'}</span>
-                        <span className="block hx-prose text-[12px] text-portal-muted mt-0.5">Your membership</span>
+                        {data.freeMonths > 0 && <span className="block hx-prose text-[12px] text-portal-muted mt-0.5">Final {data.freeMonths} month{data.freeMonths > 1 ? 's' : ''} rent-free</span>}
                       </span>
                       <span className="font-body text-[15px] text-ink tabular-nums">{money(data.price)}<span className="text-portal-muted">/mo</span></span>
                     </div>
