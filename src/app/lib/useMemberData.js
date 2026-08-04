@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { unreadDmCount } from './memberMessages.js'
 import { configureFunctionPricing } from '../../lib/functionBooking.js'
+import { canViewBilling } from '../../lib/billingAccess.js'
 
 // Loads the member's world for the mobile app. Mirrors PortalApp.jsx fetchData
 // (which stays untouched — the app is a separate experience): same tables, same
@@ -41,7 +42,12 @@ export function useMemberData(email) {
       // Tenant-scoped fetches (JSONB filter → immune to the 1000-row cap).
       const [invRes, leaseRes, mailRes] = cid
         ? await Promise.all([
-            supabase.from('invoices').select('data').eq('data->>tenantId', cid),
+            // Billing/contact person only — a teammate's device never receives
+            // the company's invoices (client twin of canViewBilling; the portal
+            // loader does the same).
+            canViewBilling(member)
+              ? supabase.from('invoices').select('data').eq('data->>tenantId', cid)
+              : Promise.resolve({ data: [] }),
             supabase.from('leases').select('data').eq('data->>tenantId', cid),
             supabase.from('mail_items').select('data').eq('data->>companyId', cid),
           ])

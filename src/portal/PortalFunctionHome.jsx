@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ArrowRight, CalendarCheck, PartyPopper, Receipt, MessageSquare, CalendarClock } from 'lucide-react'
 import { Page, Card, Eyebrow, StatusBadge, fmt, money } from './ui.jsx'
 import { STAGES, bookingSessions, sessionsLabel } from '../lib/functionBooking.js'
+import { canViewBilling } from '../lib/billingAccess.js'
 
 // Dashboard for function-only clients (no membership agreement): a proper
 // landing instead of dropping them straight onto the booking form — their
@@ -29,10 +30,14 @@ export default function PortalFunctionHome({ data }) {
     .sort((a, b) => (a.eventDate || '9999').localeCompare(b.eventDate || '9999'))
   const upcoming = active.filter((b) => (b.eventDate || '') >= todayStr)
 
-  const nextDue = invoices
+  // Same rule as the Billing page: only the company's billing/contact person
+  // (or the company login itself) sees what it has been invoiced.
+  const canBilling = canViewBilling(member)
+  const visibleInvoices = canBilling ? invoices : []
+  const nextDue = visibleInvoices
     .filter((i) => i.status === 'pending' || i.status === 'overdue')
     .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0]
-  const recent = [...invoices]
+  const recent = [...visibleInvoices]
     .filter((i) => i.status !== 'voided')
     .sort((a, b) => new Date(b.issueDate) - new Date(a.issueDate))
     .slice(0, 3)
@@ -66,17 +71,19 @@ export default function PortalFunctionHome({ data }) {
       )}
 
       {/* Stats */}
-      <div className="grid sm:grid-cols-3 gap-px bg-ink/10 mt-px">
+      <div className={`grid ${canBilling ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-px bg-ink/10 mt-px`}>
         <Card className="p-7">
           <Eyebrow>Next function</Eyebrow>
           <div className="hx-display text-3xl mt-3">{upcoming[0]?.eventDate ? fmt(upcoming[0].eventDate) : '—'}</div>
           <p className="hx-prose mt-1">{upcoming[0] ? (upcoming[0].eventName || sessionsLabel(upcoming[0])) : 'nothing booked yet'}</p>
         </Card>
-        <Card className="p-7">
-          <Eyebrow>Next invoice</Eyebrow>
-          <div className="hx-display text-3xl mt-3">{nextDue ? money(calcTotal(nextDue)) : '—'}</div>
-          <p className="hx-prose mt-1">{nextDue ? `due ${fmt(nextDue.dueDate)}` : 'nothing outstanding'}</p>
-        </Card>
+        {canBilling && (
+          <Card className="p-7">
+            <Eyebrow>Next invoice</Eyebrow>
+            <div className="hx-display text-3xl mt-3">{nextDue ? money(calcTotal(nextDue)) : '—'}</div>
+            <p className="hx-prose mt-1">{nextDue ? `due ${fmt(nextDue.dueDate)}` : 'nothing outstanding'}</p>
+          </Card>
+        )}
         <Card className="p-7">
           <Eyebrow>Bookings</Eyebrow>
           <div className="hx-display text-3xl mt-3">{active.length || '—'}</div>
@@ -122,6 +129,7 @@ export default function PortalFunctionHome({ data }) {
 
       {/* Recent invoices + quick links */}
       <div className="grid md:grid-cols-2 gap-6 mt-10">
+        {canBilling && (
         <div>
           <div className="flex items-center justify-between mb-4">
             <Eyebrow>Recent invoices</Eyebrow>
@@ -148,6 +156,7 @@ export default function PortalFunctionHome({ data }) {
             )}
           </Card>
         </div>
+        )}
         <div>
           <Eyebrow className="mb-4">Quick links</Eyebrow>
           <div className="grid grid-cols-2 gap-px bg-ink/10">

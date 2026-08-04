@@ -4,6 +4,7 @@ import { ArrowRight, CalendarCheck, PartyPopper, Mailbox, Package } from 'lucide
 import { supabase } from '../lib/supabase.js'
 import { Page, Card, Eyebrow, StatusBadge, fmt, money, to12, bookingName } from './ui.jsx'
 import { spendableCredits } from '../lib/credits.js'
+import { canViewBilling } from '../lib/billingAccess.js'
 
 function calcTotal(invoice) {
   let taxable = 0, exempt = 0
@@ -23,9 +24,15 @@ export default function PortalDashboard({ data }) {
   const fnConfirmed = functionBookings.find((b) => b.stage === 'confirmed' && b.eventDate && b.eventDate >= new Date().toISOString().split('T')[0])
   const fnDueNow = fnAction?.quote?.dueNow
   const activeLeases = leases.filter(l => l.status === 'active')
-  const sorted = [...invoices].sort((a, b) => new Date(b.issueDate) - new Date(a.issueDate))
+  // Invoices are the billing/contact person's business, not every teammate's —
+  // the same rule the Billing page applies (canViewBilling). Without this the
+  // dashboard showed a regular member their company's invoice numbers, amounts
+  // and what it owes.
+  const canBilling = canViewBilling(member)
+  const visibleInvoices = canBilling ? invoices : []
+  const sorted = [...visibleInvoices].sort((a, b) => new Date(b.issueDate) - new Date(a.issueDate))
   const recent = sorted.slice(0, 4)
-  const nextDue = invoices
+  const nextDue = visibleInvoices
     .filter(i => i.status === 'pending' || i.status === 'overdue')
     .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0]
   const todayStr = new Date().toISOString().split('T')[0]
@@ -109,7 +116,7 @@ export default function PortalDashboard({ data }) {
       )}
 
       {/* Stats */}
-      <div className="grid sm:grid-cols-3 gap-px bg-ink/10 mt-px">
+      <div className={`grid ${canBilling ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-px bg-ink/10 mt-px`}>
         <Card className="p-7">
           <Eyebrow>Membership</Eyebrow>
           <div className="hx-display text-3xl mt-3">{activeLeases.length || '—'}</div>
@@ -118,11 +125,13 @@ export default function PortalDashboard({ data }) {
             {activeLeases[0]?.endDate ? ` · to ${fmt(activeLeases[0].endDate)}` : ''}
           </p>
         </Card>
-        <Card className="p-7">
-          <Eyebrow>Next invoice</Eyebrow>
-          <div className="hx-display text-3xl mt-3">{nextDue ? money(calcTotal(nextDue)) : '—'}</div>
-          <p className="hx-prose mt-1">{nextDue ? `due ${fmt(nextDue.dueDate)}` : 'nothing outstanding'}</p>
-        </Card>
+        {canBilling && (
+          <Card className="p-7">
+            <Eyebrow>Next invoice</Eyebrow>
+            <div className="hx-display text-3xl mt-3">{nextDue ? money(calcTotal(nextDue)) : '—'}</div>
+            <p className="hx-prose mt-1">{nextDue ? `due ${fmt(nextDue.dueDate)}` : 'nothing outstanding'}</p>
+          </Card>
+        )}
         <Card className="p-7">
           <Eyebrow>Allowance</Eyebrow>
           <div className="hx-display text-3xl mt-3">{credits != null ? credits : '—'}</div>
@@ -130,7 +139,8 @@ export default function PortalDashboard({ data }) {
         </Card>
       </div>
 
-      {/* Recent invoices */}
+      {/* Recent invoices — billing/contact person only */}
+      {canBilling && (
       <div className="mt-10">
         <div className="flex items-center justify-between mb-4">
           <Eyebrow>Recent invoices</Eyebrow>
@@ -157,6 +167,7 @@ export default function PortalDashboard({ data }) {
           )}
         </Card>
       </div>
+      )}
 
       {/* Upcoming bookings + quick links */}
       <div className="grid md:grid-cols-2 gap-6 mt-10">

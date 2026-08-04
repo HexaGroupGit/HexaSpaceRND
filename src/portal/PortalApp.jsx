@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
+import { canViewBilling } from '../lib/billingAccess.js'
 import { IS_RECOVERY_FLOW, recoveryHandled, SetPasswordScreen } from '../lib/authRecovery.jsx'
 import PortalLogin from './PortalLogin.jsx'
 import PortalLayout from './PortalLayout.jsx'
@@ -117,9 +118,14 @@ export default function PortalApp() {
       const myEmail = (company?.email || member?.email || lc || '').toLowerCase()
 
       // Tenant-scoped fetches (JSONB filter → immune to the 1000-row cap).
+      // Invoices are the billing/contact person's alone (canViewBilling). Don't
+      // just hide them in the UI — a teammate's browser should never receive
+      // them at all, or the payload is a copy of what the company is billed.
       const [invRes, leaseRes] = cid
         ? await Promise.all([
-            supabase.from('invoices').select('data').eq('data->>tenantId', cid),
+            canViewBilling(member)
+              ? supabase.from('invoices').select('data').eq('data->>tenantId', cid)
+              : Promise.resolve({ data: [] }),
             supabase.from('leases').select('data').eq('data->>tenantId', cid),
           ])
         : [{ data: [] }, { data: [] }]
