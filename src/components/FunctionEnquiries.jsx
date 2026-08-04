@@ -1,11 +1,18 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { authHeaders } from '../lib/apiFetch.js'
 import { format } from 'date-fns'
-import { Mail, UserPlus, CheckCircle2, X, RefreshCw, CalendarDays, Users, ExternalLink } from 'lucide-react'
+import { Mail, UserPlus, CheckCircle2, X, RefreshCw, CalendarDays, Users, ExternalLink, Sparkles, Loader2, Send, MapPin } from 'lucide-react'
 import { STAGES, money, computeQuote, dateClashes, RATES } from '../lib/functionBooking.js'
 import { sendBrochure, sendBookingInvite, approveFunctionBooking, declineFunctionBooking, askAmendDate, updatePricing } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
+
+// Triage cue: their message reads like they want to come in and see the space
+// before committing. Only a hint for the list — the AI reply reads the message
+// properly and decides what to actually say.
+const VISIT_WORDS = /\b(tour|visit|inspect|inspection|walk[- ]?through|walkthrough|come (in|by|and)|drop (in|by)|(have|take) a look|see the (space|venue|room)|view(ing)? the (space|venue|room)|site visit|in person)\b/i
+const wantsVisit = (b) => VISIT_WORDS.test(b?.additionalRequirements || '')
 function StageBadge({ stage }) {
   const s = STAGES[stage] ?? { label: stage, cls: 'bg-gray-100 text-gray-600' }
   return <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${s.cls}`}>{s.label}</span>
@@ -18,6 +25,7 @@ export default function FunctionEnquiries({ store }) {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
   const [busy, setBusy] = useState('')
+  const [replying, setReplying] = useState(false)
 
   useEffect(() => { load() }, [])
   async function load() {
@@ -65,7 +73,12 @@ export default function FunctionEnquiries({ store }) {
                   {funnel.map((b) => (
                     <tr key={b.id} onClick={() => open(b)} className={`border-b border-border/60 cursor-pointer hover:bg-muted/40 ${selected?.id === b.id ? 'bg-muted/60' : ''}`}>
                       <td className="px-4 py-3"><div className="font-medium text-foreground flex items-center gap-2">{!b.read && ['enquiry', 'pending_approval', 'signed'].includes(b.stage) && <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />}{b.organisation || b.name || '—'}</div><div className="text-xs text-muted-foreground">{b.email}</div></td>
-                      <td className="px-4 py-3 text-foreground">{b.eventName || '—'}</td>
+                      <td className="px-4 py-3 text-foreground">
+                        {b.eventName || '—'}
+                        {wantsVisit(b) && ['enquiry', 'quoted'].includes(b.stage) && (
+                          <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-2 py-0.5"><MapPin size={9} /> Wants a look</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground">{fmtDate(b.eventDate)}</td>
                       <td className="px-4 py-3"><StageBadge stage={b.stage} /></td>
                     </tr>
@@ -98,17 +111,29 @@ export default function FunctionEnquiries({ store }) {
             {selected.eventDate && selected.startTime && selected.endTime && (
               <div className="text-sm text-muted-foreground">Indicative total: <strong className="text-foreground">{money((selected.quote || computeQuote({ ...selected, bookedOn: today() })).total)}</strong></div>
             )}
-            {selected.additionalRequirements && <div><dt className="text-xs text-muted-foreground uppercase mb-1">Requirements</dt><dd className="text-foreground whitespace-pre-wrap">{selected.additionalRequirements}</dd></div>}
+            {selected.additionalRequirements && (
+              <div>
+                <dt className="text-xs text-muted-foreground uppercase mb-1 flex items-center gap-2">
+                  Their message
+                  {wantsVisit(selected) && <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-2 py-0.5"><MapPin size={9} /> Wants a look</span>}
+                </dt>
+                <dd className="text-foreground whitespace-pre-wrap bg-muted/40 border border-border rounded-md px-3 py-2">{selected.additionalRequirements}</dd>
+              </div>
+            )}
             {['enquiry', 'quoted', 'requested'].includes(selected.stage) && (
               <DiscountEditor booking={selected} disabled={!!busy} onApply={applyDiscount} onClear={() => applyDiscount(null)} />
             )}
             {selected.brochureSentAt && <div className="text-xs text-muted-foreground">Brochure sent {format(new Date(selected.brochureSentAt), 'dd MMM')}</div>}
+            {selected.replySentAt && <div className="text-xs text-emerald-700">Replied {format(new Date(selected.replySentAt), 'dd MMM')}{selected.tourInviteSentAt ? ' · tour link sent' : ''}</div>}
             {selected.inviteSentAt && <div className="text-xs text-indigo-600">Portal invite sent {format(new Date(selected.inviteSentAt), 'dd MMM')}</div>}
             {selected.signedAt && <div className="text-xs text-yellow-700">Signed {format(new Date(selected.signedAt), 'dd MMM')} by {selected.signerName}</div>}
 
             <div className="space-y-2 pt-1">
               {['enquiry', 'quoted'].includes(selected.stage) && (
                 <>
+                  <button disabled={busy || !selected.email} onClick={() => setReplying(true)}
+                    title={selected.email ? 'AI reads their message, drafts a reply, attaches the brochure and invites them in for a look' : 'No email address on this enquiry'}
+                    className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40"><Sparkles size={14} /> Reply &amp; invite for a look</button>
                   <button disabled={busy} onClick={() => run('brochure', () => sendBrochure({ booking: selected, settings }))} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40"><Mail size={14} /> {busy === 'brochure' ? 'Sending…' : selected.brochureSentAt ? 'Resend brochure' : 'Send brochure & info'}</button>
                   <button disabled={busy} onClick={() => run('invite', () => sendBookingInvite({ store, booking: selected, settings }))} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40"><UserPlus size={14} /> {busy === 'invite' ? 'Sending…' : 'Send booking invite'}</button>
                 </>
@@ -133,6 +158,130 @@ export default function FunctionEnquiries({ store }) {
           </div>
         </div>
       )}
+
+      {replying && selected && (
+        <ReplyModal booking={selected} onClose={() => setReplying(false)} onSent={(rec) => { replace(rec); setReplying(false) }} />
+      )}
+    </div>
+  )
+}
+
+// ── AI reply + tour invite ────────────────────────────────────────────────────
+// For enquiries that come in with a message — usually "can we come and have a
+// look first?". Claude reads their message and drafts the reply; we attach the
+// function brochure and a "book a time to visit" link instead of pushing a
+// quote/proposal at them. Everything stays editable before it goes out.
+function ReplyModal({ booking, onClose, onSent }) {
+  const [subject, setSubject] = useState('')
+  const [headline, setHeadline] = useState('')
+  const [body, setBody] = useState('')
+  const [summary, setSummary] = useState('')
+  const [attachBrochure, setAttachBrochure] = useState(true)
+  const [includeTourLink, setIncludeTourLink] = useState(true)
+  const [drafting, setDrafting] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [err, setErr] = useState('')
+
+  // Draft as soon as it opens — reading their message is the whole point.
+  useEffect(() => { draft() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function draft() {
+    setDrafting(true); setErr('')
+    try {
+      const r = await fetch('/api/function-enquiry-reply', {
+        method: 'POST', headers: await authHeaders(),
+        body: JSON.stringify({ id: booking.id, action: 'draft', attachBrochure }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d.error ?? 'Drafting failed.')
+      setSubject(d.subject ?? ''); setHeadline(d.headline ?? ''); setBody(d.body ?? ''); setSummary(d.summary ?? '')
+      if (d.wantsVisit) setIncludeTourLink(true)
+    } catch (e) { setErr(e.message) } finally { setDrafting(false) }
+  }
+
+  async function send() {
+    if (!subject.trim() || !body.trim()) { setErr('Subject and message are required.'); return }
+    setSending(true); setErr('')
+    try {
+      const r = await fetch('/api/function-enquiry-reply', {
+        method: 'POST', headers: await authHeaders(),
+        body: JSON.stringify({
+          id: booking.id, action: 'send',
+          subject: subject.trim(), headline: headline.trim(), body: body.trim(),
+          attachBrochure, includeTourLink,
+        }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d.error ?? 'Send failed.')
+      onSent(d.booking ?? { ...booking, replySentAt: new Date().toISOString() })
+    } catch (e) { setErr(e.message); setSending(false) }
+  }
+
+  const inp = 'w-full border border-input rounded-md px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-ring/40'
+  const busy = drafting || sending
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-border">
+          <h2 className="font-semibold text-foreground flex items-center gap-2"><Sparkles size={16} /> Reply &amp; invite for a look</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">To {booking.name || booking.organisation || 'the enquirer'} &lt;{booking.email}&gt; — brochure attached, tour link instead of a proposal.</p>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {booking.additionalRequirements && (
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">What they wrote</label>
+              <div className="text-sm text-foreground whitespace-pre-wrap bg-muted/40 border border-border rounded-md px-3 py-2">{booking.additionalRequirements}</div>
+              {summary && <p className="text-[11px] text-muted-foreground mt-1.5">AI read it as: {summary}</p>}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Draft</label>
+            <button onClick={draft} disabled={busy}
+              className="flex items-center gap-1.5 border border-input px-3 py-1.5 rounded-md text-xs font-medium hover:bg-muted/50 disabled:opacity-40">
+              {drafting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {drafting ? 'Drafting…' : 'Redraft'}
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Subject</label>
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={drafting} className={inp} placeholder="Come and see the space" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Headline <span className="font-normal normal-case">(serif line above the message)</span></label>
+            <input value={headline} onChange={(e) => setHeadline(e.target.value)} disabled={drafting} className={inp} placeholder="Happy to show you through" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Message</label>
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} disabled={drafting} rows={10}
+              className={`${inp} resize-y font-normal`} placeholder={drafting ? 'Reading their message…' : 'Hi …'} />
+            <p className="text-[11px] text-muted-foreground mt-1.5">Plain text — blank line between paragraphs. The Hexa branding, the button and the footer are added when it sends.</p>
+          </div>
+
+          <div className="flex flex-col gap-2 text-sm border-t border-border pt-4">
+            <label className="flex items-center gap-2 text-foreground">
+              <input type="checkbox" checked={attachBrochure} onChange={(e) => setAttachBrochure(e.target.checked)} className="accent-blue-600" />
+              Attach the function brochure (PDF)
+            </label>
+            <label className="flex items-center gap-2 text-foreground">
+              <input type="checkbox" checked={includeTourLink} onChange={(e) => setIncludeTourLink(e.target.checked)} className="accent-blue-600" />
+              Add the “Book a time to visit” tour link + address
+            </label>
+            <p className="text-[11px] text-muted-foreground">Sending also stops the automated follow-up drip on this enquiry.</p>
+          </div>
+
+          {err && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{err}</div>}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
+          <button onClick={onClose} className="px-4 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted/50">Cancel</button>
+          <button onClick={send} disabled={busy || !subject.trim() || !body.trim()}
+            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
+            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send reply
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
