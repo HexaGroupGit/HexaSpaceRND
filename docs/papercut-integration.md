@@ -162,15 +162,32 @@ authenticate at the device with their PIN. Unified experience comes from auto-pr
 not password mirroring.
 
 - **Roster:** `GET /api/papercut/members` (sync-token auth) returns active members
-  `{ email, fullName, companyId, companyName }` + `usedPins` (so the provisioner avoids PIN
-  collisions). Active = has email and `portalAccess !== false`.
+  `{ email, fullName, companyId, companyName, hasPassword, pin }` + `usedPins` + a `summary`.
+  Active = has email and `portalAccess !== false`. The two enrichments matter:
+  - `hasPassword` — whether the member has a **portal password** in Supabase Auth (via the
+    SECURITY DEFINER fn `papercut_has_password`, boolean only). That password *is* their
+    Mobility Print sign-in after the Phase 5 switch, so the provisioner reports who can't yet
+    log in. `passwordCheck: 'unavailable'` when the fn isn't installed — provisioning still runs.
+  - `pin` — the number Hexa already holds for that email, so a member's PIN survives their
+    PaperCut user being recreated or losing its card.
 - **Provisioner:** [scripts/papercut-connector/provision-members.mjs](../scripts/papercut-connector/provision-members.mjs).
   **DRY-RUN by default; writes only with `PAPERCUT_PROVISION_APPLY=1`.** For each member:
-  `api.isUserExists` → if absent `api.addNewInternalUser(user, pw, fullName, email, '', pin)`
-  (random pw never used for login), else refresh `full-name`/`email`; `api.addNewGroup` +
-  `api.addUserToGroup` for the company. **Existing users' PINs are never overwritten.**
-- **Login number read-back for display:** run [sync-pins.mjs](../scripts/papercut-connector/sync-pins.mjs)
-  after provisioning. Reads **`primary-card-number`** → member_pins → shown in app/portal ([[3b]]).
+  match by email → if absent `api.addNewInternalUser(user, pw, fullName, email, cardId, '')`
+  (random pw never used for login), else refresh `full-name`; `api.addNewGroup` +
+  `api.addUserToGroup` for the company.
+  **PIN allocation, in order:** keep the number the PaperCut user already has → else restore
+  the number Hexa already showed them → else generate a fresh unique 4-digit one. The
+  collision set is PaperCut's cards **plus** every PIN in `member_pins`, so a number Hexa has
+  displayed to one member is never handed to another. **Existing PINs are never overwritten.**
+- **PIN push-back is part of provisioning:** after an apply run the provisioner POSTs every
+  member's number to `/api/papercut/pins`, so it shows in the member's portal/app and the
+  admin portal immediately (`PAPERCUT_SKIP_PIN_PUSH=1` to opt out).
+  [sync-pins.mjs](../scripts/papercut-connector/sync-pins.mjs) still runs on its own schedule —
+  it's what keeps the printing **balance** fresh ([[3b]]).
+- **Admin view:** `GET /api/papercut/member-status[?email=]` — **admin-gated** (`requireAdmin`,
+  not the sync token, because it returns real PINs). Per member: portal-password status, PIN,
+  balance, last sync. Rendered in Settings → PaperCut ("Member print set-up") and as the
+  Printing card on a member's profile, PIN masked until revealed.
 
 **IMPORTANT — the "PIN" is the Primary Card/Identity number (`primary-card-number`).** On this
 MF version the properties `pin` and `card-pin` are **not valid** (the API rejects the names),
@@ -187,10 +204,10 @@ group)`.
 
 ### Full end-to-end flow (target state)
 1. Member invited to Hexa portal → sets password (Supabase). ✅ exists
-2–4. Nightly/on-demand `provision-members.mjs` creates their PaperCut user + group + PIN. 🔨 built, needs live run
+2–4. Nightly/on-demand `provision-members.mjs` creates their PaperCut user + group + PIN, and pushes the PIN back to Hexa in the same run. 🔨 built, needs live run
 5. Member installs PaperCut client. ✅ guide (portal Guides → Printer Setup, OS-aware Mac/Windows download)
 6. Driver/web sign-in = **Hexa portal email + password** via the custom auth provider ([[3d]]); at the copier = card number/PIN. ✅ built, switch at cutover
-7. PIN shown in app + portal. ✅ built
+7. PIN shown in app + portal (member's own), and in the admin portal per member (Settings → PaperCut + member profile). ✅ built
 8. Print → hold/release at device via PIN. ✅ native PaperCut config
 9. Month-end: negative balance → fee → invoice. ✅ built
 10. Balance resets; live balance shown in app + portal via sync-pins (`member_pins.balance`). ✅ built 8 Jul 2026 — schedule sync-pins daily for freshness
@@ -213,6 +230,35 @@ username — resolving legacy non-email usernames ↔ emails over localhost XML-
 job credits the account that owns their card number, balance and company group. Fails
 closed; never logs the password; banned portal logins (removed teammates) are refused
 automatically. Install + config-key changes: [scripts/papercut-connector/README.md](../scripts/papercut-connector/README.md).
+
+## 3e. OPEN — do provisioned users authenticate at all? (raised 4 Aug 2026)
+
+**Unresolved, and it gates the bulk provisioning run.** `provision-members.mjs` creates accounts
+with `api.addNewInternalUser`, which produces users with `internal = "true"`. The 286 legacy
+OfficeRnD accounts are `internal = "false"` (directory users) — and directory users are what
+PaperCut routes through `auth.source.custom-program`.
+
+PaperCut's internal user database holds its own password, and the provisioner sets each new user a
+**random one nobody knows**. If internal users check that password instead of consulting the auth
+provider, every newly provisioned member is locked out of Mobility Print despite holding a valid
+portal password. Verified so far: a directory user (`internal=false`) authenticates correctly
+through the provider. An internal user has **not** been tested.
+
+Test: provision one member (`PAPERCUT_ONLY=`), have them sign in at `:9191`, and read
+`server\logs\server.log`. If the failure names the auth handler, the provider was consulted; if it
+fails with no handler mention, PaperCut short-circuited to the internal password.
+
+If it does short-circuit, options are (a) a custom user *sync* source so new users are directory
+users — the counterpart to the auth program, which is how OfficeRnD's agent created them, or
+(b) keep internal users and set their internal password, which reintroduces a second credential
+and defeats the point of portal-password auth.
+
+### Roster scope (measured 4 Aug 2026)
+Of 467 members the roster calls active, only **225 have a portal password**; 242 never accepted an
+invite. The 242 are almost exactly the accounts a bulk run would create. Provisioning them yields
+accounts that cannot sign in, so scope the bulk run to password-holders rather than the whole
+roster. (`portalAccess !== false` passes members who were never invited — the roster filter counts
+them as active.)
 
 ## 4. Open questions (resolve before coding)
 

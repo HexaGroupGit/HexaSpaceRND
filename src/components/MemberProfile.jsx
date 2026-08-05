@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authHeaders } from '../lib/apiFetch.js'
-import { ArrowLeft, Pencil, Check, KeyRound } from 'lucide-react'
+import { ArrowLeft, Pencil, Check, KeyRound, Printer } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { displayStatus, accessRoles, memberHasActiveMembership } from './Members.jsx'
 import { FOB_STATUS, DEPOSIT_STATUS, depositState, money } from '../lib/fobs.js'
@@ -198,6 +198,8 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
           </div>
 
           <MemberFobsCard memberId={member.id} invoices={invoices} />
+
+          <MemberPrintCard email={member.email} />
 
           <div className="bg-card border border-border rounded-xl shadow-sm p-4">
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Integrations</div>
@@ -423,6 +425,58 @@ function AddFeeModal({ onClose, onSave }) {
           <button type="submit" className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90">Add fee</button>
         </div>
       </form>
+    </div>
+  )
+}
+
+// This member's PaperCut printing set-up, so the front desk can answer "what's my
+// PIN?" and see why someone can't sign in to Mobility Print. Two separate things:
+// the PORTAL PASSWORD is what they type into the print client, the PIN is what
+// they type at the copier to release a job. Read from the admin-gated
+// /api/papercut/member-status — a PIN is a credential, so it's masked until
+// revealed and never fetched into the shared member data.
+function MemberPrintCard({ email }) {
+  const [row, setRow] = useState(undefined)   // undefined = loading, null = no data
+  const [reveal, setReveal] = useState(false)
+  useEffect(() => {
+    if (!email) { setRow(null); return }
+    let live = true
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/papercut/member-status?email=${encodeURIComponent(email)}`, { headers: await authHeaders() })
+        const d = await r.json().catch(() => null)
+        if (live) setRow(r.ok ? (d?.members?.[0] ?? null) : null)
+      } catch { if (live) setRow(null) }
+    })()
+    return () => { live = false }
+  }, [email])
+
+  return (
+    <div className="bg-card border border-border rounded-xl shadow-sm p-4">
+      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-1.5"><Printer size={12} /> Printing</div>
+      {row === undefined ? <p className="text-xs text-muted-foreground">Loading…</p>
+        : row === null ? <p className="text-xs text-muted-foreground">No printing account.</p>
+        : (
+          <>
+            <Row label="Print PIN">
+              {!row.pin ? <span className="text-amber-600">Not allocated</span>
+                : reveal ? <span className="font-mono">{row.pin}</span>
+                : <button onClick={() => setReveal(true)} className="font-mono hover:text-blue-600">•••• <span className="font-sans underline">show</span></button>}
+            </Row>
+            <Row label="Print Login">
+              {row.hasPassword === null ? <span className="text-muted-foreground">Unknown</span>
+                : row.hasPassword ? <span className="text-green-600">Portal password set</span>
+                : <span className="text-amber-600">No portal password</span>}
+            </Row>
+            <Row label="Balance">
+              {row.balance == null ? null
+                : <span className={row.balance < 0 ? 'text-red-600' : ''}>A${Number(row.balance).toFixed(2)}</span>}
+            </Row>
+            {row.hasPassword === false && (
+              <p className="text-[11px] text-amber-600 mt-1">They can release at the copier with their PIN, but can't sign in to Mobility Print until they set a portal password — send the invite above.</p>
+            )}
+          </>
+        )}
     </div>
   )
 }

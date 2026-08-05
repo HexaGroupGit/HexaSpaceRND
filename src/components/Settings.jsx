@@ -1678,8 +1678,20 @@ function StripeSection({ settings, updateSettings }) {
 // ── PaperCut Integration ──────────────────────────────────────────────────────
 function PaperCutSection() {
   const [st, setSt] = useState(null)
+  const [roster, setRoster] = useState(null)   // per-member print set-up (admin-only)
+  const [q, setQ] = useState('')
+  const [shown, setShown] = useState({})       // emails whose PIN is revealed
   useEffect(() => {
     fetch('/api/papercut/status').then((r) => r.json()).then(setSt).catch(() => setSt({ configured: false }))
+    ;(async () => {
+      try {
+        const r = await fetch('/api/papercut/member-status', { headers: await authHeaders() })
+        const d = await r.json()
+        setRoster(r.ok ? d : { error: d.error ?? 'Could not load member print status.' })
+      } catch {
+        setRoster({ error: 'Could not load member print status.' })
+      }
+    })()
   }, [])
 
   const fmt = (iso) => {
@@ -1725,14 +1737,114 @@ function PaperCutSection() {
         <p className="text-xs text-amber-600 mb-4">Set <code>PAPERCUT_SYNC_TOKEN</code> in Vercel (and the on-prem connector) to link the integration.</p>
       )}
       {st && linked && !pinsOk && (
-        <p className="text-xs text-amber-600 mb-4">Linked, but no PINs synced yet — run <code>sync-pins.mjs</code> on the PaperCut server to populate member PINs.</p>
+        <p className="text-xs text-amber-600 mb-4">Linked, but no PINs synced yet — run <code>provision-members.mjs</code> on the PaperCut server to allocate and push member PINs.</p>
       )}
+
+      {/* Per-member print set-up: portal password (their Mobility Print sign-in)
+          + the PIN they release with at the copier. Admin-only endpoint. */}
+      <MemberPrintSetup roster={roster} q={q} setQ={setQ} shown={shown} setShown={setShown} />
 
       <div className="border border-border rounded-md p-5 text-sm text-muted-foreground space-y-2">
         <p className="font-medium text-foreground">How it works</p>
-        <p>An on-prem connector on the PaperCut server (Box Hill LAN) provisions active members into PaperCut, syncs their PINs back for display, and at month-end reads each member's negative balance (print above their $30 allowance) and posts it as a fee that the bill run folds onto their invoice.</p>
+        <p>An on-prem connector on the PaperCut server (Box Hill LAN) provisions active members into PaperCut, allocates each one a PIN and pushes it straight back for display, and at month-end reads each member's negative balance (print above their $30 allowance) and posts it as a fee that the bill run folds onto their invoice.</p>
+        <p>A member signs in to PaperCut Mobility Print with their <strong>Hexa portal email and password</strong> — so anyone without a portal password can't sign in to the print client (card release at the copier still works). At the copier they type the PIN above.</p>
         <p>Runs on the LAN because PaperCut's API isn't reachable from the cloud. The connector authenticates to PaperCut with its own token and to Hexa with the shared sync token.</p>
       </div>
+    </div>
+  )
+}
+
+// Who is actually set up to print. "Ready" = has a portal password (Mobility
+// Print sign-in) AND a PIN (copier release). PINs are credentials, so they're
+// masked until revealed — the endpoint behind this is admin-gated.
+function MemberPrintSetup({ roster, q, setQ, shown, setShown }) {
+  if (roster?.error) {
+    return <div className="border border-border rounded-md p-5 mb-6 text-sm text-muted-foreground">{roster.error}</div>
+  }
+  const rows = roster?.members ?? []
+  const s = roster?.summary
+  const needle = q.trim().toLowerCase()
+  const filtered = needle
+    ? rows.filter((m) => `${m.name} ${m.email} ${m.companyName}`.toLowerCase().includes(needle))
+    : rows
+  const pwUnknown = roster?.passwordCheck === 'unavailable'
+
+  return (
+    <div className="border border-border rounded-md mb-6">
+      <div className="p-5 pb-3">
+        <div className="flex items-center justify-between gap-4 mb-1">
+          <h2 className="font-semibold text-foreground">Member print set-up</h2>
+          {s && (
+            <span className="text-xs text-muted-foreground">
+              {s.ready}/{s.total} ready · {s.withPin} with a PIN · {s.withPassword} with a portal password
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          A member is ready when they have a portal password (their Mobility Print login) and a PIN (copier release).
+          {pwUnknown && ' Password status unavailable — run papercut-has-password-schema.sql in Supabase.'}
+        </p>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search members…"
+          className="w-full max-w-xs border border-input rounded-md px-3 py-1.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        />
+      </div>
+
+      {roster === null ? (
+        <p className="px-5 pb-5 text-sm text-muted-foreground">Loading members…</p>
+      ) : filtered.length === 0 ? (
+        <p className="px-5 pb-5 text-sm text-muted-foreground">{rows.length === 0 ? 'No active members.' : 'No members match that search.'}</p>
+      ) : (
+        <div className="overflow-x-auto max-h-96 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-card">
+              <tr className="text-xs text-muted-foreground uppercase tracking-wide border-y border-border">
+                <th className="text-left font-medium px-5 py-2">Member</th>
+                <th className="text-left font-medium px-3 py-2">Company</th>
+                <th className="text-left font-medium px-3 py-2">Portal password</th>
+                <th className="text-left font-medium px-3 py-2">PIN</th>
+                <th className="text-right font-medium px-5 py-2">Print balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((m) => (
+                <tr key={m.email} className="border-b border-border last:border-0">
+                  <td className="px-5 py-2">
+                    <div className="text-foreground">{m.name}</div>
+                    <div className="text-xs text-muted-foreground">{m.email}</div>
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">{m.companyName || '—'}</td>
+                  <td className="px-3 py-2">
+                    {m.hasPassword === null ? <span className="text-muted-foreground">—</span>
+                      : m.hasPassword
+                        ? <span className="text-xs font-semibold text-green-700">● Set</span>
+                        : <span className="text-xs font-semibold text-amber-600">● Not set</span>}
+                  </td>
+                  <td className="px-3 py-2">
+                    {!m.pin ? <span className="text-xs text-amber-600">Not allocated</span>
+                      : shown[m.email]
+                        ? <span className="font-mono text-foreground">{m.pin}</span>
+                        : (
+                          <button
+                            onClick={() => setShown((p) => ({ ...p, [m.email]: true }))}
+                            className="font-mono text-muted-foreground hover:text-foreground"
+                          >
+                            •••• <span className="font-sans text-xs underline">show</span>
+                          </button>
+                        )}
+                  </td>
+                  <td className="px-5 py-2 text-right tabular-nums">
+                    {m.balance == null ? <span className="text-muted-foreground">—</span>
+                      : <span className={m.balance < 0 ? 'text-red-600' : 'text-foreground'}>A${Number(m.balance).toFixed(2)}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

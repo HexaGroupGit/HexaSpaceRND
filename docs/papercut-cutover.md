@@ -50,11 +50,15 @@ server — never here.
   **stopped + disabled** — otherwise the nightly ~21:32 prune deletes the ~226 accounts you just
   created within hours. The dry-run is always safe; only the live apply is gated on this. (This is
   why the connector-side auto-mode guardrail blocks the write until the prune-gate is lifted.)
-- Dry-run: `node provision-members.mjs` (APPLY unset) → review CREATE/ASSIGN/KEEP counts.
+- Dry-run: `node provision-members.mjs` (APPLY unset) → review CREATE/ASSIGN/RESTORE/KEEP counts
+  and the "Mobility Print sign-in" readiness line (who has no portal password).
 - Live: `PAPERCUT_PROVISION_APPLY=1 node provision-members.mjs` — creates users + auto-generates a
-  PIN (primary-card-number) at creation; backfills a PIN for any existing member missing one.
-- Verify: a newly-created member persists (no prune now), has a card, and appears in `member_pins`
-  after `node sync-pins.mjs`.
+  PIN (primary-card-number) at creation; backfills a PIN for any existing member missing one
+  (reusing the number Hexa already showed them, if any); then pushes every PIN back to
+  `/api/papercut/pins`.
+- Verify: a newly-created member persists (no prune now), has a card, and appears immediately in
+  the admin portal under **Settings → PaperCut → Member print set-up** (no separate sync needed —
+  run `node sync-pins.mjs` for the balance).
 - Schedule a nightly Task running `provision-members.mjs` so new signups get accounts.
 
 ## Phase 3 — restricted + overdraft + $30 quota (no cap) — GATED
@@ -117,6 +121,9 @@ a portal password." Drive to *that* number, not total signup:
    portal): `POST /api/papercut/has-password` with `{ emails: [...] }`, Bearer `PAPERCUT_SYNC_TOKEN`.
    Returns `missing` = active printers with **no** portal password. Backed by the SECURITY DEFINER
    fn `public.papercut_has_password` (`papercut-has-password-schema.sql` — run it in Supabase once).
+   For the whole-roster view (not just recent printers), `provision-members.mjs` prints the same
+   readiness from `/api/papercut/members`, and **Settings → PaperCut → Member print set-up** shows
+   it per member in the admin portal.
 3. Chase invites for the `missing` list only. Flip when it's empty (or holds only dormant
    non-printers). **Caveat:** print logs rotate at ~30 days, so quarterly/dormant printers aren't in
    the count — they're the tail you mop up AFTER the flip (rollback is one command), not a gate.
@@ -133,8 +140,29 @@ a portal password." Drive to *that* number, not total signup:
   with **no** portal password is correctly refused.
 - **Rollback:** point `auth.source.custom-program` back to `papercutauth.exe`, restart. Keep
   `papercutauth.exe` in place until confident.
-- (Known cosmetic: `auth-provider.mjs` prints a libuv teardown assertion on exit; stdout is
-  flushed first and PaperCut ignores the exit code. Harden later by draining stdin before exit.)
+
+### Two things that broke the real flip (4 Aug 2026) — both now fixed in the scripts
+Each of these refused **every** login while the direct pipe test passed, so test through the
+**actual** `:9191` / Mobility Print path, never only by piping into `auth-provider.mjs`.
+
+1. **PaperCut ENFORCES the exit code.** The earlier note here ("PaperCut ignores the exit code")
+   was wrong: it logs `Auth handler returned non-zero exit code: N` and refuses the login. The
+   provider previously exited **127** on the email path, because on Node 24 / Windows *any* HTTPS
+   request followed by `process.exit()` trips a libuv teardown assertion. It now writes its verdict
+   with `writeSync` and exits naturally — never call `process.exit()` in it again.
+2. **`node` must be invoked by ABSOLUTE PATH in `hexa-auth.cmd`.** PaperCut runs it as LocalSystem,
+   and a service inherits its environment from the SCM **as it stood at boot** — so a PATH entry
+   added since the last reboot is invisible even across a service restart. Checking the machine
+   PATH is NOT a valid test; the observed failure was `'node' is not recognized` with
+   `C:\Program Files\nodejs\` present in the machine PATH the whole time.
+
+**Diagnosing a refusal:** the provider returns one opaque `ERROR` for every failure by design (no
+enumeration oracle). Set `HEXA_AUTH_DEBUG=1` for a single manual run to get the failing stage on
+stderr — config read / username resolution / the Supabase HTTP status. It never prints the
+password. PaperCut does not set it, so it stays off in production.
+
+**Where the real answer is:** `server\logs\server.log` — search for `failed to authenticate`. That
+is what identified both bugs; the login screen only ever says "invalid password".
 
 ## Phase 6 — lockdown + post-cutover watch
 - Tighten the ACL on `providers\config.json` (holds cleartext OfficeRnD + API secrets) to
@@ -143,8 +171,19 @@ a portal password." Drive to *that* number, not total signup:
 - Confirm a fresh test signup gets a PaperCut account from the nightly provision task.
 - After a soak period, retire the OfficeRnD agent.
 
-## Validation status (as of go-live prep)
+## Validation status
+- ✅ **Phase 1 DONE (4 Aug 2026)** — `PaperCutCA` Stopped + Disabled. The OfficeRnD prune no longer
+  deletes provisioned accounts, so live provisioning is now safe.
+- ✅ **Phase 5 DONE (4 Aug 2026)** — `auth.source.custom-program` → `providers\hexa\hexa-auth.cmd`.
+  Verified end-to-end: a member signs in at `:9191` with their portal email + password. Straggler
+  check was clean beforehand (19 active printers in the last 31 days, all with portal passwords).
+  Rollback stays one command: `cutover.ps1 -Rollback`.
+- ✅ Phase 6 (partial) — `hexa-config.json` ACL'd to Administrators + SYSTEM.
 - ✅ PIN auto-created at provisioning · PIN + balance → `member_pins` → dashboard · restricted +
-  $30 produces a real balance · portal-credential login (positive + negative) · `index.mjs` reset
-  loop present and dry-run clean.
-- ⏳ Overdraft enablement · bulk restrict · auth switch (needs portal passwords) · scheduling.
+  $30 produces a real balance · `index.mjs` reset loop present and dry-run clean.
+- ⏳ **Phase 2 provisioning** — 246 active members still have no PaperCut account (304 users vs a
+  467-member roster). Blocked on deploying the portal's `/api/papercut/members`: until it serves
+  per-member `pin`, provisioning issues NEW numbers instead of restoring the 223 PINs already
+  displayed in members' apps. Sanity-check the 467 roster count before applying.
+- ⏳ Overdraft enablement (3A) · bulk restrict (3B) · scheduling (Phase 4) · retire
+  `papercutauth.exe` after a soak.
