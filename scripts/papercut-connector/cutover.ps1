@@ -50,16 +50,27 @@ function Assert-Elevated {
   }
 }
 
+# NO "2>&1" ON NATIVE EXES. In Windows PowerShell 5.1 that wraps stderr in
+# NativeCommandError records and sets $? to $false even on exit code 0, which
+# throws under $ErrorActionPreference='Stop'. It aborted cutover-usersource.ps1
+# on 5 Aug 2026 AFTER its smoke test had passed. Same trap, same fix here so
+# -Rollback cannot die the same way.
 function Get-Config([string]$key) {
   # server-command echoes the value on stdout; trim its trailing newline.
-  (& $ServerCmd get-config $key 2>&1 | Out-String).Trim()
+  (& $ServerCmd get-config $key | Out-String).Trim()
 }
 
+# Writes then READS BACK: server-command is native, so a failed write does not
+# throw in 5.1 - it silently does nothing and the caller believes it worked.
 function Set-Config([string]$key, [string]$value) {
   # An empty value must be passed explicitly as "" or server-command rejects it.
   $v = $value
   if ([string]::IsNullOrEmpty($v)) { $v = '""' }
   & $ServerCmd set-config $key $v | Out-Null
+  $now = Get-Config $key
+  if ($now -ne $value) {
+    throw "set-config did not take: '$key' is still '$now' (wanted '$value')."
+  }
 }
 
 Assert-Elevated

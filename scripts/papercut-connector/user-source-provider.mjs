@@ -95,6 +95,18 @@ function writeCache(data) {
 // Minimal XML-RPC (no deps), same approach as auth-provider.mjs.
 const escXml = (s) => String(s).replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]))
 
+// Values come back XML-ESCAPED and must be decoded before reuse. Without this,
+// "J & H Legal Pty Ltd" is read as "J &amp; H Legal Pty Ltd", re-escaped to
+// "&amp;amp;" on the next call, and PaperCut is asked about a group that does
+// not exist. 5 of 84 groups faulted this way on 5 Aug 2026 — and the same bug
+// would have written mangled full names into every synced record.
+// &amp; MUST be decoded LAST, or "&amp;lt;" would wrongly become "<".
+const unescXml = (s) => String(s)
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/&apos;/g, "'").replace(/&quot;/g, '"')
+  .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+  .replace(/&amp;/g, '&')
+
 // TYPES MATTER. api.listUserAccounts(offset, limit) takes INTEGERS, and if you
 // send them as <string> PaperCut does not fault — it returns an EMPTY LIST. Read
 // as "PaperCut has no users", that would make a sync look like every account had
@@ -112,7 +124,8 @@ async function pc(cfg, method, params) {
   })
   const text = await r.text()
   if (!r.ok || text.includes('<fault>')) throw new Error(`${method} fault`)
-  return [...text.matchAll(/<value>\s*(?:<(?:string|boolean|int|i4)>)?([^<]*)/g)].map((m) => m[1].trim()).filter((s) => s !== '')
+  return [...text.matchAll(/<value>\s*(?:<(?:string|boolean|int|i4)>)?([^<]*)/g)]
+    .map((m) => unescXml(m[1].trim())).filter((s) => s !== '')
 }
 
 // Build the directory: Hexa roster, plus (unless strict) everyone PaperCut
@@ -199,7 +212,7 @@ async function buildDirectory() {
     // back to the PIN Hexa has on record (available once the portal serves
     // per-member `pin`) for someone being created for the first time.
     const card = (already && existingDetails.get(already)?.card) || m.pin || ''
-    add(already || m.email, m.fullName, m.email, m.companyName || '', card)
+    add(already || pcUsernameFor(m.email), m.fullName, m.email, m.companyName || '', card)
   }
   const rosterCount = users.size
 
@@ -214,6 +227,45 @@ async function buildDirectory() {
       keptCount += 1
     }
   }
+
+  // 4. Groups PaperCut already has that the roster does not describe —
+  // "[Individual Members]", "[Users not linked to OfficeRnD]", old company
+  // names. A sync asks group-members for EVERY group it knows, and an empty
+  // answer empties the group. Group membership drives the restricted/quota
+  // rules, so carry these through exactly as they are.
+  let keptGroups = 0
+  if (!STRICT) {
+    try {
+      const names = []
+      for (let off = 0; ; off += 1000) {
+        const batch = (await pc(cfg, 'api.listUserGroups', [off, 1000])).filter((s) => s && !s.includes('<'))
+        names.push(...batch)
+        if (batch.length < 1000) break
+      }
+      for (const name of names) {
+        const members = []
+        for (let off = 0; ; off += 1000) {
+          const batch = (await pc(cfg, 'api.getGroupMembers', [name, off, 1000])).filter((s) => s && !s.includes('<'))
+          members.push(...batch)
+          if (batch.length < 1000) break
+        }
+        if (groups.has(name)) {
+          // A company the roster also describes: UNION rather than replace. The
+          // roster lists current members; PaperCut may hold ex-members whose
+          // group membership still drives their restricted/quota status.
+          // Returning roster-only would quietly evict them.
+          for (const m of members) groups.get(name).add(m)
+        } else {
+          groups.set(name, new Set(members))
+          keptGroups += 1
+        }
+      }
+    } catch (e) {
+      // Same rule as the user enumeration: never answer with a partial picture.
+      throw new Error(`could not enumerate existing PaperCut groups (refusing to answer and risk emptying them): ${e.message}`)
+    }
+  }
+  log(`groups: ${groups.size} total (${keptGroups} carried over from PaperCut)`)
   log(`roster members matched to an existing account: ${matchedExisting}, brand new: ${brandNew}`)
 
   // EMAIL ALIASES. A member whose account predates Hexa is canonically
@@ -240,11 +292,42 @@ async function buildDirectory() {
   return data
 }
 
+// A PaperCut username MUST NOT CONTAIN "@". PaperCut treats an @ as a domain
+// separator and truncates: hand it "scarlett@hexaspace.com.au" and it looks up
+// "scarlett", finds nothing, and reports "your account is not registered with
+// this system" — even though the account exists and the password was accepted.
+// (Diagnosed 5 Aug 2026; it is also why OfficeRnD named every account
+// user_domain.com. That convention was load-bearing, not cosmetic.)
+// The member still SIGNS IN with their email — auth-provider.mjs and the alias
+// map both resolve it to this username.
+const pcUsernameFor = (email) => String(email).replace('@', '_')
+
 const rec = (u) => [u.username, u.fullName, u.email, u.dept, '', u.card].join('\t')
 
+// The command names PaperCut MF 22 actually uses, learned from the invocation
+// log on 5 Aug 2026 rather than from the docs. Two surprises:
+//   1. Every call is prefixed with an option argument: ["-", "all-users"].
+//      The "-" is the field delimiter ("-" = default tab, which confirms the
+//      tab-delimited record format below).
+//   2. Commands have NO "get-" prefix: "group-members", not "get-group-members".
+// Both spellings are accepted so a different MF build cannot silently break it —
+// silence here means "this user does not exist", which is how accounts get
+// removed.
+const COMMANDS = new Set([
+  'all-users', 'all-groups', 'group-members', 'user-details', 'is-valid-user',
+  'user-groups', 'is-user-in-group',
+  'get-group-members', 'get-user-details', 'get-user-groups',
+])
+
 async function main() {
-  const [cmd, ...args] = process.argv.slice(2)
-  log(`INVOKED argv=${JSON.stringify(process.argv.slice(2))}`)
+  const argv = process.argv.slice(2)
+  log(`INVOKED argv=${JSON.stringify(argv)}`)
+
+  // Skip any leading option tokens (the delimiter arg) to find the command.
+  let i = 0
+  while (i < argv.length && !COMMANDS.has(argv[i])) i += 1
+  const cmd = argv[i]
+  const args = argv.slice(i + 1)
 
   const dir = await buildDirectory()
   // Resolve by canonical username first, then by email alias — so a member can
@@ -260,6 +343,7 @@ async function main() {
     case 'is-valid-user':
       out(find(args[0]) ? 'Y\n' : 'N\n'); break
 
+    case 'user-details':
     case 'get-user-details': {
       const u = find(args[0])
       if (u) out(rec(u) + '\n')
@@ -272,11 +356,13 @@ async function main() {
     case 'all-groups':
       out(dir.groups.map((g) => g.name).join('\n') + '\n'); break
 
+    case 'group-members':
     case 'get-group-members': {
       const g = dir.groups.find((x) => x.name === args[0])
       out((g ? g.members.join('\n') : '') + '\n'); break
     }
 
+    case 'user-groups':
     case 'get-user-groups': {
       const u = find(args[0])
       const mine = u ? dir.groups.filter((g) => g.members.some((m) => m.toLowerCase() === u.username.toLowerCase())) : []
@@ -292,7 +378,7 @@ async function main() {
       // An unrecognised command is the interesting case — it means the real
       // protocol differs from what is implemented above. Log it loudly; the
       // fix is to read this log, not to guess again.
-      log(`UNKNOWN COMMAND "${cmd}" — implement it. Full argv logged above.`)
+      log(`UNKNOWN COMMAND "${cmd}" - implement it. Full argv logged above.`)
       break
   }
   process.exitCode = 0

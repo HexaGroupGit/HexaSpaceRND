@@ -139,7 +139,14 @@ async function pc(cfg, method, params) {
   const text = await r.text()
   if (!r.ok || text.includes('<fault>')) throw new Error(`${method} fault`)
   const m = text.match(/<value>\s*(?:<(?:string|boolean|int|i4)>)?([^<]*)/)
-  return m ? m[1].trim() : ''
+  // Decode XML entities — a value read back escaped and then re-sent escaped
+  // again asks PaperCut about something that does not exist. &amp; must come
+  // last so "&amp;lt;" does not collapse to "<".
+  return m ? m[1].trim()
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&apos;/g, "'").replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/&amp;/g, '&') : ''
 }
 
 async function main() {
@@ -197,6 +204,23 @@ async function main() {
     // verdict, not a hiccup: let it unwind instead of validating a password we've
     // already refused.
     if (e === DONE) throw e
+  }
+
+  // NEVER hand PaperCut a username containing "@". It treats @ as a domain
+  // separator and truncates, so returning "scarlett@hexaspace.com.au" makes it
+  // look up "scarlett" and refuse with "your account is not registered with this
+  // system" — password correct, account present, still refused. Prefer the
+  // user_domain.com form when it exists (the convention OfficeRnD used, and the
+  // reason logins with legacy usernames work).
+  if (pcUsername.includes('@') && cfg.papercutAuthToken) {
+    const underscored = pcUsername.replace('@', '_')
+    const has = await pc(cfg, 'api.isUserExists', [underscored]).catch(() => '')
+    if (has === 'true' || has === '1') {
+      dbg(`  "${pcUsername}" contains @ which PaperCut truncates; using "${underscored}"`)
+      pcUsername = underscored
+    } else {
+      dbg(`  WARNING: returning "${pcUsername}" which contains @ — PaperCut will truncate it and refuse. Rename that account to "${underscored}".`)
+    }
   }
 
   // The actual gate: the member's portal (Supabase) email + password.

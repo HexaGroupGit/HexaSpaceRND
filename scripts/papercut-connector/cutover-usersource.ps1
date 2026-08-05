@@ -41,11 +41,25 @@ function Assert-Elevated {
     throw 'Not elevated. Right-click PowerShell, Run as Administrator, then re-run.'
   }
 }
-function Get-Config([string]$k) { (& $ServerCmd get-config $k 2>&1 | Out-String).Trim() }
+# NO "2>&1" ON NATIVE EXES. In Windows PowerShell 5.1, redirecting a native
+# command's stderr wraps each line in a NativeCommandError record and sets $? to
+# $false even when the exe exited 0 - and with $ErrorActionPreference='Stop'
+# that THROWS. It is what aborted this script's first run on 5 Aug 2026: the
+# smoke test had actually passed (the provider logged a clean directory build),
+# then the redirect threw before the config was ever written.
+function Get-Config([string]$k) { (& $ServerCmd get-config $k | Out-String).Trim() }
+
+# Writes the key then READS IT BACK. server-command is a native exe, so a failed
+# write does not throw in 5.1 - it just quietly does nothing, which would leave
+# the cutover half-applied and looking successful.
 function Set-Config([string]$k, [string]$v) {
   $val = $v
   if ([string]::IsNullOrEmpty($val)) { $val = '""' }
   & $ServerCmd set-config $k $val | Out-Null
+  $now = Get-Config $k
+  if ($now -ne $v) {
+    throw "set-config did not take: '$k' is still '$now' (wanted '$v'). Nothing else was changed."
+  }
 }
 
 Assert-Elevated
@@ -99,7 +113,7 @@ Write-Host ''
 
 # Prove the provider runs AS THE SERVICE WILL run it, before repointing anything.
 Write-Host 'Smoke test (running the wrapper exactly as PaperCut will)...' -ForegroundColor Cyan
-$probe = & (Join-Path $Dst 'hexa-usersource.cmd') is-valid-user 'eric@hexaspace.com.au' 2>&1
+$probe = & (Join-Path $Dst 'hexa-usersource.cmd') is-valid-user 'eric@hexaspace.com.au'
 Write-Host "  is-valid-user eric@hexaspace.com.au -> $probe"
 if ("$probe".Trim() -ne 'Y') {
   throw "Smoke test failed (expected Y, got '$probe'). NOT repointing the user source. Check C:\ProgramData\Hexa\papercut-usersource.log"
