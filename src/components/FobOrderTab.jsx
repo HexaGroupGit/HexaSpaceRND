@@ -7,15 +7,17 @@ import { fillMaxaFobForm, toBase64 } from '../lib/maxaFobForm.js'
 // Fob Order — orders new FOBs/REMOTEs from the building manager. Fills out
 // MAXA's official order form (828 Whitehorse Rd — Panorama Box Hill) as a PDF
 // and emails it to Maxa OC + Pro Facility Management, cc'ing the Hexa team.
-// Pricing is fixed by the form: FOB $49.10 · REMOTE $94.60 · $33.00 admin
-// charge per order (all incl. GST).
+// Pricing is fixed by the form. Per MAXA's 2026 revision (issued 01/07/2026):
+// FOB $53.50 · REMOTE $98.70 · $33.00 admin charge per order (all incl. GST).
+// Was $49.10 / $94.60 on the 2025 form. Keep these in step with
+// public/forms/maxa-fob-order.pdf — the emailed PDF is that form overlaid.
 
-export const FOB_PRICE = 49.10
-export const REMOTE_PRICE = 94.60
+export const FOB_PRICE = 53.50
+export const REMOTE_PRICE = 98.70
 export const ADMIN_CHARGE = 33.00
 
 const TO = ['info@maxaoc.com.au', 'pbh@profacilitymanagement.com.au']
-const CC = ['eric@hexaspace.com.au', 'info@hexaspace.com.au', 'scarlett@hexaspace.com.au', 'brittany@hexaspace.com.au']
+const CC = ['eric@hexaspace.com.au', 'info@hexaspace.com.au', 'scarlett@hexaspace.com.au', 'brittany@hexaspace.com.au', 'admin@hexa.com.au']
 
 const money = (n) => `$${Number(n).toFixed(2)}`
 const inp = 'w-full border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40'
