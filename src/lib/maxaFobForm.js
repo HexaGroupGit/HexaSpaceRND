@@ -5,6 +5,14 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 // maxa-fob-order.pdf — by overlaying the order values at the form's
 // coordinates (it's a flat PDF with no AcroForm fields). Coordinates are in
 // PDF points, origin bottom-left, A4 595×842.
+//
+// Currently aligned to MAXA's 2026 form (issued 01/07/2026). If they reissue it
+// again, the fix is usually a uniform vertical shift — the 2026 revision has a
+// taller letterhead and sits 8.5pt lower than the 2025 one, with every x
+// unchanged. Re-measure by dumping text positions with pdfjs-dist
+// (page.getTextContent() → item.transform[4], [5]) and compare the anchors
+// "Owner/Agent Name:", "$53.50", "$98.70" and "TOTAL COST" against the values
+// below.
 
 const INK = rgb(0.1, 0.1, 0.35) // handwriting-blue so entries read as filled-in
 
@@ -21,21 +29,21 @@ export async function fillMaxaFobForm(templateBytes, f, totals) {
     page.drawText(String(text), { x, y, size: opts.size ?? 10, font: opts.bold ? bold : font, color: INK })
 
   // Details block
-  put(f.lot, 222, 479, { bold: true })                       // gap in "U __ /828 Whitehorse Rd"
+  put(f.lot, 222, 470.5, { bold: true })                     // gap in "U __ /828 Whitehorse Rd"
   const circle = (x, y) => page.drawEllipse({ x, y, xScale: 7, yScale: 6.5, borderColor: INK, borderWidth: 1.2 })
-  if (f.requester === 'owner') circle(215, 462)              // Y in owner Y/N
-  else circle(229, 462)                                      // N in owner Y/N
-  if (f.requester === 'agent') circle(474, 462)              // Y in agent Y/N
-  else circle(487, 462)                                      // N in agent Y/N
-  put(f.name, 158, 446)
-  put(f.phone, 198, 426)
-  put(f.reason, 155, 406, { size: 9 })
+  if (f.requester === 'owner') circle(215, 453.5)            // Y in owner Y/N
+  else circle(229, 453.5)                                    // N in owner Y/N
+  if (f.requester === 'agent') circle(474, 453.5)            // Y in agent Y/N
+  else circle(487, 453.5)                                    // N in agent Y/N
+  put(f.name, 158, 437.5)
+  put(f.phone, 198, 417.5)
+  put(f.reason, 155, 397.5, { size: 9 })
 
   // Items table — quantity + line totals + grand total (form pre-prints the
   // "$" on the TOTAL COST row, so that one is written bare).
-  if (f.fobs > 0) { put(f.fobs, 448, 217, { bold: true }); put(money(totals.fobs), 505, 217) }
-  if (f.remotes > 0) { put(f.remotes, 448, 169, { bold: true }); put(money(totals.remotes), 505, 169) }
-  put(Number(totals.total).toFixed(2), 512, 85, { bold: true, size: 11 })
+  if (f.fobs > 0) { put(f.fobs, 448, 208.5, { bold: true }); put(money(totals.fobs), 505, 208.5) }
+  if (f.remotes > 0) { put(f.remotes, 448, 160.5, { bold: true }); put(money(totals.remotes), 505, 160.5) }
+  put(Number(totals.total).toFixed(2), 512, 76.5, { bold: true, size: 11 })
 
   return doc.save() // Uint8Array
 }
