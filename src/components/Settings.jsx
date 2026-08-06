@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { authHeaders } from '../lib/apiFetch.js'
 import { useOutletContext } from 'react-router-dom'
-import { Plus, Trash2, Check } from 'lucide-react'
+import { Plus, Trash2, Check, Download, ExternalLink, Laptop, Smartphone } from 'lucide-react'
 import { XERO_ACCOUNTS, DEFAULT_XERO_ACCOUNTS } from './spaces/shared.jsx'
 import { xeroStatus, connectXero, disconnectXero, xeroSync } from '../lib/xero.js'
 import { PERK_TIER_DEFAULTS, PERK_TIER_ORDER, AFTER_HOURS_DEFAULTS } from '../lib/credits.js'
@@ -1676,7 +1676,12 @@ function StripeSection({ settings, updateSettings }) {
 }
 
 // ── PaperCut Integration ──────────────────────────────────────────────────────
+// Which desktop OS is this browser on? Drives which installer we lead with —
+// same detection the member portal uses on its Printer Setup guide.
+const IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent)
+
 function PaperCutSection() {
+  const [tab, setTab] = useState('status')
   const [st, setSt] = useState(null)
   const [roster, setRoster] = useState(null)   // per-member print set-up (admin-only)
   const [q, setQ] = useState('')
@@ -1719,6 +1724,21 @@ function PaperCutSection() {
         Print billing and member accounts. Members are provisioned into PaperCut, their PIN shows in the app &amp; portal, and monthly print overage above the $30 allowance is billed onto their invoice.
       </p>
 
+      <TabBar
+        tabs={[['status', 'Status & Members'], ['download', 'Printer Download']]}
+        active={tab}
+        onSelect={setTab}
+      />
+
+      {tab === 'download' ? <PrinterDownload /> : <PaperCutStatusTab {...{ st, linked, pinsOk, fmt, money, roster, q, setQ, shown, setShown }} />}
+    </div>
+  )
+}
+
+// Status + member roster — the original PaperCut panel, now behind its own tab.
+function PaperCutStatusTab({ st, linked, pinsOk, fmt, money, roster, q, setQ, shown, setShown }) {
+  return (
+    <>
       {/* Status card */}
       <div className="border border-border rounded-md p-5 mb-6 text-sm">
         {st === null ? (
@@ -1750,7 +1770,114 @@ function PaperCutSection() {
         <p>A member signs in to PaperCut Mobility Print with their <strong>Hexa portal email and password</strong> — so anyone without a portal password can't sign in to the print client (card release at the copier still works). At the copier they type the PIN above.</p>
         <p>Runs on the LAN because PaperCut's API isn't reachable from the cloud. The connector authenticates to PaperCut with its own token and to Hexa with the shared sync token.</p>
       </div>
+    </>
+  )
+}
+
+// Printer Download — the same installers members get on the portal
+// (Guides → Printer Setup), so staff can set up their own laptop without
+// digging through the member portal. Files are the ones in public/downloads.
+function PrinterDownload() {
+  const mac = { href: '/downloads/hexa-printer-mac.dmg', label: 'Download for Mac', sub: 'hexa-printer-mac.dmg · macOS' }
+  const win = { href: '/downloads/hexa-printer-windows.exe', label: 'Download for Windows', sub: 'hexa-printer-windows.exe · Windows 10/11' }
+  const [primary, secondary] = IS_MAC ? [mac, win] : [win, mac]
+
+  return (
+    <div>
+      {/* Laptop / desktop — lead with the installer for the OS we detect */}
+      <div className="border border-border rounded-md p-5 mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Laptop size={16} className="text-muted-foreground" />
+          <h2 className="font-semibold text-foreground">Print from your laptop</h2>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          PaperCut Mobility Print · adds the “Hexa-Secure” printers · {IS_MAC ? 'Mac detected' : 'Windows detected'}
+        </p>
+
+        <div className="flex flex-wrap gap-3 mb-5">
+          <a
+            href={primary.href}
+            download
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-md font-medium hover:bg-blue-700"
+          >
+            <Download size={14} /> {primary.label}
+          </a>
+          <a
+            href={secondary.href}
+            download
+            className="inline-flex items-center gap-2 px-4 py-2 border border-input text-foreground text-sm rounded-md font-medium hover:bg-muted/50"
+          >
+            <Download size={14} /> {secondary.label}
+          </a>
+        </div>
+        <p className="text-xs text-muted-foreground mb-5">{primary.sub} · {secondary.sub}</p>
+
+        <NumberedSteps items={[
+          'Connect to the “Hexa Spaces” Wi-Fi — the print server only answers on the Box Hill LAN.',
+          'Download and run the installer above, then follow the prompts.',
+          'The “Hexa-Secure” printer is added automatically — print to it like any other printer.',
+          'The first time you print, sign in with your Hexa portal email and password (just once).',
+          'Release the job at any printer by keying in your ID (print PIN) on the keypad.',
+        ]} />
+
+        <p className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border">
+          Sign-in is the portal password, not a separate PaperCut one. Staff print from their own member record —
+          check yours appears under <strong className="text-foreground">Status &amp; Members</strong> with a password and a PIN before installing.
+        </p>
+      </div>
+
+      {/* Phone / tablet — same links the portal serves members */}
+      <div className="border border-border rounded-md p-5 mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Smartphone size={16} className="text-muted-foreground" />
+          <h2 className="font-semibold text-foreground">Print from your phone or tablet</h2>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">iPhone, iPad &amp; Android</p>
+        <div className="flex flex-wrap gap-3">
+          <a
+            href="/downloads/hexa-printer-ios.mobileconfig"
+            download
+            className="inline-flex items-center gap-2 px-4 py-2 border border-input text-foreground text-sm rounded-md font-medium hover:bg-muted/50"
+          >
+            <Download size={14} /> iPhone / iPad printer profile
+          </a>
+          <a
+            href="https://play.google.com/store/apps/details?id=com.papercut.projectbanksia&referrer=server=172.16.200.14"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 border border-input text-foreground text-sm rounded-md font-medium hover:bg-muted/50"
+          >
+            <ExternalLink size={14} /> Android print app
+          </a>
+        </div>
+      </div>
+
+      <div className="border border-border rounded-md p-5 text-sm text-muted-foreground space-y-2">
+        <p className="font-medium text-foreground">Sending this to a member</p>
+        <p>
+          Members get the same installers on the portal under Guides → Printer Setup, with their own PIN and balance on the Printing tab.
+          Direct links you can paste into a ticket or email:{' '}
+          <code className="text-foreground">portal.hexaspace.com.au/downloads/hexa-printer-windows.exe</code> and{' '}
+          <code className="text-foreground">portal.hexaspace.com.au/downloads/hexa-printer-mac.dmg</code>.
+        </p>
+        <p>
+          The Level 2 Canon printers are a separate system (uniFlow Online) with its own PIN and driver — that guide lives on the member portal.
+        </p>
+      </div>
     </div>
+  )
+}
+
+function NumberedSteps({ items }) {
+  return (
+    <ol className="space-y-2.5">
+      {items.map((step, i) => (
+        <li key={i} className="flex gap-3 text-sm text-muted-foreground">
+          <span className="shrink-0 w-5 h-5 rounded-full bg-muted text-foreground text-[11px] font-semibold grid place-items-center mt-0.5">{i + 1}</span>
+          <span>{step}</span>
+        </li>
+      ))}
+    </ol>
   )
 }
 
