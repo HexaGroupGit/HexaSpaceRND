@@ -3,8 +3,10 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Page, PageHeader, Card, Eyebrow } from './ui.jsx'
 
-// Which desktop OS is this browser on? Drives which installer we lead with.
-const IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent)
+// No OS detection here on purpose — the print server's /setup page reads the
+// user-agent and serves the matching installer, so guessing ourselves could only
+// disagree with it (e.g. a member reading this on their phone while setting up
+// a laptop).
 
 // The on-prem Mobility Print server. Reachable ONLY from the Hexa network —
 // every client has this address baked in and there is no public endpoint, which
@@ -13,12 +15,15 @@ const IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent)
 // the same host as its setup referrer.
 const PRINT_SERVER_HOST = '172.16.200.14'
 const PRINT_SERVER_URL = `http://${PRINT_SERVER_HOST}:9163`
-// The server's own per-OS setup pages. Each hands out the CURRENT build - the
-// Mac client is not even stored on the server's disk, it is generated on
-// request, so a file we bundle goes stale silently (on 6 Aug 2026 the server
-// served macOS 1.0.825 while our bundled copy was 1.0.78).
-const WINDOWS_SETUP_URL = `${PRINT_SERVER_URL}/setup`
-const MAC_SETUP_URL = `${PRINT_SERVER_URL}/client-setup/known-host/macos.html`
+// ONE link for every device. /setup reads the browser's user-agent and serves
+// the matching page - verified 6 Aug 2026 against Windows, macOS, iOS and
+// Android agents. So we do NOT detect the OS ourselves: the server does it, and
+// our guess can only add a way to get it wrong.
+//
+// It also always hands out the CURRENT build. The macOS client is not stored on
+// the server's disk at all - it is generated on request - so any copy we bundle
+// goes stale silently (the server was serving 1.0.825 while ours was 1.0.78).
+const PRINT_SETUP_URL = `${PRINT_SERVER_URL}/setup`
 
 const GUIDES = [
   { icon: CalendarClock, title: 'Book a meeting room', body: 'Browse rooms under Meeting Rooms and book your time — it confirms instantly, and door access activates 15 minutes before you start.' },
@@ -69,7 +74,7 @@ export default function PortalGuides({ member }) {
 
       <div className="grid gap-px bg-ink/10 mt-4">
         {/* Laptop / desktop — lead with the installer for the OS we detect */}
-        <MethodCard icon={Laptop} title="Print from your laptop" subtitle={`Windows & Mac · “Hexa-Secure” printers${IS_MAC ? ' · Mac detected' : ' · Windows detected'}`}>
+        <MethodCard icon={Laptop} title="Print from your laptop" subtitle="Windows &amp; Mac · “Hexa-Secure” printers">
           {/* Lead with the print server's OWN download page, not the bundled
               copies below. Two reasons. It always serves the current build —
               Mobility Print updates itself, so a file we bundled months ago
@@ -79,23 +84,13 @@ export default function PortalGuides({ member }) {
               the printers live on this network and the client has our server's
               address baked in, which is exactly the "failed to retrieve printer
               list" case. Better to find that out before they install anything. */}
-          <div className="flex flex-wrap gap-3 mb-3">
-            {IS_MAC ? (
-              <>
-                <a href={MAC_SETUP_URL} target="_blank" rel="noreferrer" className="hx-btn inline-flex items-center gap-2"><ExternalLink size={13} /> Set up on Mac</a>
-                <a href={WINDOWS_SETUP_URL} target="_blank" rel="noreferrer" className="hx-btn-ghost inline-flex items-center gap-2"><ExternalLink size={13} /> Windows</a>
-              </>
-            ) : (
-              <>
-                <a href={WINDOWS_SETUP_URL} target="_blank" rel="noreferrer" className="hx-btn inline-flex items-center gap-2"><ExternalLink size={13} /> Set up on Windows</a>
-                <a href={MAC_SETUP_URL} target="_blank" rel="noreferrer" className="hx-btn-ghost inline-flex items-center gap-2"><ExternalLink size={13} /> Mac</a>
-              </>
-            )}
-          </div>
+          <a href={PRINT_SETUP_URL} target="_blank" rel="noreferrer" className="hx-btn inline-flex items-center gap-2 mb-3">
+            <ExternalLink size={13} /> Set up printing on this device
+          </a>
           <p className="hx-prose text-[13px] mb-5">
-            These open our print server, which gives you the current installer for your laptop.
-            <strong> If the page doesn’t load, you’re not on the Hexa network</strong> — switch Wi-Fi and try
-            again rather than reinstalling.
+            Works on Windows, Mac, iPhone, iPad and Android — the page gives you the right installer for
+            whatever you’re on. <strong>If it doesn’t load, you’re not on the Hexa Wi-Fi</strong> — switch
+            network and try again rather than reinstalling.
           </p>
           <Steps items={[
             'Connect to the “Hexa Spaces” Wi-Fi network — printing only works on it.',
