@@ -17,9 +17,29 @@ export function platform() {
   return 'web'
 }
 
+// The on-prem Mobility Print server. Reachable ONLY from the Hexa network:
+// every client has this address baked in and there is no public endpoint, which
+// is why "failed to retrieve printer list" is nearly always the wrong Wi-Fi
+// rather than a broken install.
+export const PRINT_SERVER_HOST = '172.16.200.14'
+export const PRINT_SERVER_URL = `http://${PRINT_SERVER_HOST}:9163`
+
+// Send laptops to the server's OWN setup pages, not to a file we bundled.
+// Mobility Print updates itself, and the Mac client is not even kept on disk
+// here - the server generates it on request. On 6 Aug 2026 it served macOS
+// 1.0.825 while public/downloads/hexa-printer-mac.dmg was still 1.0.78.
+// These pages always hand out the current build, and because the server is
+// LAN-only, the page loading at all proves the member is on the right network.
+// NOTE: absolute URLs - do NOT pass these through apiUrl(), which prefixes
+// relative paths with the portal origin.
+export const WINDOWS_PRINT_SETUP = `${PRINT_SERVER_URL}/setup`
+export const MAC_PRINT_SETUP = `${PRINT_SERVER_URL}/client-setup/known-host/macos.html`
+
 // Store / profile links for Mobility Print, per platform.
-export const ANDROID_PRINT_APP = 'https://play.google.com/store/apps/details?id=com.papercut.projectbanksia&referrer=server=172.16.200.14'
+export const ANDROID_PRINT_APP = `https://play.google.com/store/apps/details?id=com.papercut.projectbanksia&referrer=server=${PRINT_SERVER_HOST}`
 export const IOS_PRINT_PROFILE = '/downloads/hexa-printer-ios.mobileconfig'
+// Bundled fallbacks, served by the portal. Kept for anyone who cannot open the
+// setup pages above; refresh them with scripts/papercut-connector/refresh-print-installers.mjs.
 export const WINDOWS_PRINT_INSTALLER = '/downloads/hexa-printer-windows.exe'
 export const MAC_PRINT_INSTALLER = '/downloads/hexa-printer-mac.dmg'
 

@@ -6,6 +6,20 @@ import { Page, PageHeader, Card, Eyebrow } from './ui.jsx'
 // Which desktop OS is this browser on? Drives which installer we lead with.
 const IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent)
 
+// The on-prem Mobility Print server. Reachable ONLY from the Hexa network —
+// every client has this address baked in and there is no public endpoint, which
+// is why "failed to retrieve printer list" is nearly always a Wi-Fi problem
+// rather than a broken install. Defined once: the Android app link below passes
+// the same host as its setup referrer.
+const PRINT_SERVER_HOST = '172.16.200.14'
+const PRINT_SERVER_URL = `http://${PRINT_SERVER_HOST}:9163`
+// The server's own per-OS setup pages. Each hands out the CURRENT build - the
+// Mac client is not even stored on the server's disk, it is generated on
+// request, so a file we bundle goes stale silently (on 6 Aug 2026 the server
+// served macOS 1.0.825 while our bundled copy was 1.0.78).
+const WINDOWS_SETUP_URL = `${PRINT_SERVER_URL}/setup`
+const MAC_SETUP_URL = `${PRINT_SERVER_URL}/client-setup/known-host/macos.html`
+
 const GUIDES = [
   { icon: CalendarClock, title: 'Book a meeting room', body: 'Browse rooms under Meeting Rooms and book your time — it confirms instantly, and door access activates 15 minutes before you start.' },
   { icon: Receipt, title: 'View & download invoices', body: 'Every invoice lives under Billing → Invoices. Download a PDF any time, and check your next bill under Membership.' },
@@ -56,26 +70,45 @@ export default function PortalGuides({ member }) {
       <div className="grid gap-px bg-ink/10 mt-4">
         {/* Laptop / desktop — lead with the installer for the OS we detect */}
         <MethodCard icon={Laptop} title="Print from your laptop" subtitle={`Windows & Mac · “Hexa-Secure” printers${IS_MAC ? ' · Mac detected' : ' · Windows detected'}`}>
-          <div className="flex flex-wrap gap-3 mb-5">
+          {/* Lead with the print server's OWN download page, not the bundled
+              copies below. Two reasons. It always serves the current build —
+              Mobility Print updates itself, so a file we bundled months ago
+              drifts out of date. And because the server is only reachable from
+              the Hexa network, the page loading at all PROVES the member is on
+              the right Wi-Fi. If it does not load, no installer will help them:
+              the printers live on this network and the client has our server's
+              address baked in, which is exactly the "failed to retrieve printer
+              list" case. Better to find that out before they install anything. */}
+          <div className="flex flex-wrap gap-3 mb-3">
             {IS_MAC ? (
               <>
-                <a href="/downloads/hexa-printer-mac.dmg" download className="hx-btn inline-flex items-center gap-2"><Download size={13} /> Download for Mac</a>
-                <a href="/downloads/hexa-printer-windows.exe" download className="hx-btn-ghost inline-flex items-center gap-2"><Download size={13} /> Windows installer</a>
+                <a href={MAC_SETUP_URL} target="_blank" rel="noreferrer" className="hx-btn inline-flex items-center gap-2"><ExternalLink size={13} /> Set up on Mac</a>
+                <a href={WINDOWS_SETUP_URL} target="_blank" rel="noreferrer" className="hx-btn-ghost inline-flex items-center gap-2"><ExternalLink size={13} /> Windows</a>
               </>
             ) : (
               <>
-                <a href="/downloads/hexa-printer-windows.exe" download className="hx-btn inline-flex items-center gap-2"><Download size={13} /> Download for Windows</a>
-                <a href="/downloads/hexa-printer-mac.dmg" download className="hx-btn-ghost inline-flex items-center gap-2"><Download size={13} /> Mac installer</a>
+                <a href={WINDOWS_SETUP_URL} target="_blank" rel="noreferrer" className="hx-btn inline-flex items-center gap-2"><ExternalLink size={13} /> Set up on Windows</a>
+                <a href={MAC_SETUP_URL} target="_blank" rel="noreferrer" className="hx-btn-ghost inline-flex items-center gap-2"><ExternalLink size={13} /> Mac</a>
               </>
             )}
           </div>
+          <p className="hx-prose text-[13px] mb-5">
+            These open our print server, which gives you the current installer for your laptop.
+            <strong> If the page doesn’t load, you’re not on the Hexa network</strong> — switch Wi-Fi and try
+            again rather than reinstalling.
+          </p>
           <Steps items={[
-            'Connect to the “Hexa Spaces” Wi-Fi network.',
-            'Download and run the installer above, then follow the prompts.',
+            'Connect to the “Hexa Spaces” Wi-Fi network — printing only works on it.',
+            'Open the setup page above and run the installer it offers.',
             'The “Hexa-Secure” printer is added automatically — print to it like any other printer.',
             'The first time you print, sign in with your Hexa Space email and password (just once).',
             'Release your job at any printer by keying in your ID (print PIN) on the keypad.',
           ]} />
+          <p className="hx-prose text-[13px] mt-4">
+            <strong>“Failed to retrieve printer list”?</strong> That means your laptop can’t reach the print
+            server — almost always the wrong Wi-Fi or a guest network. Open {PRINT_SERVER_URL} in a browser:
+            if it doesn’t load, that’s the problem, and reinstalling won’t fix it.
+          </p>
         </MethodCard>
 
         {/* Phone / tablet */}
@@ -89,7 +122,7 @@ export default function PortalGuides({ member }) {
             'Release at any printer by keying in your ID (print PIN).',
           ]} />
           <p className="hx-eyebrow mb-2 mt-6">Android</p>
-          <a href="https://play.google.com/store/apps/details?id=com.papercut.projectbanksia&referrer=server=172.16.200.14" target="_blank" rel="noreferrer" className="hx-btn inline-flex items-center gap-2 mb-4"><ExternalLink size={13} /> Get the Android print app</a>
+          <a href={`https://play.google.com/store/apps/details?id=com.papercut.projectbanksia&referrer=server=${PRINT_SERVER_HOST}`} target="_blank" rel="noreferrer" className="hx-btn inline-flex items-center gap-2 mb-4"><ExternalLink size={13} /> Get the Android print app</a>
           <Steps items={[
             'Install the app above (it comes pre-set to our print server), then connect to the “Hexa Spaces” Wi-Fi.',
             'Print as usual and pick the “Hexa-Secure” printer.',

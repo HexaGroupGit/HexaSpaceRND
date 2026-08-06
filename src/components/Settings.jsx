@@ -1676,6 +1676,11 @@ function StripeSection({ settings, updateSettings }) {
 }
 
 // ── PaperCut Integration ──────────────────────────────────────────────────────
+// The on-prem Mobility Print server. LAN-only: every client has this address
+// baked in and there is no public endpoint, so these pages only open from the
+// Hexa network. Same host the member portal uses.
+const PRINT_SERVER_URL = 'http://172.16.200.14:9163'
+
 function PaperCutSection() {
   const [st, setSt] = useState(null)
   const [roster, setRoster] = useState(null)   // per-member print set-up (admin-only)
@@ -1743,6 +1748,34 @@ function PaperCutSection() {
       {/* Per-member print set-up: portal password (their Mobility Print sign-in)
           + the PIN they release with at the copier. Admin-only endpoint. */}
       <MemberPrintSetup roster={roster} q={q} setQ={setQ} shown={shown} setShown={setShown} />
+
+      {/* Front-desk copy of the member setup links. Staff get asked "how do I
+          install the printer?" constantly, and these are the same pages the
+          member portal points to. Deliberately the SERVER's pages rather than a
+          bundled installer: it always hands out the current build (the Mac
+          client is generated on request and is not stored on disk), and because
+          the server is LAN-only, the page failing to load IS the diagnosis -
+          the member is on the wrong Wi-Fi, which is what "failed to retrieve
+          printer list" means. */}
+      <div className="border border-border rounded-md p-5 mb-6 text-sm">
+        <p className="font-medium text-foreground mb-1">Set up a member's laptop</p>
+        <p className="text-muted-foreground mb-3">
+          Send them these, or open them on their machine. They must be on the Hexa Wi-Fi — if the page
+          doesn't load, that's the problem, and reinstalling won't fix it.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <a href={`${PRINT_SERVER_URL}/setup`} target="_blank" rel="noreferrer"
+            className="text-xs border border-input rounded px-2.5 py-1.5 hover:bg-muted/50 text-foreground">Windows setup page</a>
+          <a href={`${PRINT_SERVER_URL}/client-setup/known-host/macos.html`} target="_blank" rel="noreferrer"
+            className="text-xs border border-input rounded px-2.5 py-1.5 hover:bg-muted/50 text-foreground">Mac setup page</a>
+          <a href={`${PRINT_SERVER_URL}/client-setup/known-host/ios.html`} target="_blank" rel="noreferrer"
+            className="text-xs border border-input rounded px-2.5 py-1.5 hover:bg-muted/50 text-foreground">iPhone / iPad</a>
+          <a href={`${PRINT_SERVER_URL}/client-setup/known-host/android.html`} target="_blank" rel="noreferrer"
+            className="text-xs border border-input rounded px-2.5 py-1.5 hover:bg-muted/50 text-foreground">Android</a>
+          <a href={`${PRINT_SERVER_URL}/client-setup/known-host/chrome.html`} target="_blank" rel="noreferrer"
+            className="text-xs border border-input rounded px-2.5 py-1.5 hover:bg-muted/50 text-foreground">Chromebook</a>
+        </div>
+      </div>
 
       <div className="border border-border rounded-md p-5 text-sm text-muted-foreground space-y-2">
         <p className="font-medium text-foreground">How it works</p>
