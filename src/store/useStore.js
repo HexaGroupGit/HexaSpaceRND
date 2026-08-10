@@ -1363,7 +1363,10 @@ export function useStore() {
   // ── Bookings ──────────────────────────────────────────────────────────────
   const addBooking = useCallback((booking) => {
     const ref = Array.from({ length: 7 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('')
-    const item = { reference: ref, ...booking, id: `bk${Date.now()}`, createdAt: new Date().toISOString() }
+    // Random suffix, not Date.now() alone: a multi-session function confirm adds
+    // one booking per session in the same tick, and identical ids collapse into a
+    // single row when syncRow upserts them on the primary key.
+    const item = { reference: ref, ...booking, id: `bk${Date.now()}${Math.random().toString(36).slice(2, 6)}`, createdAt: new Date().toISOString() }
 
     // Charge the company for admin-created bookings, exactly like the portal:
     // deduct the monthly credit pool; any overage becomes a Booking Fee on the

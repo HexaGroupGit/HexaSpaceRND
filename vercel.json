@@ -21,6 +21,10 @@
   ],
   "crons": [
     {
+      "path": "/api/xero/sync?action=push",
+      "schedule": "20 * * * *"
+    },
+    {
       "path": "/api/xero/sync",
       "schedule": "45 * * * *"
     },

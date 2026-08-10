@@ -107,8 +107,12 @@ async function ensureContact(supabase, tenant, dryRun) {
 }
 
 export default async function handler(req, res) {
-  // GET = the scheduled auto-pull cron (marks platform invoices paid when
-  // they've been reconciled in Xero); POST = the Settings UI actions.
+  // GET = a scheduled cron; POST = the Settings UI actions.
+  // Two crons hit this route (see vercel.json): ?action=push sends newly raised
+  // invoices to Xero, restates edited ones and voids cancelled ones; the
+  // default pull marks platform invoices paid once Xero reconciles them.
+  // The push runs earlier in the hour so the pull that follows can settle
+  // anything it just created.
   const isCron = req.method === 'GET'
   if (req.method !== 'POST' && !isCron) return res.status(405).json({ error: 'Method not allowed' })
 
@@ -117,7 +121,9 @@ export default async function handler(req, res) {
   const _g = await requireCronOrAdmin(req)
   if (!_g.ok) return res.status(_g.status).json({ error: _g.error })
 
-  const { action = 'push', dryRun = false } = isCron ? { action: 'pull', dryRun: false } : (req.body ?? {})
+  const { action = 'push', dryRun = false } = isCron
+    ? { action: req.query?.action === 'push' ? 'push' : 'pull', dryRun: false }
+    : (req.body ?? {})
 
   try {
     const supabase = getSupabase()
@@ -141,9 +147,10 @@ export default async function handler(req, res) {
       return res.status(isCron ? 200 : 403).json(isCron ? { skipped: msg } : { error: msg })
     }
     if (!dryRun && action !== 'pull' && !syncEnabled) {
-      return res.status(403).json({
-        error: `Xero sync is switched OFF in Settings (planned go-live ${syncFrom}). Run a dry run to preview, or enable sync first.`,
-      })
+      // Same as the pull above: a cron must not register as a failure just
+      // because sync is still switched off.
+      const msg = `Xero sync is switched OFF in Settings (planned go-live ${syncFrom}). Run a dry run to preview, or enable sync first.`
+      return res.status(isCron ? 200 : 403).json(isCron ? { skipped: msg } : { error: msg })
     }
 
     const [invoices, tenants, leases, spaces] = await Promise.all([
@@ -386,7 +393,7 @@ export default async function handler(req, res) {
     }
 
     const taxRate = settings.billingRules?.taxEnabled !== false
-    const results = { pushed: [], linked: [], errors: [], skipped }
+    const results = { pushed: [], linked: [], restated: [], voided: [], errors: [], skipped }
 
     // Xero UPSERTS POST /Invoices by InvoiceNumber — if the number already
     // exists there (an earlier push that never got xeroInvoiceId stamped back,
@@ -424,48 +431,124 @@ export default async function handler(req, res) {
     }
     const toPush = eligible.filter((i) => !adopted.has(i.number) && !taken.has(i.number))
 
-    // Build payloads (and resolve contacts) invoice by invoice.
-    const payloads = []
-    for (const inv of toPush) {
+    // The Xero ACCREC payload for one platform invoice. Shared by the create
+    // path and the restate path below, so an edited invoice lands in Xero
+    // exactly as a freshly pushed one would.
+    const buildInvoicePayload = async (inv) => {
       const tenant = tenants.find((t) => t.id === inv.tenantId)
-      if (!tenant) { results.errors.push({ number: inv.number, error: 'No tenant on platform' }); continue }
+      if (!tenant) throw new Error('No tenant on platform')
       const lease = leases.find((l) => l.id === inv.leaseId)
       const space = spaces.find((s) => s.id === lease?.spaceId)
-
-      let contactId = null
-      try {
-        contactId = await ensureContact(supabase, tenant, dryRun)
-      } catch (err) {
-        results.errors.push({ number: inv.number, error: err.message })
-        continue
-      }
+      const contactId = await ensureContact(supabase, tenant, dryRun)
 
       // Security deposits are never a taxable supply while held — force
       // GST-exempt regardless of the invoice's vatEnabled flag.
       const taxType = inv.invoiceType === 'deposit' ? 'EXEMPTOUTPUT'
         : (taxRate && inv.vatEnabled !== false ? 'OUTPUT' : 'EXEMPTOUTPUT')
-      payloads.push({
-        inv,
-        xero: {
-          Type: 'ACCREC',
-          Contact: dryRun ? { Name: tenant.businessName } : { ContactID: contactId },
-          InvoiceNumber: inv.number,
-          Reference: lease?.contractNumber ?? '',
-          Date: inv.issueDate,
-          DueDate: inv.dueDate,
-          Status: 'AUTHORISED',
-          LineAmountTypes: 'Exclusive',
-          CurrencyCode: 'AUD',
-          LineItems: (inv.lineItems ?? []).map((li) => ({
-            Description: li.description,
-            Quantity: Number(li.qty ?? 1),
-            UnitAmount: Number(li.unitPrice ?? 0),
-            DiscountRate: Number(li.discountPct ?? 0) || undefined,
-            AccountCode: lineAccountCode(li, inv, space, settings),
-            TaxType: taxType,
-          })),
-        },
-      })
+      return {
+        Type: 'ACCREC',
+        Contact: dryRun ? { Name: tenant.businessName } : { ContactID: contactId },
+        InvoiceNumber: inv.number,
+        Reference: lease?.contractNumber ?? '',
+        Date: inv.issueDate,
+        DueDate: inv.dueDate,
+        Status: 'AUTHORISED',
+        LineAmountTypes: 'Exclusive',
+        CurrencyCode: 'AUD',
+        LineItems: (inv.lineItems ?? []).map((li) => ({
+          Description: li.description,
+          Quantity: Number(li.qty ?? 1),
+          UnitAmount: Number(li.unitPrice ?? 0),
+          DiscountRate: Number(li.discountPct ?? 0) || undefined,
+          AccountCode: lineAccountCode(li, inv, space, settings),
+          TaxType: taxType,
+        })),
+      }
+    }
+
+    // Build payloads (and resolve contacts) invoice by invoice.
+    const payloads = []
+    for (const inv of toPush) {
+      try {
+        payloads.push({ inv, xero: await buildInvoicePayload(inv) })
+      } catch (err) {
+        results.errors.push({ number: inv.number, error: err.message })
+      }
+    }
+
+    // ── RESTATE: amounts edited on the platform AFTER the first sync ─────────
+    // The create path skips anything already carrying a xeroInvoiceId, so
+    // without this an edit made in the portal never reaches Xero and the two
+    // sides quietly disagree (Xero keeps whatever it held on the day it was
+    // linked). Xero's POST /Invoices updates in place when the payload carries
+    // an InvoiceID, but it refuses once money is allocated against the invoice —
+    // those surface as a conflict to settle with a credit note by hand.
+    const restatable = invoices.filter((i) =>
+      i.xeroInvoiceId && !i.xeroCreditNoteId &&
+      ['pending', 'paid', 'overdue'].includes(i.status) &&
+      !(gateDate(i) < syncFrom && (i.issueDate ?? '') < NEW_INVOICE_PUSH_FROM))
+    const restates = []
+    for (const batch of chunk(restatable, 40)) {
+      const r = await xeroFetch(supabase, `/Invoices?IDs=${batch.map((i) => i.xeroInvoiceId).join(',')}`)
+      if (!r.ok) break // best-effort: a stale amount is better than a failed run
+      for (const xi of r.json?.Invoices ?? []) {
+        const inv = batch.find((i) => i.xeroInvoiceId === xi.InvoiceID)
+        if (!inv) continue
+        const ours = Math.round(invoiceTotal(inv) * (inv.vatEnabled !== false ? 1.1 : 1) * 100) / 100
+        const theirs = Number(xi.Total ?? 0)
+        if (Math.abs(theirs - ours) <= 0.05) continue
+        // We already sent Xero exactly this figure and it still reads back
+        // different — that is per-line GST rounding, not a real edit. Without
+        // this the hourly cron would re-POST the same invoice forever.
+        if (inv.xeroRestatedTotal != null && Math.abs(Number(inv.xeroRestatedTotal) - ours) <= 0.005) continue
+        const paid = Number(xi.AmountPaid ?? 0)
+        if (paid > 0 || ['VOIDED', 'DELETED', 'PAID'].includes(xi.Status)) {
+          skipped.push({
+            number: inv.number,
+            reason: `amount changed here ($${theirs.toFixed(2)} → $${ours.toFixed(2)}) but Xero's copy is ${xi.Status}` +
+              `${paid > 0 ? ` with $${paid.toFixed(2)} paid` : ''} — raise a credit note instead`,
+          })
+          continue
+        }
+        restates.push({ inv, was: theirs, now: ours })
+      }
+    }
+
+    // ── VOID: invoices cancelled here that are still live in Xero ────────────
+    // The eligibility loop drops voided invoices entirely, so a void done in
+    // the portal never reached Xero — leaving a cancelled invoice sitting in
+    // the books as revenue owed. Xero only accepts a void while nothing is
+    // allocated against the invoice; once it is paid the correction has to be
+    // a credit note, so those are reported rather than attempted.
+    const voidable = invoices.filter((i) =>
+      i.status === 'voided' && i.xeroInvoiceId && !i.xeroVoidedAt &&
+      !(gateDate(i) < syncFrom && (i.issueDate ?? '') < NEW_INVOICE_PUSH_FROM))
+    const voids = []
+    for (const batch of chunk(voidable, 40)) {
+      const r = await xeroFetch(supabase, `/Invoices?IDs=${batch.map((i) => i.xeroInvoiceId).join(',')}`)
+      if (!r.ok) break // best-effort, same as the restate scan
+      for (const xi of r.json?.Invoices ?? []) {
+        const inv = batch.find((i) => i.xeroInvoiceId === xi.InvoiceID)
+        if (!inv) continue
+        // Already gone in Xero — record that locally so we stop re-checking it.
+        if (['VOIDED', 'DELETED'].includes(xi.Status)) {
+          if (!dryRun) {
+            inv.xeroVoidedAt = new Date().toISOString()
+            await saveRow(supabase, 'invoices', inv.id, inv)
+          }
+          continue
+        }
+        const paid = Number(xi.AmountPaid ?? 0)
+        if (paid > 0 || xi.Status === 'PAID') {
+          skipped.push({
+            number: inv.number,
+            reason: `voided here but Xero's copy is ${xi.Status}` +
+              `${paid > 0 ? ` with $${paid.toFixed(2)} paid` : ''} — raise a credit note instead`,
+          })
+          continue
+        }
+        voids.push({ inv, amount: Number(xi.Total ?? 0) })
+      }
     }
 
     if (dryRun) {
@@ -484,6 +567,8 @@ export default async function handler(req, res) {
           allocateAgainst: invoices.find((x) => x.id === i.creditNoteForId)?.number ?? '(standing credit)',
         })),
         wouldLink: results.linked,
+        wouldRestate: restates.map((r) => ({ number: r.inv.number, was: r.was, now: r.now })),
+        wouldVoid: voids.map((v) => ({ number: v.inv.number, amount: v.amount })),
         skipped, errors: results.errors,
       })
     }
@@ -511,6 +596,67 @@ export default async function handler(req, res) {
             error: validationErrors.map((e) => e.Message).join('; ') || `Xero rejected the batch (HTTP ${r.status})`,
           })
         }
+      }
+    }
+
+    // ── RESTATE: replace the Xero copy of invoices edited since they synced ──
+    for (const batch of chunk(restates, 40)) {
+      const payload = []
+      for (const { inv } of batch) {
+        try {
+          payload.push({ inv, xero: { ...(await buildInvoicePayload(inv)), InvoiceID: inv.xeroInvoiceId } })
+        } catch (err) {
+          results.errors.push({ number: inv.number, error: err.message })
+        }
+      }
+      if (!payload.length) continue
+
+      const r = await xeroFetch(supabase, '/Invoices?SummarizeErrors=false', {
+        method: 'POST',
+        body: { Invoices: payload.map((p) => p.xero) },
+      })
+      const returned = r.json?.Invoices ?? []
+      for (let idx = 0; idx < payload.length; idx++) {
+        const { inv } = payload[idx]
+        const xi = returned[idx]
+        const validationErrors = xi?.ValidationErrors ?? []
+        if (xi?.InvoiceID && validationErrors.length === 0) {
+          const meta = restates.find((x) => x.inv.id === inv.id)
+          inv.xeroSyncedAt = new Date().toISOString()
+          // The figure we sent, so the scan above can tell a genuine later edit
+          // from Xero's own rounding of the same amount.
+          inv.xeroRestatedTotal = meta?.now
+          await saveRow(supabase, 'invoices', inv.id, inv)
+          results.restated.push({ number: inv.number, was: meta?.was, now: meta?.now })
+        } else {
+          results.errors.push({
+            number: inv.number,
+            error: validationErrors.map((e) => e.Message).join('; ') || `Xero rejected the restate (HTTP ${r.status})`,
+          })
+        }
+      }
+    }
+
+    // ── VOID: cancel the Xero copy of invoices voided here ───────────────────
+    // One at a time: Xero's batch endpoint reports a rejected void as a
+    // validation error on the whole payload, and a void that fails must not
+    // take the others down with it.
+    for (const { inv, amount } of voids) {
+      const r = await xeroFetch(supabase, `/Invoices/${inv.xeroInvoiceId}`, {
+        method: 'POST',
+        body: { InvoiceID: inv.xeroInvoiceId, Status: 'VOIDED' },
+      })
+      const xi = r.json?.Invoices?.[0]
+      if (r.ok && xi?.Status === 'VOIDED') {
+        inv.xeroVoidedAt = new Date().toISOString()
+        await saveRow(supabase, 'invoices', inv.id, inv)
+        results.voided.push({ number: inv.number, amount })
+      } else {
+        results.errors.push({
+          number: inv.number,
+          error: (xi?.ValidationErrors ?? []).map((e) => e.Message).join('; ') ||
+            `Xero rejected the void (HTTP ${r.status})`,
+        })
       }
     }
 

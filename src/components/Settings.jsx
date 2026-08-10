@@ -1518,9 +1518,37 @@ function XeroConnectionTab({ settings, updateSettings }) {
                   )}
                 </>
               )}
+              {result.dryRun && result.wouldRestate?.length > 0 && (
+                <div className="mt-2 text-xs">
+                  <span className="font-medium text-foreground">
+                    {result.wouldRestate.length} edited since syncing — Xero would be updated to match:
+                  </span>{' '}
+                  {result.wouldRestate.map((w) => `${w.number} ($${Number(w.was).toFixed(2)} → $${Number(w.now).toFixed(2)})`).join(', ')}
+                </div>
+              )}
+              {result.dryRun && result.wouldVoid?.length > 0 && (
+                <div className="mt-2 text-xs">
+                  <span className="font-medium text-foreground">
+                    {result.wouldVoid.length} voided here but still live in Xero — would be voided there:
+                  </span>{' '}
+                  {result.wouldVoid.map((w) => `${w.number} ($${Number(w.amount).toFixed(2)})`).join(', ')}
+                </div>
+              )}
               {!result.dryRun && result.pushed && (
                 <div className="font-medium text-foreground">
                   Pushed {result.pushed.length} invoice{result.pushed.length !== 1 ? 's' : ''} to Xero.
+                  {result.restated?.length > 0 && ` Updated ${result.restated.length} edited invoice${result.restated.length !== 1 ? 's' : ''} in Xero.`}
+                  {result.voided?.length > 0 && ` Voided ${result.voided.length} in Xero.`}
+                </div>
+              )}
+              {!result.dryRun && result.restated?.length > 0 && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {result.restated.map((w) => `${w.number} ($${Number(w.was).toFixed(2)} → $${Number(w.now).toFixed(2)})`).join(', ')}
+                </div>
+              )}
+              {!result.dryRun && result.voided?.length > 0 && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Voided in Xero: {result.voided.map((w) => `${w.number} ($${Number(w.amount).toFixed(2)})`).join(', ')}
                 </div>
               )}
               {result.paidMarked && (
