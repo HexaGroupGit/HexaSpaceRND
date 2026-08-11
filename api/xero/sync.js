@@ -449,7 +449,11 @@ export default async function handler(req, res) {
         Type: 'ACCREC',
         Contact: dryRun ? { Name: tenant.businessName } : { ContactID: contactId },
         InvoiceNumber: inv.number,
-        Reference: lease?.contractNumber ?? '',
+        // The invoice number, not the contract number: Reference is what shows
+        // on the bank feed and on remittances, and it is the invoice number
+        // customers quote when they pay. Contract numbers (and "MTM" for
+        // month-to-month, which identifies nothing) made reconciliation guesswork.
+        Reference: inv.number,
         Date: inv.issueDate,
         DueDate: inv.dueDate,
         Status: 'AUTHORISED',
