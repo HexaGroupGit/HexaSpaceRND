@@ -507,10 +507,19 @@ export default async function handler(req, res) {
         if (inv.xeroRestatedTotal != null && Math.abs(Number(inv.xeroRestatedTotal) - ours) <= 0.005) continue
         const paid = Number(xi.AmountPaid ?? 0)
         if (paid > 0 || ['VOIDED', 'DELETED', 'PAID'].includes(xi.Status)) {
+          // Xero won't let us edit it, so the correction has to be a second
+          // document — and which one depends on the direction. Under-billed
+          // (we're higher) needs a supplementary invoice for the shortfall;
+          // over-billed needs a credit note. Saying "credit note" either way
+          // sent under-billing the wrong way and quietly lost the difference.
+          const gap = Math.abs(ours - theirs).toFixed(2)
+          const remedy = ours > theirs
+            ? `Xero is UNDER-billed by $${gap} — raise a supplementary invoice`
+            : `Xero is OVER-billed by $${gap} — raise a credit note`
           skipped.push({
             number: inv.number,
             reason: `amount changed here ($${theirs.toFixed(2)} → $${ours.toFixed(2)}) but Xero's copy is ${xi.Status}` +
-              `${paid > 0 ? ` with $${paid.toFixed(2)} paid` : ''} — raise a credit note instead`,
+              `${paid > 0 ? ` with $${paid.toFixed(2)} paid` : ''}. ${remedy}.`,
           })
           continue
         }
