@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Trash2, Minus, ChevronDown, X, AlertCircle } from 'lucide-react'
 import { discountedPrice, discountPct } from '../lib/leasePricing.js'
+import { holdsSpace } from '../lib/spaceHold.js'
 
 const FORM_SECTIONS = [
   { id: 'company', label: 'Company Information' },
@@ -653,7 +654,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                               // Private offices: only units not already leased/assigned.
                               if (s.type === 'office') {
                                 if (s.assignedCompanyId) return false
-                                return !leases.some((l) => l.spaceId === s.id && (l.status === 'active' || l.status === 'pending'))
+                                return !leases.some((l) => l.spaceId === s.id && holdsSpace(l))
                               }
                               if (s.type === 'virtual') return true // show all virtual-office options
                               return s.status === 'vacant'

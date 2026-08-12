@@ -32,11 +32,16 @@ import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, book
 import { bookingRate } from '../lib/dropIn.js'
 import { configureFunctionPricing } from '../lib/functionBooking.js'
 import { isRentFreeMonth } from '../lib/paymentSchedule.js'
+import { holdsSpace } from '../lib/spaceHold.js'
 
 // All spaces a lease occupies (primary + any bundled items, e.g. parking).
 function leaseSpaceIds(lease) {
   return [lease?.spaceId, ...((lease?.items ?? []).map((i) => i.spaceId))].filter(Boolean)
 }
+
+// Strength of a space-status claim: the strongest claim across all of a space's
+// contracts wins (an occupied suite is not vacated by an old ended contract).
+const STATUS_RANK = { vacant: 0, reserved: 1, occupied: 2 }
 
 // Does this lease include a parking bay?
 function isParkingLease(lease, spaces) {
@@ -1192,6 +1197,13 @@ export function useStore() {
       updateTenant(tenant.id, { creditsRemaining: allowance, monthlyAllowance: allowance, creditsPeriod: monthKey })
     })
 
+    // Space status is resolved per SPACE, not per lease. Writing it inside the
+    // loop below let the last lease iterated win, so a single ended contract in
+    // a suite's history could flip a suite a live contract still occupies to
+    // 'vacant' (L4 Office 10, L5 Office 14 and L2 Suite 29 all read vacant while
+    // tenanted). Collect every contract's claim, then apply the strongest one.
+    const spaceClaims = new Map() // spaceId -> desired status
+
     leases.forEach((lease) => {
       // The daily reconcile cron expires leases whose served-notice vacate date
       // has passed, flagging them needsOffboard — run their full offboarding
@@ -1205,14 +1217,12 @@ export function useStore() {
       const alreadyOccupied = space?.status === 'occupied'
       // Every line item's space follows the lease's schedule status — a
       // multi-office contract holds/occupies all its offices, not just the primary.
-      const desired = desiredSpaceStatus(lease, invoices)
+      // A contract that no longer holds the space (ended, cancelled, or a legacy
+      // 'pending' whose term has passed) claims 'vacant' — see spaceHold.js.
+      const desired = holdsSpace(lease) ? desiredSpaceStatus(lease, invoices) : 'vacant'
       leaseSpaceIds(lease).forEach((sid) => {
-        const sp = spaces.find((s) => s.id === sid)
-        if (!sp) return
-        // Never pull an already-occupied space back to reserved (protects
-        // tenants who moved in under the pre-gate flow).
-        const demoting = sp.status === 'occupied' && desired === 'reserved'
-        if (desired !== sp.status && !demoting) updateSpace(sp.id, { status: desired })
+        const prior = spaceClaims.get(sid)
+        if (prior === undefined || STATUS_RANK[desired] > STATUS_RANK[prior]) spaceClaims.set(sid, desired)
       })
       const gateTenant = tenants.find((t) => t.id === lease.tenantId)
       if (shouldOnboard(lease, invoices, gateTenant)) {
@@ -1232,6 +1242,15 @@ export function useStore() {
           onboardLease({ lease, tenant: gateTenant, space, members, settings, templates, updateLease, updateMember })
         }
       }
+    })
+
+    spaceClaims.forEach((desired, sid) => {
+      const sp = spaces.find((s) => s.id === sid)
+      if (!sp) return
+      // Never pull an already-occupied space back to reserved (protects
+      // tenants who moved in under the pre-gate flow).
+      const demoting = sp.status === 'occupied' && desired === 'reserved'
+      if (desired !== sp.status && !demoting) updateSpace(sp.id, { status: desired })
     })
 
     // Keep every space's occupant in step with its live lease. Two directions:
@@ -1261,7 +1280,7 @@ export function useStore() {
       }
       // No active lease: heal an orphaned occupant left behind by an ended contract.
       if (!s.occupantTenantId && !s.occupantName) return
-      const hasLive = spaceLeases.some((l) => ['active', 'pending'].includes(l.status) && !l.offboardedAt)
+      const hasLive = spaceLeases.some((l) => holdsSpace(l))
       const hasEndedForOccupant = spaceLeases.some((l) =>
         (['expired', 'terminated'].includes(l.status) || l.offboardedAt) &&
         (!s.occupantTenantId || l.tenantId === s.occupantTenantId))
@@ -2012,8 +2031,7 @@ export function useStore() {
       const next = prev.map((s) => {
         if (!spaceIds.has(s.id)) return s
         const heldByOther = leasesRef.current.some((l) =>
-          l.id !== lease.id && ['active', 'pending'].includes(l.status) && !l.offboardedAt &&
-          leaseSpaceIds(l).includes(s.id))
+          l.id !== lease.id && holdsSpace(l) && leaseSpaceIds(l).includes(s.id))
         if (heldByOther) return s
         return { ...s, status: 'vacant', occupantTenantId: null, occupantName: '' }
       })
