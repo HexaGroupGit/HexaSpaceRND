@@ -29,3 +29,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated marketing PNGs (rebuild with scripts/gen-po-carousel.mjs)
+marketing-out
+
+# Desktop shell build output (installers are ~95MB — never commit them)
+desktop/release
