@@ -199,12 +199,19 @@ export default async function handler(req, res) {
         // gate cleared means the tenant moved in long ago — stamp, don't email.
         // (Freshly cron-flipped spaces in step 1 record their leases in
         // out.occupied, so they still onboard normally below.)
-        // Same anchor as the admin app: a lease activated more than a day ago is
-        // an existing tenant, not a new arrival, whatever its space now says.
-        // Without this a suite move re-onboards them (Azura, 30 Jul 2026).
-        const activatedLongAgo = lease.activatedAt
-          && (Date.now() - new Date(lease.activatedAt).getTime()) > 24 * 3600 * 1000
-        if (activatedLongAgo || (space?.status === 'occupied' && !flippedLeaseIds.has(lease.id))) {
+        // Same anchor as the admin app: an existing tenant is one who is already
+        // onboarded on ANOTHER contract — that's the suite-move case that used to
+        // re-onboard them (Azura, 30 Jul 2026).
+        //
+        // This used to key on "activated more than a day ago", which was wrong:
+        // activatedAt is stamped at COUNTERSIGN, so every contract whose deposit
+        // landed a day or more after signing was suppressed here — stamped
+        // onboardedAt with no welcome email and no Salto provisioning, forever.
+        const alreadyATenant = leases.some((l) =>
+          l.id !== lease.id && l.tenantId === lease.tenantId && l.onboardedAt)
+        const sameOccupant = !space?.occupantTenantId || space.occupantTenantId === lease.tenantId
+        if (alreadyATenant
+          || (space?.status === 'occupied' && !flippedLeaseIds.has(lease.id) && sameOccupant)) {
           await saveRow('leases', lease.id, { ...lease, onboardedAt: lease.activatedAt ?? new Date().toISOString() })
           out.onboardedSuppressed.push(label)
           continue

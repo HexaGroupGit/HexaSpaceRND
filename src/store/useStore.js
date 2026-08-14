@@ -1230,12 +1230,21 @@ export function useStore() {
         // ago" — and it breaks the moment a lease is moved to a different space,
         // because the NEW space isn't occupied yet. That re-onboards a
         // long-standing tenant: Azura was moved 406 → 423 and got the welcome
-        // email three times. Anchor on the lease itself instead: a genuine
-        // move-in onboards within minutes of activation, so anything activated
-        // more than a day ago is a data change, not a new arrival.
-        const activatedLongAgo = lease.activatedAt
-          && (Date.now() - new Date(lease.activatedAt).getTime()) > 24 * 3600 * 1000
-        if (alreadyOccupied || activatedLongAgo) {
+        // email three times.
+        //
+        // The old anchor for that was "activated more than a day ago". It was
+        // wrong: activatedAt is stamped at COUNTERSIGN, not at move-in, so any
+        // contract whose deposit landed a day or more after signing had its
+        // onboarding silently suppressed — no welcome email and, worse, no Salto
+        // provisioning, permanently (onboardedAt got stamped anyway).
+        //
+        // Ask the real question instead: is this company already a tenant here?
+        // A suite MOVE means another of their contracts is already onboarded.
+        const alreadyATenant = leases.some((l) =>
+          l.id !== lease.id && l.tenantId === lease.tenantId && l.onboardedAt)
+        // Occupied by someone else entirely is a data conflict, not a move-in.
+        const sameOccupant = !space?.occupantTenantId || space.occupantTenantId === lease.tenantId
+        if (alreadyATenant || (alreadyOccupied && sameOccupant)) {
           // Pre-existing move-in — suppress retroactive onboarding (no email/invite).
           updateLease(lease.id, { onboardedAt: lease.activatedAt ?? new Date().toISOString() })
         } else {

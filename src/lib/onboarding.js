@@ -9,6 +9,10 @@
 // NOTE: no top-level import of apiFetch.js — it pulls in the browser Supabase
 // client (import.meta.env), which crashes Node when server code (api/reconcile)
 // imports this module. The two client-only fetches below lazy-import it.
+// (paymentSchedule.js is pure — api/auto-billing already bundles it via
+// billingEngine, so it is safe to import at the top level here.)
+import { buildPaymentSchedule } from './paymentSchedule.js'
+import { holdsSpace } from './spaceHold.js'
 
 const PORTAL_URL = 'https://portal.hexaspace.com.au'
 
@@ -63,10 +67,50 @@ export function firstRecurringInvoice(lease, invoices) {
     .sort((a, b) => String(a.issueDate ?? '').localeCompare(String(b.issueDate ?? '')))[0] ?? null
 }
 
+// A rent-free opening period raises NO invoice at all — buildMonthlyInvoiceForLease
+// returns null for a $0 month ('rent-free' / 'zero-amount') — so "no first
+// recurring invoice" means "nothing is owed yet", not "the bill is unpaid".
+// True only when the contract has actually commenced and every month from
+// commencement through today is $0 under its own schedule. A contract that
+// hasn't started yet returns false, so pre-commencement leases keep waiting for
+// their first invoice exactly as before (no keys handed out early).
+export function openingRentFree(lease, today = new Date()) {
+  if (!lease?.startDate) return false
+  const start = new Date(`${lease.startDate}T00:00:00`)
+  if (start > today) return false
+  const schedule = buildPaymentSchedule(lease, null)
+  if (!schedule) return false
+  // An OPENING rent-free period means rent starts later. A contract that is $0
+  // for its whole term is a data-entry error, not an offer — monthlyRent:0 with
+  // no pricing steps (the Azlan CON-257 shape) would otherwise clear the gate
+  // the moment it was signed, with no deposit and no invoice ever owed. Those
+  // stay closed and wait for an admin.
+  if (!schedule.rows.some((r) => r.total > 0)) return false
+  const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  const from = monthKey(start)
+  const to = monthKey(today)
+  const elapsed = schedule.rows.filter((r) => r.key >= from && r.key <= to)
+  return elapsed.length > 0 && elapsed.every((r) => r.total === 0)
+}
+
 // The access gate: contract signed, deposit paid (if one is owed), and the first
 // recurring invoice paid. Returns false until every required payment has landed.
-export function accessGateMet(lease, invoices, tenant) {
+export function accessGateMet(lease, invoices, tenant, today = new Date()) {
   if (!isSigned(lease) || isEnded(lease)) return false
+  // A contract that no longer holds its space never clears the gate. isEnded
+  // only covers 'expired'/'terminated' — holdsSpace also rules out 'cancelled'
+  // and the migrated 'pending' ghosts whose term ran out years ago, either of
+  // which would otherwise be onboarded (and Salto-provisioned) by the rent-free
+  // path below.
+  if (!holdsSpace(lease)) return false
+
+  // Onboarded once → the gate stays open. A later unpaid month is the overdue
+  // ladder's business; it must not un-occupy the space or strip door access.
+  // Without this, a rent-free opening month would clear the gate, then month 2's
+  // invoice would become the "first recurring" one and re-close it until paid.
+  // Keyed on onboardedAt, NOT activatedAt — activatedAt is stamped at
+  // countersign, so it would open the gate before any money landed.
+  if (lease.onboardedAt) return true
 
   const depositOwed = depositAmount(lease) > 0
   if (depositOwed) {
@@ -75,7 +119,13 @@ export function accessGateMet(lease, invoices, tenant) {
   }
 
   const first = firstRecurringInvoice(lease, invoices)
-  if (!first || first.status !== 'paid') return false
+  if (first) {
+    if (first.status !== 'paid') return false
+  } else if (!openingRentFree(lease, today)) {
+    // No recurring invoice yet and rent IS owed for an elapsed month — the bill
+    // run simply hasn't caught up. Keep waiting rather than handing over keys.
+    return false
+  }
 
   // Card-on-file memberships (VO/desk): the signed payment authority requires
   // a verified stored card before access is handed over — hold onboarding
@@ -95,7 +145,7 @@ export function desiredSpaceStatus(lease, invoices, today = new Date()) {
   if (isEnded(lease)) return 'vacant'
   // Quick-assignments (no gate) occupy immediately.
   if (!requiresAccessGate(lease)) return 'occupied'
-  if (!accessGateMet(lease, invoices)) return 'reserved'
+  if (!accessGateMet(lease, invoices, null, today)) return 'reserved'
   const start = lease?.startDate ? new Date(lease.startDate) : null
   if (start && start > today) return 'reserved'
   return 'occupied'
