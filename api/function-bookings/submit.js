@@ -69,13 +69,28 @@ export default async function handler(req, res) {
     if (tenantId) {
       // Trust the companyId set at approve time even if the tenant row hasn't
       // replicated yet (avoids minting a second tenant → broken billing link).
-      const patch = { ...(existingTenant || { id: tenantId, status: 'client', industry: 'Function client', createdAt: now.split('T')[0] }), clientType: 'function' }
-      patch.businessName = ci.businessName || existingTenant?.businessName || b.organisation || b.name || 'Function client'
-      patch.contactName = ci.contactName || existingTenant?.contactName || b.name || ''
-      patch.email = existingTenant?.email || b.email || ''
-      if (ci.abn) patch.abn = ci.abn
-      if (ci.phone) patch.phone = ci.phone
-      else if (!existingTenant?.phone && b.phone) patch.phone = b.phone
+      //
+      // The companyId may now be a REAL member company — an admin can pick one
+      // when raising the booking — so adoption fills blanks only. Rewriting the
+      // name would rename a member from a function form, and stamping
+      // clientType 'function' would hide every teammate they later add from the
+      // Members screen (add-teammate.js copies the company's clientType).
+      // A tenant we mint here is still marked as a function client.
+      const PLACEHOLDER = 'Function client'
+      const blank = (v) => !v || v === PLACEHOLDER
+      const patch = existingTenant
+        ? { ...existingTenant }
+        : { id: tenantId, status: 'client', industry: 'Function client', clientType: 'function', createdAt: now.split('T')[0] }
+      const fill = (key, ...vals) => {
+        if (!blank(patch[key])) return
+        const v = vals.find(Boolean)
+        if (v) patch[key] = v
+      }
+      fill('businessName', ci.businessName, b.organisation, b.name, PLACEHOLDER)
+      fill('contactName', ci.contactName, b.name)
+      fill('email', b.email)
+      fill('abn', ci.abn)
+      fill('phone', ci.phone, b.phone)
       await supabase.from('tenants').upsert({ id: tenantId, data: patch, updated_at: now })
     } else {
       // No companyId — reuse an existing tenant with this email before creating one.

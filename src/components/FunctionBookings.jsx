@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { format } from 'date-fns'
@@ -11,6 +11,7 @@ import {
   bookingSessions, sessionsLabel, seriesDateClashes, seriesCalendarClashes,
 } from '../lib/functionBooking.js'
 import { findFunctionSpace } from '../portal/functionSpace.js'
+import { billingContactFor } from '../lib/credits.js'
 import { approveFunctionBooking, confirmDepositPaid, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit, requestBuildingAccess } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
@@ -169,7 +170,38 @@ const BLANK = {
 }
 
 function BookingForm({ booking, onSave, onClose }) {
+  const store = useOutletContext()
   const [f, setF] = useState(booking ? { ...BLANK, ...booking, addons: { ...BLANK.addons, ...(booking.addons || {}) } } : { ...BLANK })
+
+  // Existing members, so a function for a current tenant is billed to THEIR
+  // company instead of spawning a duplicate "Function client" tenant on invite.
+  // Active = holds at least one live contract.
+  const memberOptions = useMemo(() => {
+    const live = new Set((store?.leases ?? []).filter((l) => l.status === 'active').map((l) => l.tenantId))
+    return (store?.tenants ?? [])
+      .filter((t) => live.has(t.id))
+      .map((t) => ({ tenant: t, contact: billingContactFor(t, store?.members ?? []) }))
+      .sort((a, b) => (a.tenant.businessName || '').localeCompare(b.tenant.businessName || ''))
+  }, [store?.tenants, store?.leases, store?.members])
+
+  // Picking a member fills the client block and links the company; the fields
+  // stay editable so a one-off external booking still works as free text.
+  function pickMember(tenantId) {
+    if (!tenantId) { setF((p) => ({ ...p, companyId: null, memberId: null })); return }
+    const hit = memberOptions.find((o) => o.tenant.id === tenantId)
+    if (!hit) return
+    const { tenant, contact } = hit
+    const member = (store?.members ?? []).find((m) => m.companyId === tenant.id && (m.email || '').toLowerCase() === (contact.email || '').toLowerCase())
+    setF((p) => ({
+      ...p,
+      companyId: tenant.id,
+      memberId: member?.id ?? null,
+      organisation: tenant.businessName || p.organisation,
+      name: contact.name || p.name,
+      email: contact.email || p.email,
+      phone: contact.phone || p.phone,
+    }))
+  }
   // Session rows: seeded from the saved series, the legacy single date, or one blank row.
   const [sessions, setSessions] = useState(() => {
     const existing = bookingSessions(booking || {})
@@ -209,6 +241,22 @@ function BookingForm({ booking, onSave, onClose }) {
         <form onSubmit={submit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           <section className="space-y-3">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Client</h3>
+            <div>
+              <label className={lab}>Existing member</label>
+              <select className={inp} value={f.companyId || ''} onChange={(e) => pickMember(e.target.value)}>
+                <option value="">— Not a member (enter details below) —</option>
+                {memberOptions.map(({ tenant, contact }) => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.businessName}{contact.name ? ` — ${contact.name}` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {f.companyId
+                  ? 'Billed to this company. The invite to confirm goes to the contact below.'
+                  : `${memberOptions.length} companies with a live contract. Picking one fills the details and bills the function to them.`}
+              </p>
+            </div>
             <div><label className={lab}>Contact name</label><input className={inp} value={f.name} onChange={(e) => set('name', e.target.value)} /></div>
             <div><label className={lab}>Organisation</label><input className={inp} value={f.organisation} onChange={(e) => set('organisation', e.target.value)} /></div>
             <div className="grid grid-cols-2 gap-3">
