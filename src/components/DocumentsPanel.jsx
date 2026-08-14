@@ -24,7 +24,9 @@ export default function DocumentsPanel({ tenantId, leaseId, title = 'Documents' 
   const [uploading, setUploading] = useState(false)
   const inputRef = useRef(null)
 
-  const scopeKey = leaseId ? `leaseId:${leaseId}` : `tenantId:${tenantId}`
+  // No scope means we can neither list nor file anything — an upload here would
+  // be orphaned (no tenantId/leaseId) and invisible to every profile.
+  const scoped = Boolean(leaseId || tenantId)
 
   useEffect(() => {
     load()
@@ -32,9 +34,17 @@ export default function DocumentsPanel({ tenantId, leaseId, title = 'Documents' 
 
   async function load() {
     setLoading(true)
+    // Fail closed: with no scope we must show NOTHING, never the whole table.
+    // A tenant whose record is missing its id used to land here and list every
+    // company's documents (and offer a live Delete on each).
+    if (!leaseId && !tenantId) {
+      setDocs([])
+      setLoading(false)
+      return
+    }
     let query = supabase.from('documents').select('id, data')
     if (leaseId) query = query.eq('data->>leaseId', leaseId)
-    else if (tenantId) query = query.eq('data->>tenantId', tenantId)
+    else query = query.eq('data->>tenantId', tenantId)
     const { data } = await query.order('updated_at', { ascending: false })
     setDocs((data ?? []).map((r) => ({ id: r.id, ...r.data })))
     setLoading(false)
@@ -43,6 +53,7 @@ export default function DocumentsPanel({ tenantId, leaseId, title = 'Documents' 
   async function handleUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
+    if (!scoped) return
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {
       alert(`File too large. Maximum size is ${MAX_SIZE_MB} MB.`)
       return
@@ -97,7 +108,8 @@ export default function DocumentsPanel({ tenantId, leaseId, title = 'Documents' 
           <span className="text-xs text-muted-foreground">Max {MAX_SIZE_MB} MB per file</span>
           <button
             onClick={() => inputRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || !scoped}
+            title={scoped ? undefined : 'This record has no id — documents can’t be filed against it.'}
             className="flex items-center gap-1.5 text-xs bg-primary text-primary-foreground rounded px-3 py-1.5 hover:bg-primary/90 disabled:opacity-50"
           >
             <Upload size={12} /> {uploading ? 'Uploading…' : 'Upload'}
@@ -109,6 +121,10 @@ export default function DocumentsPanel({ tenantId, leaseId, title = 'Documents' 
 
       {loading ? (
         <p className="px-5 py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : !scoped ? (
+        <p className="px-5 py-5 text-sm text-muted-foreground">
+          This record is missing its id, so its documents can’t be looked up. Re-save the company to repair it.
+        </p>
       ) : docs.length === 0 ? (
         <p className="px-5 py-5 text-sm text-muted-foreground">No documents uploaded yet. Click Upload to add files.</p>
       ) : (
