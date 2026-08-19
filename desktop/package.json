@@ -1,0 +1,22 @@
+{
+  "name": "hexa-space-admin-desktop",
+  "productName": "Hexa Space Admin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Desktop shell for the Hexa Space admin portal",
+  "author": "Hexa Space Pty Ltd",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist": "electron-builder --win --mac"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
+  }
+}

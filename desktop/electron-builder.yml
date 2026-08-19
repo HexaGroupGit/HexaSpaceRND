@@ -1,0 +1,46 @@
+appId: au.com.hexaspace.admin
+productName: Hexa Space Admin
+copyright: © Hexa Space Pty Ltd
+
+directories:
+  buildResources: build
+  output: release
+
+# The shell is main.js and nothing else — the app itself is served from the web.
+files:
+  - main.js
+  - package.json
+
+mac:
+  category: public.app-category.business
+  target:
+    - target: dmg
+      arch: [arm64, x64] # Apple Silicon + the older Intel machines
+  # Hardened runtime is required for notarization; harmless on unsigned builds.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+
+dmg:
+  title: Hexa Space Admin
+  # Drag-to-Applications layout.
+  contents:
+    - x: 140
+      y: 200
+      type: file
+    - x: 400
+      y: 200
+      type: link
+      path: /Applications
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false # show the wizard, don't silently install
+  perMachine: false # per-user install needs no admin rights
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Hexa Space Admin

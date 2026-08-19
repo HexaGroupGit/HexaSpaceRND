@@ -1,0 +1,85 @@
+name: Desktop installers
+
+# Builds the Hexa Space Admin desktop shell for macOS (.dmg) and Windows
+# (.exe). Run it by hand from the Actions tab, or push a tag like
+# desktop-v1.0.1 to cut a versioned build.
+#
+# The .dmg has to be built on a Mac — that's the whole reason this lives in CI
+# rather than on someone's machine.
+#
+# Code signing is opt-in: set the secrets below and the same workflow produces
+# signed, notarized builds. Without them it still builds, but macOS shows
+# "unidentified developer" (right-click → Open to get past it) and Windows
+# shows a SmartScreen warning on first run.
+#   macOS   — MAC_CERT_P12 (base64 of a Developer ID Application .p12),
+#             MAC_CERT_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+#   Windows — WIN_CERT_PFX (base64 .pfx), WIN_CERT_PASSWORD
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['desktop-v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: win
+    runs-on: ${{ matrix.os }}
+    # Secrets can't be read directly in a step `if:`, so resolve "do we have a
+    # certificate" once here and branch on that.
+    env:
+      HAS_MAC_CERT: ${{ secrets.MAC_CERT_P12 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+
+      - name: Import Apple signing certificate
+        if: matrix.platform == 'mac' && env.HAS_MAC_CERT == 'true'
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          echo "$MAC_CERT_P12" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k actions build.keychain
+          rm /tmp/cert.p12
+
+      - name: Build ${{ matrix.platform }}
+        working-directory: desktop
+        env:
+          # Skip signing entirely when no certificate is configured, otherwise
+          # electron-builder fails instead of producing an unsigned build.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CERT_P12 != '' }}
+          CSC_LINK: ${{ matrix.platform == 'win' && secrets.WIN_CERT_PFX || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'win' && secrets.WIN_CERT_PASSWORD || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:${{ matrix.platform }}
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexa-space-admin-${{ matrix.platform }}
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.exe
+          if-no-files-found: error
+          retention-days: 30
