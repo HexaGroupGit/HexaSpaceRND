@@ -19,11 +19,14 @@ export const C = {
 export const W = 1080;
 export const RATIOS = { '45': 1350, '34': 1440 };   // IG 4:5 · 小红书 3:4
 
-// The Hexa OTFs carry no CJK glyphs, so the stack hands off to a system
-// face for 中文 without disturbing the Latin look.
-export const F_DISPLAY = `HxDisplay, 'Songti SC', SimSun, 'Source Han Serif SC', serif`;
-export const F_HEAD    = `HxHeading, 'PingFang SC', 'Microsoft YaHei', sans-serif`;
-export const F_BODY    = `HxBody, 'PingFang SC', 'Microsoft YaHei', sans-serif`;
+// Each stack names the face twice: `Hx*` is how the standalone editor and the
+// node exporter register the OTFs, while 'Big Daily Short' / 'Rework Micro' /
+// 'GT America' are the names the admin app's index.css already uses — so the
+// same engine draws on-brand inside the RND app without duplicate @font-face
+// rules. The CJK faces trail behind because the Hexa OTFs carry no CJK glyphs.
+export const F_DISPLAY = `HxDisplay, 'Big Daily Short', 'Songti SC', SimSun, 'Source Han Serif SC', serif`;
+export const F_HEAD    = `HxHeading, 'Rework Micro', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
+export const F_BODY    = `HxBody, 'GT America', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
 
 export const LOGO_W = '/marketing/brand/logo-white.png';
 export const LOGO_B = '/marketing/brand/logo-black.png';

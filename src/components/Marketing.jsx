@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { Megaphone } from 'lucide-react'
 import AdsWorkbench from './AdsWorkbench.jsx'
 import AiStudio from './AiStudio.jsx'
+import PostStudio from './PostStudio.jsx'
 
 // Marketing — promotion & demand generation. Ads and the AI Studio create and
 // run campaigns. (Leads/Enquiries live in CRM; event registrations live under
@@ -10,6 +11,7 @@ import AiStudio from './AiStudio.jsx'
 const TABS = [
   { key: 'ads',      label: 'Ads' },
   { key: 'studio',   label: 'AI Studio' },
+  { key: 'posts',    label: 'Post Studio' },
 ]
 
 export default function Marketing() {
@@ -49,6 +51,7 @@ export default function Marketing() {
 
       {tab === 'ads' && <AdsWorkbench store={store} />}
       {tab === 'studio' && <AiStudio store={store} />}
+      {tab === 'posts' && <PostStudio store={store} />}
     </div>
   )
 }
