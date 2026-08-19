@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, X, Users, Clock, CalendarClock } from 'lucide-react'
-import { format, addDays } from 'date-fns'
+import { X, Users, Clock, CalendarClock } from 'lucide-react'
+import { format } from 'date-fns'
+import { DatePicker } from './ui/date-picker.jsx'
 import { bookingFeeName, afterHoursConfig, spendableCredits, hasActiveMembership, creditMonthKey } from '../lib/credits.js'
 import { bookingRate, bookingWasUsed } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
@@ -169,11 +170,9 @@ export default function Calendar() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <button onClick={() => setDay(new Date())} className="px-3 py-1.5 text-sm border border-input rounded-md hover:bg-muted/50">Today</button>
-          <div className="flex items-center">
-            <button onClick={() => setDay((d) => addDays(d, -1))} className="p-1.5 border border-input rounded-l-md hover:bg-muted/50"><ChevronLeft size={16} /></button>
-            <button onClick={() => setDay((d) => addDays(d, 1))} className="p-1.5 border border-input border-l-0 rounded-r-md hover:bg-muted/50"><ChevronRight size={16} /></button>
-          </div>
-          <span className="font-semibold text-foreground">{format(day, 'EEEE, d MMMM yyyy')}</span>
+          {/* The date is the control: open it and pick a day from the month,
+              rather than stepping there one arrow at a time. */}
+          <DatePicker value={dayStr} onChange={(ds) => setDay(new Date(`${ds}T00:00:00`))} />
         </div>
         <select value={resType} onChange={(e) => setResType(e.target.value)} className="border border-input rounded-md px-3 py-1.5 text-sm bg-card">
           {RESOURCE_TYPES.map((r) => <option key={r.type} value={r.type}>{r.label}</option>)}
