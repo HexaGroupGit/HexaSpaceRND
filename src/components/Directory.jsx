@@ -225,7 +225,7 @@ export default function Directory() {
               </button>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              PNG for printing or a photo frame. The HTML file is fully self-contained — copy it to a USB stick
+              PNG for printing or a photo frame — always 1510 × 2644px, the panel size. The HTML file is fully self-contained — copy it to a USB stick
               or the screen's local storage, open it, and it scales itself to the display with no internet at all.
               Both use what's in the editor right now, so download after you've made your edits. Neither updates
               itself — re-download whenever the board changes.

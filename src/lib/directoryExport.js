@@ -6,10 +6,18 @@
 // two passes: html2canvas draws the text on a transparent canvas, then the
 // backdrop is painted natively underneath — html2canvas only partially
 // understands multi-stop elliptical gradients, and the board is mostly backdrop.
+//
+// The PNG comes out at a fixed portrait size (see PNG_SIZE): the panels are
+// printed to one physical size, so every board has to be the same file size
+// whatever it happens to contain. The board is scaled to fit and centred, and
+// the backdrop is painted full-bleed so the spare space reads as margin.
 
 import html2canvas from 'html2canvas'
 import { boardBodyHtml, boardStyles, buildBoardDocument, layoutOf, BOARD_WIDTH } from './directoryHtml.js'
 import { BOARD_LABELS } from './directoryData.js'
+
+// Exact pixel size of every exported PNG — the printed panel dimensions.
+export const PNG_SIZE = { width: 1510, height: 2644 }
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -79,8 +87,8 @@ function paintBackdrop(ctx, w, h, layout, scale) {
   }
 }
 
-// Render a board offscreen and return a finished canvas.
-export async function boardToCanvas(board, boards, { scale = 2 } = {}) {
+// Render a board offscreen and return a finished canvas of exactly outW × outH.
+export async function boardToCanvas(board, boards, { width: outW = PNG_SIZE.width, height: outH = PNG_SIZE.height } = {}) {
   const layout = layoutOf(board)
   const width = BOARD_WIDTH[layout]
   const host = document.createElement('div')
@@ -93,6 +101,9 @@ export async function boardToCanvas(board, boards, { scale = 2 } = {}) {
     await new Promise((r) => setTimeout(r, 200))
     const node = host.querySelector('.hxdir')
     const height = node.offsetHeight
+    // Biggest scale that still fits the panel — a short board is rasterised
+    // larger (and stays crisp), a long one is shrunk rather than cropped.
+    const scale = Math.min(outW / width, outH / height)
     const content = await html2canvas(node, {
       scale,
       backgroundColor: null,
@@ -102,19 +113,19 @@ export async function boardToCanvas(board, boards, { scale = 2 } = {}) {
       windowHeight: height,
     })
     const out = document.createElement('canvas')
-    out.width = content.width
-    out.height = content.height
+    out.width = outW
+    out.height = outH
     const ctx = out.getContext('2d')
-    paintBackdrop(ctx, out.width, out.height, layout, scale)
-    ctx.drawImage(content, 0, 0)
+    paintBackdrop(ctx, outW, outH, layout, scale)
+    ctx.drawImage(content, Math.round((outW - content.width) / 2), Math.round((outH - content.height) / 2))
     return out
   } finally {
     document.body.removeChild(host)
   }
 }
 
-export async function downloadBoardPng(board, boards, { scale = 2 } = {}) {
-  const canvas = await boardToCanvas(board, boards, { scale })
+export async function downloadBoardPng(board, boards, size) {
+  const canvas = await boardToCanvas(board, boards, size)
   const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'))
   if (!blob) throw new Error('Could not build the image.')
   download(blob, `${fileBase(board)}.png`)
