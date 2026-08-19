@@ -1,27 +1,29 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { format, addDays } from 'date-fns'
-import { Check, Users, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
+import { Check, Users, CreditCard } from 'lucide-react'
 import { useApp } from '../context.js'
-import { Screen, BackHeader, Label, Rule, Chip, Sheet, BigButton, RoomPhoto, fmt, to12, money0 } from '../ui.jsx'
+import { Screen, BackHeader, Label, Rule, Chip, Sheet, BigButton, RoomPhoto, DateDropdown, daysBetween, fmt, to12, money0 } from '../ui.jsx'
 import { toDec, fromDec, isFree, spendableCredits, createBooking, CREDIT_VALUE } from '../lib/bookingActions.js'
 import { blockingResourceIds } from '../../lib/roomConflicts.js'
 import { priceBooking, requiresUpfrontPayment, bookingRate } from '../../lib/dropIn.js'
+import { floorLabel } from '../../lib/roomFloor.js'
 import { apiUrl, openPayment } from '../lib/native.js'
 import { isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow, afterHoursConfig } from '../../lib/credits.js'
 
 // Single-room day calendar — the app's version of the website's booking grid:
-// scrollable date strip on top, an hour column below with existing bookings
-// blocked out, tap any open half-hour to book from there. The grid spans the
-// extended (after-hours) window; slots outside a member's band are disabled.
+// a date dropdown + scrollable day strip on top, an hour column below with
+// existing bookings blocked out, tap any open half-hour to book from there. The
+// grid spans the extended (after-hours) window; slots outside a member's band
+// are disabled.
 
 const HOUR_H = 60 // px per hour → 30px per half-hour cell
 const LABEL_PAD = 22 // room under the last gridline so the last label isn't clipped
-const DURATIONS = [
-  { min: 30, label: '30 mins' },
-  { min: 60, label: '1 hour' },
-  { min: 90, label: '1.5 hrs' },
-  { min: 120, label: '2 hours' },
-]
+const STRIP_DAYS = 28 // days always shown in the scrub strip
+const MAX_DAYS_AHEAD = 180 // how far out the date dropdown lets a member book
+// Durations run to a full day — the row scrolls, and anything that doesn't fit
+// (room booked after this slot, closing time, office-perk cap) renders disabled.
+const DURATIONS = [30, 60, 90, 120, 150, 180, 210, 240, 300, 360, 420, 480]
+  .map((min) => ({ min, label: min === 30 ? '30 mins' : min === 60 ? '1 hour' : `${min / 60} hrs` }))
 
 export default function RoomDetail({ room, onBack }) {
   const { data, patch } = useApp()
@@ -39,8 +41,12 @@ export default function RoomDetail({ room, onBack }) {
   const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [slot, setSlot] = useState(null) // "HH:mm" start tapped
 
-  const days = useMemo(() => Array.from({ length: 28 }, (_, i) => addDays(new Date(), i)), [])
   const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const lastStr = format(addDays(new Date(), MAX_DAYS_AHEAD), 'yyyy-MM-dd')
+  // The strip always covers four weeks, and stretches to reach a date picked
+  // from the dropdown beyond that — so the chosen day is always on it.
+  const stripLen = Math.min(MAX_DAYS_AHEAD + 1, Math.max(STRIP_DAYS, daysBetween(todayStr, date) + 7))
+  const days = useMemo(() => Array.from({ length: stripLen }, (_, i) => addDays(new Date(), i)), [stripLen])
   const nowDec = new Date().getHours() + new Date().getMinutes() / 60
 
   // Include bookings on rooms that physically share this space (Function Space
@@ -54,6 +60,7 @@ export default function RoomDetail({ room, onBack }) {
 
   const rate = bookingRate(room, company?.id, leases) // members 30% off, drop-ins list rate
   const balance = spendableCredits(company, leases)
+  const level = floorLabel(room) // 'Level 2' / 'Level 4' — which floor to walk to
 
   // Half-hour cells across the grid window
   const cells = []
@@ -79,14 +86,21 @@ export default function RoomDetail({ room, onBack }) {
             {room.size && !/up\s*to/i.test(room.size) && <span>{room.size}</span>}
           </p>
         </div>
-        <Chip tone="green">{balance} cr</Chip>
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          {level && <Chip>{level}</Chip>}
+          <Chip tone="green">{balance} cr</Chip>
+        </div>
       </div>
 
-      {/* Date strip — 4 weeks: swipeable on touch, chevrons + wheel on desktop */}
-      <DateStrip days={days} date={date} onPick={(ds) => { setDate(ds); setSlot(null) }} />
+      {/* Date — tap to open the month, or scrub the strip */}
+      <DateDropdown
+        value={date} min={todayStr} max={lastStr} inline
+        onChange={(ds) => { setDate(ds); setSlot(null) }}
+      />
+      <DateStrip days={days} date={date} onPick={(ds) => { setDate(ds); setSlot(null) }} className="mt-3" />
 
       <div className="flex items-center justify-between mt-5 mb-3">
-        <Label>{format(new Date(date + 'T00:00:00'), 'EEEE d MMMM')}</Label>
+        <Label>Availability</Label>
         <span className="hx-prose text-[11px]">Tap an open slot</span>
       </div>
 
@@ -164,7 +178,9 @@ export default function RoomDetail({ room, onBack }) {
   )
 }
 
-function DateStrip({ days, date, onPick }) {
+// Quick day scrub. The dropdown above it is how you travel — this is for
+// nudging a day either side, so it carries no chevrons of its own.
+function DateStrip({ days, date, onPick, className = '' }) {
   const ref = useRef(null)
 
   // Mouse-wheel → horizontal scroll (needs a non-passive listener to prevent
@@ -182,33 +198,30 @@ function DateStrip({ days, date, onPick }) {
     return () => el.removeEventListener('wheel', onWheel)
   }, [])
 
-  const page = (dir) => ref.current?.scrollBy({ left: dir * 4 * 64, behavior: 'smooth' })
+  // Pick a date from the dropdown and the strip follows it — centred, so a day
+  // three weeks out isn't left off-screen behind the scroll.
+  useEffect(() => {
+    const el = ref.current
+    const cell = el?.querySelector(`[data-day="${date}"]`)
+    if (!el || !cell) return
+    el.scrollTo({ left: cell.offsetLeft - el.clientWidth / 2 + cell.clientWidth / 2, behavior: 'smooth' })
+  }, [date])
 
   return (
-    <div className="flex items-center gap-1 -mx-2">
-      <button onClick={() => page(-1)} aria-label="Earlier dates"
-        className="h-11 w-8 shrink-0 flex items-center justify-center text-portal-muted active:text-ink">
-        <ChevronLeft size={16} strokeWidth={1.5} />
-      </button>
-      <div ref={ref} className="flex gap-2 overflow-x-auto no-scrollbar flex-1 pb-1">
-        {days.map((d) => {
-          const ds = format(d, 'yyyy-MM-dd')
-          const on = ds === date
-          return (
-            <button key={ds} onClick={() => onPick(ds)}
-              className={`shrink-0 w-14 py-2.5 border text-center transition-colors ${on ? 'bg-ink text-paper border-ink' : 'bg-paper text-ink border-ink/15 active:bg-bone'}`}>
-              <span className={`block font-heading uppercase tracking-label text-[9px] ${on ? 'text-paper/60' : 'text-portal-muted'}`}>
-                {format(d, 'EEE')}
-              </span>
-              <span className="block font-display font-extralight text-lg leading-tight mt-0.5">{format(d, 'd')}</span>
-            </button>
-          )
-        })}
-      </div>
-      <button onClick={() => page(1)} aria-label="Later dates"
-        className="h-11 w-8 shrink-0 flex items-center justify-center text-portal-muted active:text-ink">
-        <ChevronRight size={16} strokeWidth={1.5} />
-      </button>
+    <div ref={ref} className={`flex gap-2 overflow-x-auto no-scrollbar pb-1 ${className}`}>
+      {days.map((d) => {
+        const ds = format(d, 'yyyy-MM-dd')
+        const on = ds === date
+        return (
+          <button key={ds} data-day={ds} onClick={() => onPick(ds)}
+            className={`shrink-0 w-14 py-2.5 border text-center transition-colors ${on ? 'bg-ink text-paper border-ink' : 'bg-paper text-ink border-ink/15 active:bg-bone'}`}>
+            <span className={`block font-heading uppercase tracking-label text-[9px] ${on ? 'text-paper/60' : 'text-portal-muted'}`}>
+              {format(d, 'EEE')}
+            </span>
+            <span className="block font-display font-extralight text-lg leading-tight mt-0.5">{format(d, 'd')}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -236,7 +249,11 @@ function SlotSheet({ room, date, start, member, company, allBookings, balance, l
   }
   // If the default hour doesn't fit, fall back to the longest duration that does.
   const usable = DURATIONS.filter((d) => fits(d.min))
-  const effDur = usable.some((d) => d.min === durMin) ? durMin : (usable.at(-1)?.min ?? 30)
+  // Index arithmetic, not .at(-1): Array.prototype.at needs WebView/Chrome 92+
+  // and Safari 15.4+, and Vite polyfills no runtime methods — on an older phone
+  // .at is undefined and this threw the instant a member tapped a slot.
+  const effDur = usable.some((d) => d.min === durMin) ? durMin : (usable[usable.length - 1]?.min ?? 30)
+  const longestFit = usable.length ? usable[usable.length - 1].min : 0
   const end = fromDec(toDec(start) + effDur / 60)
 
   const hrs = effDur / 60
@@ -317,20 +334,15 @@ function SlotSheet({ room, date, start, member, company, allBookings, balance, l
           <Rule className="mb-5" />
 
           <label className="hx-eyebrow block mb-2">Duration</label>
-          <div className="grid grid-cols-4 gap-2 mb-5">
-            {DURATIONS.map((d) => {
-              const ok = fits(d.min)
-              const on = d.min === effDur
-              return (
-                <button key={d.min} disabled={!ok} onClick={() => setDurMin(d.min)}
-                  className={`min-h-[44px] border font-heading uppercase tracking-nav text-[10px] transition-colors ${
-                    on ? 'bg-ink text-paper border-ink' : ok ? 'bg-paper text-ink border-ink/15 active:bg-bone' : 'bg-bone text-portal-muted border-ink/10 opacity-50'
-                  }`}>
-                  {d.label}
-                </button>
-              )
-            })}
-          </div>
+          <DurationRow durations={DURATIONS} value={effDur} fits={fits} onPick={setDurMin} />
+          {longestFit < DURATIONS[DURATIONS.length - 1].min && (
+            <p className="hx-prose text-[11px] mb-5 -mt-3">
+              {longestFit
+                ? `Up to ${DURATIONS.find((d) => d.min === longestFit).label} fits from ${to12(start)} — longer options are greyed out.`
+                : 'Nothing fits from this slot — try another time.'}
+              {isPerk ? ` ${room.unitNumber} is included up to ${perk.maxHoursPerBooking}h per booking.` : ''}
+            </p>
+          )}
 
           <label className="hx-eyebrow block mb-2">Title (optional)</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Client meeting"
@@ -387,6 +399,36 @@ function SlotSheet({ room, date, start, member, company, allBookings, balance, l
         </>
       )}
     </Sheet>
+  )
+}
+
+// Durations as a horizontal scroller rather than a fixed grid — half an hour
+// through to a full day, without a wall of buttons. The live choice is scrolled
+// into view, so a fallback pick (the longest that still fits) is never hidden.
+function DurationRow({ durations, value, fits, onPick }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    const chip = el?.querySelector(`[data-min="${value}"]`)
+    if (!el || !chip) return
+    el.scrollTo({ left: Math.max(0, chip.offsetLeft - el.clientWidth / 2 + chip.clientWidth / 2), behavior: 'smooth' })
+  }, [value])
+
+  return (
+    <div ref={ref} className="flex gap-2 overflow-x-auto no-scrollbar mb-5 -mx-5 px-5">
+      {durations.map((d) => {
+        const ok = fits(d.min)
+        const on = d.min === value
+        return (
+          <button key={d.min} data-min={d.min} disabled={!ok} onClick={() => onPick(d.min)}
+            className={`shrink-0 min-h-[44px] px-4 border font-heading uppercase tracking-nav text-[10px] whitespace-nowrap transition-colors ${
+              on ? 'bg-ink text-paper border-ink' : ok ? 'bg-paper text-ink border-ink/15 active:bg-bone' : 'bg-bone text-portal-muted border-ink/10 opacity-50'
+            }`}>
+            {d.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

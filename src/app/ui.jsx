@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 
-export { fmt, money, money0, to12, bookingName, StatusBadge } from '../portal/ui.jsx'
+export { fmt, money, money0, to12, bookingName, StatusBadge, DateDropdown, daysBetween } from '../portal/ui.jsx'
 
 /** Scrollable screen body — leaves room for the fixed tab bar. */
 export function Screen({ children, className = '' }) {

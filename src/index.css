@@ -181,6 +181,12 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Horizontal scrollers without visible scrollbars (date strips, duration rows).
+   Defined here, not only in app.css, so the portal has it too — app.css only
+   loads once the member app itself has been opened. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* ── Mobile padding override ──────────────────────────────────────────────── */
 @media (max-width: 767px) {
   .p-8 { padding: 1rem !important; }

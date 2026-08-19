@@ -1,15 +1,19 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, X, Repeat, Check, User } from 'lucide-react'
+import { X, Repeat, Check, User } from 'lucide-react'
 import { format, addDays, addMonths } from 'date-fns'
 import { supabase } from '../lib/supabase.js'
 import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig, spendableCredits, hasActiveMembership, creditMonthKey } from '../lib/credits.js'
 import { bookingRate, bookingWasUsed } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
-import { Card } from './ui.jsx'
+import { Card, DateDropdown } from './ui.jsx'
 
 // Mirrors the admin Calendar so the portal reads/writes the SAME bookings table.
 const HOUR_H = 52
 const CREDIT_VALUE = 40 // A$40 per credit
+
+// Quick-pick durations in the booking modal — 30 minutes to a full day.
+const DURATION_MINS = [30, 60, 90, 120, 150, 180, 210, 240, 300, 360, 420, 480]
+const durationLabel = (min) => (min === 30 ? '30 mins' : min === 60 ? '1 hour' : `${min / 60} hrs`)
 
 const t12 = (h) => `${h % 12 || 12} ${h >= 12 ? 'pm' : 'am'}`
 const to12 = (t) => { if (!t) return ''; let [h, m] = t.split(':').map(Number); const ap = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12; return `${h}:${String(m).padStart(2, '0')} ${ap}` }
@@ -64,15 +68,14 @@ export default function PortalCalendar({ resources, allBookings, member, company
 
   return (
     <>
-      {/* Day navigation */}
+      {/* Day navigation — the date itself is the control: open it and pick a
+          day from the month, rather than stepping there one click at a time. */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <div className="flex items-center gap-3">
           <button onClick={() => setDay(new Date())} className="font-heading uppercase tracking-nav text-[10px] border border-ink/15 px-4 py-2 hover:bg-ink hover:text-paper transition-colors">Today</button>
-          <div className="flex items-center border border-ink/15">
-            <button onClick={() => setDay((d) => addDays(d, -1))} className="p-2 hover:bg-bone"><ChevronLeft size={15} /></button>
-            <button onClick={() => setDay((d) => addDays(d, 1))} className="p-2 border-l border-ink/15 hover:bg-bone"><ChevronRight size={15} /></button>
-          </div>
-          <span className="font-display font-extralight text-2xl">{format(day, 'EEEE, d MMMM')}</span>
+          <DateDropdown size="lg" className="min-w-[15rem]"
+            value={format(day, 'yyyy-MM-dd')}
+            onChange={(ds) => setDay(new Date(`${ds}T00:00:00`))} />
         </div>
         <span className="hx-eyebrow">{resources.length} {resources.length === 1 ? 'space' : 'spaces'}</span>
       </div>
@@ -432,16 +435,17 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
             <div><label className="hx-eyebrow block mb-1.5">To</label><input type="time" value={f.endTime} onChange={up('endTime')} className="hx-input" /></div>
           </div>
           {/* One-click durations — the grid selects 30 minutes, these extend it
-              without making anyone do time arithmetic in the To field. */}
-          <div className="flex flex-wrap gap-2">
-            {[30, 60, 90, 120].map((min) => {
+              without making anyone do time arithmetic in the To field. They run
+              past two hours: half-day and full-day hires are booked here too. */}
+          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1">
+            {DURATION_MINS.map((min) => {
               const on = Math.round((toDec(f.endTime) - toDec(f.startTime)) * 60) === min
               return (
                 <button key={min} type="button"
                   onClick={() => setF((p) => ({ ...p, endTime: fromDec(toDec(p.startTime) + min / 60) }))}
-                  className={`font-heading uppercase tracking-nav text-[10px] px-3 py-2 border transition-colors ${
+                  className={`shrink-0 font-heading uppercase tracking-nav text-[10px] px-3 py-2 border whitespace-nowrap transition-colors ${
                     on ? 'bg-ink text-paper border-ink' : 'border-ink/15 hover:bg-bone'}`}>
-                  {min === 30 ? '30 mins' : min === 60 ? '1 hour' : min === 90 ? '1.5 hrs' : '2 hours'}
+                  {durationLabel(min)}
                 </button>
               )
             })}
