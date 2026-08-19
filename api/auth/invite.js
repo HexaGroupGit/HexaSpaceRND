@@ -17,9 +17,6 @@ export default async function handler(req, res) {
   // session list + quote) rendered between the intro and the CTA button.
   const { email, subject, heading, intro, extraHtml, ctaLabel, footerLabel } = req.body ?? {}
   const r = await invitePortalUser({ email, subject, heading, intro, extraHtml, ctaLabel, footerLabel })
-  if (!r.ok) {
-    const status = r.error === 'Email is required.' ? 400 : 500
-    return res.status(status).json({ error: r.error })
-  }
+  if (!r.ok) return res.status(r.status ?? 500).json({ error: r.error })
   return res.status(200).json({ success: true, email: r.email })
 }

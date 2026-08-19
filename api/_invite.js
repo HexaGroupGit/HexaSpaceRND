@@ -32,12 +32,19 @@ export function newUserEssentialsHtml(settings = {}) {
 // Returns { ok: true, email } or { ok: false, error }.
 // greeting/extraHtml/footerLabel are optional overrides used by the portal
 // migration bulk-invite; defaults preserve the original invite exactly.
-export async function invitePortalUser({ email, redirectTo, subject, heading, greeting, intro, extraHtml, ctaLabel, footerLabel }) {
+export async function invitePortalUser({ email: rawEmail, redirectTo, subject, heading, greeting, intro, extraHtml, ctaLabel, footerLabel }) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const resendKey = process.env.RESEND_API_KEY
   if (!serviceKey) return { ok: false, error: 'SUPABASE_SERVICE_ROLE_KEY not configured.' }
   if (!resendKey) return { ok: false, error: 'RESEND_API_KEY not configured.' }
-  if (!email) return { ok: false, error: 'Email is required.' }
+  // Typed-in addresses carry stray spaces and capitals; Supabase rejects those
+  // outright ("Unable to validate email address: invalid format"). Normalise
+  // the same way bulk-invite does, and say something useful if it's still junk.
+  const email = String(rawEmail ?? '').trim().toLowerCase()
+  if (!email) return { ok: false, error: 'Email is required.', status: 400 }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: `"${rawEmail}" doesn't look like a valid email address.`, status: 400 }
+  }
 
   const REDIRECT = redirectTo || 'https://portal.hexaspace.com.au'
   const SUBJECT = subject || "You've been invited to the Hexa Space Member Portal"
