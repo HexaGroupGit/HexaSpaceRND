@@ -6,6 +6,7 @@ import { isFunctionSpace } from '../../portal/functionSpace.js'
 import { Screen, Label, Display, Rule, Chip, RoomPhoto, to12, money0, bookingName } from '../ui.jsx'
 import { spendableCredits, CREDIT_VALUE, bookingPhase } from '../lib/bookingActions.js'
 import { bookingRate } from '../../lib/dropIn.js'
+import { floorLabel } from '../../lib/roomFloor.js'
 import { useRoomUnlock } from '../lib/useRoomUnlock.js'
 import RoomDetail from '../screens/RoomDetail.jsx'
 import BookingSheet from '../screens/BookingSheet.jsx'
@@ -100,12 +101,18 @@ export default function Book() {
 }
 
 // `rate` is resolved by the caller — members see the 30%-off rate, drop-ins list.
+// The floor sits on the name line: Sun, Moon and Central are downstairs on
+// Level 2, the rest are on Level 4, and members shouldn't have to remember which.
 function RoomRow({ room, rate, onOpen }) {
+  const level = floorLabel(room)
   return (
     <button onClick={onOpen} className="w-full flex items-center gap-4 py-4 min-h-[68px] active:opacity-60 transition-opacity">
       <RoomPhoto room={room} className="h-14 w-14 shrink-0 text-xl" />
       <span className="flex-1 min-w-0 text-left">
-        <span className="block font-heading uppercase tracking-nav text-[11px] text-ink truncate">{room.unitNumber}</span>
+        <span className="flex items-baseline gap-2 min-w-0">
+          <span className="font-heading uppercase tracking-nav text-[11px] text-ink truncate">{room.unitNumber}</span>
+          {level && <span className="font-heading uppercase tracking-label text-[9px] text-portal-muted shrink-0">{level}</span>}
+        </span>
         <span className="hx-prose text-[12px] mt-0.5 flex items-center gap-3">
           <span>{rate ? `${money0(rate)}/hr` : '—'}</span>
           {room.pax && <span className="flex items-center gap-1"><Users size={11} /> up to {room.pax}</span>}
@@ -150,6 +157,7 @@ function UpcomingList({ bookings, spaces, settings, onOpen }) {
 function LiveRow({ booking, spaces, settings }) {
   const { phase, unlock } = useRoomUnlock(booking, settings)
   const open = phase === 'open', unlocking = phase === 'unlocking'
+  const level = floorLabel((spaces ?? []).find((s) => s.id === booking.resourceId))
   return (
     <button onClick={unlock} disabled={unlocking}
       className={`w-full flex items-center gap-4 py-4 text-left transition-colors ${open ? 'bg-hexa-green/10' : 'active:opacity-60'}`}>
@@ -157,7 +165,10 @@ function LiveRow({ booking, spaces, settings }) {
         {open ? <Check size={20} strokeWidth={1.6} /> : <KeyRound size={18} strokeWidth={1.6} />}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="font-heading uppercase tracking-nav text-[11px] text-ink truncate">{bookingName(spaces, booking)}</div>
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="font-heading uppercase tracking-nav text-[11px] text-ink truncate">{bookingName(spaces, booking)}</span>
+          {level && <span className="font-heading uppercase tracking-label text-[9px] text-portal-muted shrink-0">{level}</span>}
+        </div>
         <div className="hx-prose text-[12px] mt-0.5">
           {open ? 'Unlocked — push the door.' : unlocking ? 'Unlocking…' : `${to12(booking.startTime)} – ${to12(booking.endTime)} · tap to unlock`}
         </div>
@@ -169,6 +180,7 @@ function LiveRow({ booking, spaces, settings }) {
 
 // An upcoming booking — tap opens the sheet to change time or cancel.
 function UpcomingRow({ booking: b, spaces, onOpen }) {
+  const level = floorLabel((spaces ?? []).find((s) => s.id === b.resourceId))
   return (
     <button onClick={() => onOpen(b)} className="w-full flex items-center gap-4 py-4 text-left active:opacity-60">
       <div className="h-12 w-12 shrink-0 bg-paper border border-ink/10 flex flex-col items-center justify-center">
@@ -178,7 +190,10 @@ function UpcomingRow({ booking: b, spaces, onOpen }) {
         </span>
       </div>
       <div className="flex-1 min-w-0">
-        <div className="font-heading uppercase tracking-nav text-[11px] text-ink truncate">{bookingName(spaces, b)}</div>
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="font-heading uppercase tracking-nav text-[11px] text-ink truncate">{bookingName(spaces, b)}</span>
+          {level && <span className="font-heading uppercase tracking-label text-[9px] text-portal-muted shrink-0">{level}</span>}
+        </div>
         <div className="hx-prose text-[12px] mt-0.5">
           {to12(b.startTime)} – {to12(b.endTime)}{b.title ? ` · ${b.title}` : ''}
         </div>

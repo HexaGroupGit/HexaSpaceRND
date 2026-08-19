@@ -5,6 +5,7 @@ import { Sheet, BigButton, Chip, fmt, to12, bookingName } from '../ui.jsx'
 import { apiUrl } from '../lib/native.js'
 import { authHeaders } from '../../lib/apiFetch.js'
 import { saltoWebUrl } from '../lib/doorAccess.js'
+import { floorLabel } from '../../lib/roomFloor.js'
 import {
   bookingPhase, canModifyBooking, cancelBooking, amendBooking,
 } from '../lib/bookingActions.js'
@@ -16,6 +17,7 @@ export default function BookingSheet({ booking, onClose }) {
   const { data, patch } = useApp()
   const { spaces, company, member, leases, settings, allBookings } = data
   const room = (spaces ?? []).find((s) => s.id === booking.resourceId)
+  const level = floorLabel(room) // which floor to walk to
   const phase = bookingPhase(booking)
   const modifiable = canModifyBooking(booking)
 
@@ -95,11 +97,12 @@ export default function BookingSheet({ booking, onClose }) {
       <div className="text-center mb-5">
         <p className="font-display font-extralight text-[28px] leading-tight text-ink">{title}</p>
         <p className="hx-prose text-[13px] mt-1">{fmt(booking.date)} · {timeStr}</p>
-        <div className="mt-3 flex justify-center">
+        <div className="mt-3 flex justify-center gap-2">
           {phase === 'active' ? <Chip tone="green">Happening now</Chip>
             : phase === 'past' ? <Chip tone="ink">Ended</Chip>
             : booking.status === 'Cancelled' ? <Chip tone="ink">Cancelled</Chip>
             : <Chip tone="ink">Upcoming</Chip>}
+          {level && <Chip tone="ink">{level}</Chip>}
         </div>
       </div>
 

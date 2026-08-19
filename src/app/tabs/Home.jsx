@@ -13,6 +13,7 @@ import { invoiceTotal, unpaidInvoices } from '../lib/invoiceTotal.js'
 import { buildNotifications } from '../lib/notifications.js'
 import { canViewBilling } from '../../lib/billingAccess.js'
 import { bookingPhase } from '../lib/bookingActions.js'
+import { floorLabel } from '../../lib/roomFloor.js'
 import { useRoomUnlock } from '../lib/useRoomUnlock.js'
 import PaySheet from '../screens/PaySheet.jsx'
 import BookingSheet from '../screens/BookingSheet.jsx'
@@ -62,6 +63,8 @@ export default function Home() {
   const nextBooking = [...(bookings ?? [])]
     .filter((b) => b.status !== 'Cancelled' && bookingPhase(b) === 'upcoming')
     .sort((a, b) => (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || '')))[0]
+  // Which floor to walk to — Sun, Moon and Central are on Level 2, the rest Level 4.
+  const nextLevel = nextBooking ? floorLabel((spaces ?? []).find((s) => s.id === nextBooking.resourceId)) : ''
 
   const unpaid = unpaidInvoices(invoices)
   const owing = unpaid.reduce((s, i) => s + invoiceTotal(i), 0)
@@ -194,8 +197,13 @@ export default function Home() {
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-heading uppercase tracking-nav text-[11px] text-ink truncate">
-                {bookingName(spaces, nextBooking)}
+              <div className="flex items-baseline gap-2 min-w-0">
+                <span className="font-heading uppercase tracking-nav text-[11px] text-ink truncate">
+                  {bookingName(spaces, nextBooking)}
+                </span>
+                {nextLevel && (
+                  <span className="font-heading uppercase tracking-label text-[9px] text-portal-muted shrink-0">{nextLevel}</span>
+                )}
               </div>
               <div className="hx-prose text-[12px] mt-1">
                 {fmt(nextBooking.date)}{nextBooking.startTime ? ` · ${to12(nextBooking.startTime)} – ${to12(nextBooking.endTime)}` : ''}

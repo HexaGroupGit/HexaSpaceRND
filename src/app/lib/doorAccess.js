@@ -1,4 +1,5 @@
 import { platform } from './native.js'
+import { floorLabelFor } from '../../lib/roomFloor.js'
 
 // Door access — Salto KS. Our locks open over Bluetooth via Salto's own app, and
 // the Zapier connector can't do a BLE unlock, so the app doesn't try to be the
@@ -18,8 +19,6 @@ export function saltoWebUrl(settings) {
     : (cfg.iosUrl || SALTO_APP.ios)
 }
 
-const floorLabel = (f) => (f ? `Level ${String(f).replace(/^l/i, '')}` : '')
-
 // Whether the member's door access is provisioned yet — drives the tile's chip.
 // 'active' (key issued), 'pending' (lease active, still being set up), 'none'.
 export function accessSummary(data) {
@@ -29,7 +28,7 @@ export function accessSummary(data) {
 
   const areas = ['Main entrance', 'Lift']
   if (space?.unitNumber) {
-    areas.unshift([space.unitNumber, floorLabel(space.floor)].filter(Boolean).join(', '))
+    areas.unshift([space.unitNumber, floorLabelFor(space.floor)].filter(Boolean).join(', '))
   }
 
   return {
