@@ -19,6 +19,13 @@ export const ADMIN_CHARGE = 33.00
 const TO = ['info@maxaoc.com.au', 'pbh@profacilitymanagement.com.au']
 const CC = ['eric@hexaspace.com.au', 'info@hexaspace.com.au', 'scarlett@hexaspace.com.au', 'brittany@hexaspace.com.au', 'admin@hexa.com.au']
 
+// MAXA's account for fob/remote payments. Maxa's form says they'll send payment
+// details on receipt, but we already hold them — so the order email states the
+// amount against these details and asks our admin (cc'd) to pay and confirm,
+// which takes a round trip out of the process.
+const PAY_TO = { name: 'Maxa OC Management Pty Ltd', bsb: '033 089', account: '674 298' }
+const PAYER = 'admin@hexa.com.au'
+
 const money = (n) => `$${Number(n).toFixed(2)}`
 const inp = 'w-full border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40'
 const lab = 'block text-xs font-medium text-muted-foreground mb-1'
@@ -85,7 +92,15 @@ export default function FobOrderTab({ settings }) {
           <li>Administrative charge = ${money(ADMIN_CHARGE)}</li>
         </ul>
         <p><strong>Total (incl. GST): ${money(totals.total)}</strong></p>
-        <p>Please send through your payment details and we'll arrange payment right away.</p>
+        <p>We'll transfer the amount to the account below and confirm once it's away, so there's no need to send payment details:</p>
+        <table style="border-collapse:collapse;margin:0 0 16px">
+          <tr><td style="padding:3px 16px 3px 0;color:#6b6b6b">Account name</td><td style="padding:3px 0"><strong>${PAY_TO.name}</strong></td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:#6b6b6b">BSB</td><td style="padding:3px 0"><strong>${PAY_TO.bsb}</strong></td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:#6b6b6b">Account No.</td><td style="padding:3px 0"><strong>${PAY_TO.account}</strong></td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:#6b6b6b">Amount</td><td style="padding:3px 0"><strong>${money(totals.total)}</strong></td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:#6b6b6b">Reference</td><td style="padding:3px 0"><strong>Fob order U${f.lot}</strong></td></tr>
+        </table>
+        <p><strong>${PAYER}</strong> — please pay the ${money(totals.total)} to the account above and reply all to confirm once it's done.</p>
         <p>Kind regards,<br/>${f.name}<br/>Hexa Space · 402/830 Whitehorse Road, Box Hill${f.phone ? ` · ${f.phone}` : ''}</p>`
       const r = await fetch('/api/send-email', {
         method: 'POST', headers: await authHeaders(),
@@ -159,7 +174,7 @@ export default function FobOrderTab({ settings }) {
         {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</div>}
         {sent && (
           <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2">
-            <CheckCircle2 size={14} /> Order sent to Maxa OC & Pro Facility Management ({sent.fobs} fobs, {sent.remotes} remotes — {money(sent.total)}). They'll reply with payment details.
+            <CheckCircle2 size={14} /> Order sent to Maxa OC & Pro Facility Management ({sent.fobs} fobs, {sent.remotes} remotes — {money(sent.total)}). {PAYER} has been asked to pay it and confirm.
           </div>
         )}
 
@@ -174,8 +189,9 @@ export default function FobOrderTab({ settings }) {
           </button>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Sends the filled Maxa order form to {TO.join(' and ')}, cc {CC.join(', ')}. Payment is arranged
-          once Maxa replies with their details; collection is from the Building Manager (no delivery).
+          Sends the filled Maxa order form to {TO.join(' and ')}, cc {CC.join(', ')}. The email carries Maxa's
+          bank details and asks {PAYER} to pay the total and confirm — Maxa prepare the devices once paid, and
+          collection is from the Building Manager (no delivery).
         </p>
       </div>
 
@@ -187,6 +203,17 @@ export default function FobOrderTab({ settings }) {
           <div className="flex justify-between"><span>{f.remotes} × Remote @ {money(REMOTE_PRICE)}</span><span className="tabular-nums">{money(totals.remotes)}</span></div>
           <div className="flex justify-between text-muted-foreground"><span>Administrative charge</span><span className="tabular-nums">{money(ADMIN_CHARGE)}</span></div>
           <div className="flex justify-between font-bold border-t border-border pt-2 mt-2"><span>Total (incl. GST)</span><span className="tabular-nums">{money(totals.total)}</span></div>
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-border">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Pay to</h3>
+          <dl className="text-xs space-y-1">
+            <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Account</dt><dd className="text-foreground text-right">{PAY_TO.name}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-muted-foreground">BSB</dt><dd className="text-foreground tabular-nums">{PAY_TO.bsb}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Account No.</dt><dd className="text-foreground tabular-nums">{PAY_TO.account}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Reference</dt><dd className="text-foreground">Fob order U{f.lot}</dd></div>
+          </dl>
+          <p className="text-[11px] text-muted-foreground mt-2">{PAYER} is asked to pay this and reply all to confirm.</p>
         </div>
       </div>
     </div>
