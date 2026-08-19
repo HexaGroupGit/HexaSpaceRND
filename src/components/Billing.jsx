@@ -153,8 +153,9 @@ export default function Billing() {
       if (!invoice) continue
       built.push(invoice)
     }
-    // Companies set to "one combined invoice" get their contracts on a single
-    // bill, one line each, instead of an invoice per contract.
+    // Fold contracts onto one bill: parking always rides on the member's rent
+    // invoice, and companies set to "one combined invoice" get every contract
+    // on a single bill, one line each.
     const newInvoices = combineTenantInvoices(built, tenants)
     const generated = newInvoices.length
 

@@ -7,6 +7,7 @@ import ContractDetail from './ContractDetail.jsx'
 import { sendLeaseForSigning, shouldAutoSendForSigning } from '../lib/esign.js'
 import TerminateModal, { TERMINATION_REASONS, applyTermination } from './TerminateModal.jsx'
 import { contractTermValue } from '../lib/paymentSchedule.js'
+import { invoiceCoversLease } from '../lib/billingEngine.js'
 
 const DOC_TYPES = [
   'License Agreement',
@@ -253,7 +254,7 @@ export default function Leases() {
         // Block deletion for signed contracts or contracts with active invoices
         const isSigned = ['manually_signed', 'e_signed'].includes(lease.signatureStatus)
         const hasInvoices = invoices.some(
-          (inv) => inv.leaseId === lease.id && inv.status !== 'voided'
+          (inv) => invoiceCoversLease(inv, lease.id) && inv.status !== 'voided'
         )
         if (isSigned || hasInvoices) {
           alert(

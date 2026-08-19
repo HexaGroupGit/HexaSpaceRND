@@ -39,9 +39,8 @@ export function buildMonthlyInvoiceForLease(lease, monthStart, { invoices = [], 
   // invoice's periodStart lands mid-month and must still block a re-bill.
   // A combined invoice (see combineTenantInvoices) covers several contracts, so
   // check its leaseIds too or every contract but the first would re-bill.
-  const covers = (i) => i.leaseId === lease.id || (i.leaseIds ?? []).includes(lease.id)
   const already = invoices.some((i) =>
-    covers(i) && i.status !== 'voided' &&
+    invoiceCoversLease(i, lease.id) && i.status !== 'voided' &&
     !['deposit', 'bond_refund'].includes(i.invoiceType) &&
     String(i.periodStart || '').startsWith(key)
   )
@@ -138,36 +137,74 @@ export function buildMonthlyInvoiceForLease(lease, monthStart, { invoices = [], 
   }
 }
 
+// A merged invoice carries every contract it covers in `leaseIds` while keeping
+// a single `leaseId` for compatibility — so anything asking "is this contract
+// billed / invoiced?" has to read both, or a folded contract looks unbilled and
+// gets charged twice.
+export function invoiceCoversLease(invoice, leaseId) {
+  if (!invoice || !leaseId) return false
+  return invoice.leaseId === leaseId || (invoice.leaseIds ?? []).includes(leaseId)
+}
+
+// Car bays are held on their own contract (CON-nnn-PARK), which on its own
+// would bill the member twice a month — once for the suite, once for the bay.
+// An invoice whose every line is parking came from one of those.
+const isParkingOnly = (inv) =>
+  (inv?.lineItems?.length ?? 0) > 0 && inv.lineItems.every((li) => li.revenueAccount === 'Parking')
+
 // Members holding more than one contract normally get one invoice per contract.
-// With `combineInvoices` ticked on the company profile they get a single
-// invoice for the month instead, carrying a line per contract — e.g. Wehome,
-// who licenses Suite 7 and Suite 24 and asked for one bill covering both.
+// Two rules fold them together instead:
+//   · parking always rides on the rent invoice — a member with a suite and a
+//     bay gets one bill with a rent line and a parking line, never two bills;
+//   · `combineInvoices` on the company profile puts EVERY contract on one
+//     invoice, a line each — e.g. Wehome, who licences Suite 7 and Suite 24.
 //
 // Takes the invoices a bill run just built (in lease order) and returns the list
-// to actually create. The merged invoice keeps the first contract's leaseId for
-// compatibility and lists every contract in `leaseIds`, which is what the dedup
-// above reads — so a second run doesn't re-bill the contracts folded into it.
+// to actually create — before numbering, saving or emailing, so a merged bill
+// takes one number and sends one email. Rent leads: the merged invoice keeps the
+// rent contract's leaseId and prints the rent line above parking. Every folded
+// contract lands in `leaseIds`, which the dedup above reads, so a second run
+// doesn't re-bill them.
 export function combineTenantInvoices(built = [], tenants = []) {
   const combining = new Set(tenants.filter((t) => t?.combineInvoices).map((t) => t.id))
-  if (!combining.size) return built
-  const firstFor = new Map()
+
+  const byTenant = new Map()
+  for (const inv of built) byTenant.set(inv.tenantId, [...(byTenant.get(inv.tenantId) ?? []), inv])
+
+  const foldInto = new Map()  // base invoice -> the invoices merging into it
+  const folded = new Set()
+  for (const [tenantId, list] of byTenant) {
+    if (list.length < 2) continue
+    const rent = list.filter((i) => !isParkingOnly(i))
+    const parking = list.filter(isParkingOnly)
+    // Without the combine flag only parking rides along, and only when there is
+    // a rent invoice to ride on — a parking-only member still gets their own.
+    const group = combining.has(tenantId)
+      ? list
+      : (rent.length && parking.length ? [rent[0], ...parking] : [])
+    if (group.length < 2) continue
+    const base = group.find((i) => !isParkingOnly(i)) ?? group[0]
+    foldInto.set(base, group.filter((i) => i !== base))
+    for (const inv of group) if (inv !== base) folded.add(inv)
+  }
+  if (!folded.size) return built
+
   const out = []
   for (const inv of built) {
-    if (!combining.has(inv.tenantId)) { out.push(inv); continue }
-    const first = firstFor.get(inv.tenantId)
-    if (!first) {
-      const merged = { ...inv, leaseIds: [inv.leaseId] }
-      firstFor.set(inv.tenantId, merged)
-      out.push(merged)               // merged is mutated in place below
-      continue
+    if (folded.has(inv)) continue
+    const extras = foldInto.get(inv)
+    if (!extras) { out.push(inv); continue }
+    const merged = { ...inv, leaseIds: [inv.leaseId] }
+    for (const other of extras) {
+      merged.lineItems = [...(merged.lineItems ?? []), ...(other.lineItems ?? [])]
+      merged.leaseIds.push(other.leaseId)
+      // Widest period across the contracts, earliest due date, prorated if any is.
+      if (other.periodStart < merged.periodStart) merged.periodStart = other.periodStart
+      if (other.periodEnd > merged.periodEnd) merged.periodEnd = other.periodEnd
+      if (other.dueDate < merged.dueDate) merged.dueDate = other.dueDate
+      merged.isProrated = merged.isProrated || other.isProrated
     }
-    first.lineItems = [...(first.lineItems ?? []), ...(inv.lineItems ?? [])]
-    first.leaseIds.push(inv.leaseId)
-    // Widest period across the contracts, earliest due date, prorated if any is.
-    if (inv.periodStart < first.periodStart) first.periodStart = inv.periodStart
-    if (inv.periodEnd > first.periodEnd) first.periodEnd = inv.periodEnd
-    if (inv.dueDate < first.dueDate) first.dueDate = inv.dueDate
-    first.isProrated = first.isProrated || inv.isProrated
+    out.push(merged)
   }
   return out
 }

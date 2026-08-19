@@ -135,10 +135,10 @@ export default async function handler(req, res) {
 
   const created = [], skipped = [], errors = []
 
-  // Two passes: price every contract first, then merge the bills of companies
-  // set to "one combined invoice" (combineTenantInvoices) before anything is
-  // numbered, saved or emailed — a merged bill must take one number and send
-  // one email, not one per contract.
+  // Two passes: price every contract first, then merge what belongs on one bill
+  // (combineTenantInvoices — parking onto rent, plus companies set to "one
+  // combined invoice") before anything is numbered, saved or emailed: a merged
+  // bill must take one number and send one email, not one per contract.
   const priced = []
   for (const lease of leases) {
     const tenant = tenants.find(t => t.id === lease.tenantId)
