@@ -80,6 +80,25 @@ export function bufferedWindow(startTime, endTime) {
   }
 }
 
+// ── Building access (front door + lift) request timing ───────────────────────
+// Building management programs the lift on a weekly cycle and won't take a
+// request far in advance, so the unlock email is held until ACCESS_LEAD_DAYS
+// before the first after-hours session rather than firing at confirm time.
+// The send day must be a business day — nobody at Maxa/PFM actions it over the
+// weekend — so a Sat/Sun landing rolls BACK to the Friday. Rolling back keeps
+// at least the full lead time; rolling forward would eat into it.
+export const ACCESS_LEAD_DAYS = 3
+
+const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+export function accessRequestSendDate(sessionDate, leadDays = ACCESS_LEAD_DAYS) {
+  if (!sessionDate) return null
+  const d = new Date(`${sessionDate}T00:00:00`)
+  d.setDate(d.getDate() - leadDays)
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1)
+  return isoDate(d)
+}
+
 // ── Multi-session series ─────────────────────────────────────────────────────
 // A booking is either single-session (legacy eventDate/startTime/endTime) or a
 // series with sessions: [{ date, startTime, endTime }]. This normaliser is the
@@ -186,6 +205,9 @@ export function computeQuote(input = {}) {
   const depositIncGst = round(depositHalf * (1 + GST_RATE))
   const dueNow = round(depositIncGst + securityDeposit)     // display
   const balanceDue = round(total - depositIncGst)           // display
+  // Everything owed on the booking as one figure — what a courtesy hold (dates
+  // blocked before any payment) is billed as a single invoice.
+  const fullDue = round(total + securityDeposit)            // display
 
   return {
     sessions, sessionCount,
@@ -198,7 +220,7 @@ export function computeQuote(input = {}) {
     discountReason: discount > 0 ? (o.discountReason || '').trim() : '',
     customRate: customRate != null,
     taxable, gst, total,
-    securityDeposit, depositIncGst, dueNow, balanceDue,
+    securityDeposit, depositIncGst, dueNow, balanceDue, fullDue,
   }
 }
 

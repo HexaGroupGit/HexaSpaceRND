@@ -1,8 +1,12 @@
 // Vercel cron — GET/POST /api/function-reminders (daily).
-// Emails confirmed function clients 1 week and 1 day before their event.
+// Emails confirmed function clients 1 week and 1 day before their event, and
+// releases the building-unlock (front door + lift) requests that fall due today
+// — those are held back until 3 business days before the event because building
+// management programs the lift weekly and won't take a request further out.
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
 import { brandFrame, bKicker, bH1, bP, bTable } from './_brand.js'
+import { sendAccessRequest, accessRequestDue, melbourneToday } from './function-bookings/_accessRequest.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -43,7 +47,26 @@ export default async function handler(req, res) {
       await supabase.from('function_bookings').upsert({ id: b.id, data: { ...b, [flag]: now, updatedAt: now }, updated_at: now })
       sent++
     }
-    return res.status(200).json({ ok: true, sent })
+
+    // Building unlock requests that have come due (Melbourne date). The cron
+    // runs every morning AEST, so a due date computed as a business day always
+    // gets its send on that business day. Anything already overdue (booking
+    // confirmed late, or a run that was missed) goes out on this pass.
+    const today = melbourneToday()
+    let access = 0
+    for (const b of bookings) {
+      // A series can have several batches, so don't stop at the first send —
+      // accessRequestDue() returns the next one still owing (null = nothing).
+      const due = accessRequestDue(b, today)
+      if (!due || due > today) continue
+      try {
+        const r = await sendAccessRequest({ supabase, booking: b, today })
+        if (r.status === 'sent') access++
+      } catch (err) {
+        console.error('access request failed for', b.ref, err)
+      }
+    }
+    return res.status(200).json({ ok: true, sent, access })
   } catch (err) {
     console.error('function-reminders error:', err)
     return res.status(500).json({ error: 'Internal error' })

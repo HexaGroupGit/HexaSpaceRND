@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { format } from 'date-fns'
 import {
   Plus, X, Send, Copy, Check, Pencil, Trash2, CheckCircle2,
-  CalendarDays, Users, ChevronRight, RefreshCw, DollarSign, UserPlus,
+  CalendarDays, CalendarCheck, Users, ChevronRight, RefreshCw, DollarSign, UserPlus,
 } from 'lucide-react'
 import {
   ADDONS, STAGES, money, computeQuote, bufferedWindow,
@@ -12,7 +12,7 @@ import {
 } from '../lib/functionBooking.js'
 import { findFunctionSpace } from '../portal/functionSpace.js'
 import { billingContactFor } from '../lib/credits.js'
-import { approveFunctionBooking, confirmDepositPaid, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit, requestBuildingAccess } from '../lib/functionActions.js'
+import { approveFunctionBooking, confirmDepositPaid, holdWithoutDeposit, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit, reissueHeldInvoice, requestBuildingAccess } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 const nowIso = () => new Date().toISOString()
@@ -71,8 +71,15 @@ function QuoteBreakdown({ booking }) {
         {line('Total (inc GST)', q.total, 'font-bold')}
       </div>
       <div className="mt-3 bg-muted/50 border border-border rounded-md p-3">
-        {line(`Payable now — 50% deposit + ${money(q.securityDeposit ?? 300)} security`, q.dueNow, 'font-semibold')}
-        {line('Balance (14 days before event)', q.balanceDue, 'text-muted-foreground')}
+        {/* A courtesy hold skips the split — one invoice for the lot. */}
+        {booking.heldWithoutDeposit ? (
+          line(`Payable in full — hire + ${money(q.securityDeposit ?? 300)} security (14 days before event)`, q.fullDue ?? (q.total + (q.securityDeposit ?? 300)), 'font-semibold')
+        ) : (
+          <>
+            {line(`Payable now — 50% deposit + ${money(q.securityDeposit ?? 300)} security`, q.dueNow, 'font-semibold')}
+            {line('Balance (14 days before event)', q.balanceDue, 'text-muted-foreground')}
+          </>
+        )}
       </div>
     </div>
   )
@@ -107,8 +114,9 @@ function PricingBox({ booking, onApply, busy }) {
   })()
   const preview = computeQuote({ ...booking, priceOverrides: cleaned, bookedOn: today() })
 
-  // Deposit raised but unpaid → saving should re-issue the invoice at the new amount.
-  const reissue = booking.stage === 'awaiting_deposit' && !booking.depositPaid
+  // Deposit raised but unpaid → saving should re-issue the invoice at the new
+  // amount. Also covers a courtesy hold (confirmed, deposit still owed).
+  const reissue = ['awaiting_deposit', 'confirmed'].includes(booking.stage) && !booking.depositPaid
 
   return (
     <div className="bg-muted/50 border border-border rounded-md p-3 space-y-3 mt-2">
@@ -156,7 +164,13 @@ function PricingBox({ booking, onApply, busy }) {
           </button>
         )}
       </div>
-      {reissue && <p className="text-[11px] text-muted-foreground">The pending deposit invoice will be voided and a fresh one raised &amp; emailed at the new amount.</p>}
+      {reissue && (
+        <p className="text-[11px] text-muted-foreground">
+          {booking.stage === 'confirmed'
+            ? 'The outstanding full invoice will be voided and a fresh one raised at the new amount — send it from Billing.'
+            : 'The pending deposit invoice will be voided and a fresh one raised & emailed at the new amount.'}
+        </p>
+      )}
       {booking.depositPaid && <p className="text-[11px] text-amber-700">Deposit already paid — changes here adjust the balance invoice when the venue is secured.</p>}
     </div>
   )
@@ -350,6 +364,7 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
   const [showPricing, setShowPricing] = useState(false)
   const [resent, setResent] = useState(false)
   const sessions = bookingSessions(b)
+  const q = b.quote || computeQuote({ ...b, bookedOn: today() })
   const lastDate = sessions[sessions.length - 1]?.date ?? b.eventDate
   const passed = lastDate && lastDate < today()
   const anyClash = (clash?.length || 0) + (calClash?.length || 0)
@@ -494,15 +509,39 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
               <button onClick={() => actions.markPaid(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
                 <DollarSign size={14} /> {busy ? 'Securing…' : 'Mark deposit paid → secure venue'}
               </button>
+              {/* Management call: block the dates now, bill the lot in one invoice. */}
+              <button onClick={() => actions.holdDates(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40">
+                <CalendarCheck size={14} /> {busy ? 'Blocking…' : 'Block dates without payment'}
+              </button>
+              <p className="text-[11px] text-muted-foreground">Blocking puts the sessions on the calendar before the money lands. Nothing is waived — the 50% deposit invoice is voided and replaced by one invoice for the full {money(q.fullDue)} (hire + GST + security), due 14 days before the event.</p>
             </>
           )}
           {b.stage === 'confirmed' && (
             <>
-              <div className="bg-green-50 border border-green-100 rounded-md px-3 py-2.5 text-xs text-green-800">Confirmed — venue secured and on the calendar (±30-min buffer). Balance due 14 days before the event.</div>
+              {b.depositPaid ? (
+                <div className="bg-green-50 border border-green-100 rounded-md px-3 py-2.5 text-xs text-green-800">Confirmed — venue secured and on the calendar (±30-min buffer). Balance due 14 days before the event.</div>
+              ) : (
+                <>
+                  <div className="bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5 text-xs text-amber-800">
+                    Dates blocked without payment{b.heldWithoutDepositAt ? ` on ${format(new Date(b.heldWithoutDepositAt), 'dd MMM yyyy')}` : ''} — on the calendar (±30-min buffer), with the full {money(q.fullDue)} invoiced in one hit and still outstanding.
+                  </div>
+                  <button onClick={() => actions.markPaid(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
+                    <DollarSign size={14} /> {busy ? 'Saving…' : 'Mark invoice paid'}
+                  </button>
+                </>
+              )}
               {b.accessRequestSentAt ? (
                 <div className="bg-indigo-50 border border-indigo-100 rounded-md px-3 py-2.5 text-xs text-indigo-800">
                   Building unlock requested {format(new Date(b.accessRequestSentAt), 'dd MMM · h:mm a')} (front door + lift{b.accessRequestWindows?.length ? `: ${b.accessRequestWindows.map((w) => `${w.date.slice(8, 10)}/${w.date.slice(5, 7)} ${w.from}–${w.to}`).join(', ')}` : ''}).
+                  {b.accessRequestDueDate && <> Next batch goes out {format(new Date(`${b.accessRequestDueDate}T00:00:00`), 'EEE dd MMM')}.</>}
                   <button onClick={() => actions.buildingAccess(b, true)} disabled={busy} className="block mt-1.5 underline disabled:opacity-50">Resend request</button>
+                </div>
+              ) : b.accessRequestDueDate ? (
+                // Held on purpose: building management programs the lift weekly
+                // and won't take the request early, so it goes 3 business days out.
+                <div className="bg-indigo-50 border border-indigo-100 rounded-md px-3 py-2.5 text-xs text-indigo-800">
+                  Building unlock (front door + lift) is scheduled for {format(new Date(`${b.accessRequestDueDate}T00:00:00`), 'EEE dd MMM')} — 3 business days before the session, sent Mon–Fri.
+                  <button onClick={() => actions.buildingAccess(b, true)} disabled={busy} className="block mt-1.5 underline disabled:opacity-50">Send it now instead</button>
                 </div>
               ) : (
                 <button onClick={() => actions.buildingAccess(b, false)} disabled={busy}
@@ -644,6 +683,13 @@ export default function FunctionBookings() {
     approve: (b) => run(() => approveFunctionBooking({ store, booking: b, settings })),
     amend: (b) => run(() => askAmendDate({ booking: b, settings })),
     markPaid: (b) => run(() => confirmDepositPaid({ store, booking: b, findFunctionSpace })),
+    // Block the dates ahead of payment — same calendar holds and invoices as a
+    // paid confirm, the deposit simply stays outstanding.
+    async holdDates(b) {
+      const q = b.quote || computeQuote({ ...b, bookedOn: today() })
+      if (!confirm(`Block ${sessionsLabel(b)} without payment?\n\nThe sessions go on the calendar now and the client is emailed. Nothing is waived — the 50% deposit invoice is voided and they're invoiced the full ${money(q.fullDue)} in one invoice, due 14 days before the event.`)) return
+      await run(() => holdWithoutDeposit({ store, booking: b, findFunctionSpace }))
+    },
     complete: (b) => save({ ...b, stage: 'completed', completedAt: nowIso() }),
     async resolveDeposit(b, r) { apply(await resolveDeposit({ store, booking: b, ...r })) },
     async decline(b) {
@@ -657,6 +703,7 @@ export default function FunctionBookings() {
         const { result, booking } = await requestBuildingAccess({ booking: b, force })
         apply(booking)
         if (result.needed === false) alert('All sessions fall within staffed hours (Mon–Fri 9–5) — no unlock needed.')
+        else if (result.scheduled) alert(`Held until ${result.sendOn} — building management programs the lift weekly and won't take the request early, so it goes out ${result.leadDays ?? 3} business days before the session (Mon–Fri). Use "Send it now instead" to override.`)
       } catch (e) {
         alert(e.message)
       } finally { setBusy(false) }
@@ -667,7 +714,10 @@ export default function FunctionBookings() {
       setBusy(true)
       try {
         let rec = await updatePricing({ booking: b, overrides })
-        if (reissue) rec = await reissueDeposit({ store, booking: rec })
+        // A courtesy hold sits on one full invoice, not the deposit split.
+        if (reissue) rec = rec.stage === 'confirmed'
+          ? await reissueHeldInvoice({ store, booking: rec })
+          : await reissueDeposit({ store, booking: rec })
         apply(rec)
       } catch (e) {
         alert(e.message)
@@ -690,7 +740,7 @@ export default function FunctionBookings() {
     if (filter === 'enquiry') return ['enquiry', 'quoted', 'requested', 'invited', 'awaiting_deposit', 'pending_approval', 'signed'].includes(b.stage)
     return b.stage === filter
   })
-  const pendingCount = rows.filter((b) => ['requested', 'awaiting_deposit', 'pending_approval'].includes(b.stage)).length
+  const pendingCount = rows.filter((b) => ['requested', 'awaiting_deposit', 'pending_approval'].includes(b.stage) || (b.stage === 'confirmed' && !b.depositPaid)).length
 
   return (
     <div className="flex h-full">
@@ -732,7 +782,12 @@ export default function FunctionBookings() {
                       <td className="px-4 py-3 text-foreground">{b.organisation || b.name || '—'}</td>
                       <td className="px-4 py-3 text-muted-foreground">{bookingSessions(b).length > 1 ? sessionsLabel(b) : fmtDate(b.eventDate)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-foreground">{money(q.total)}</td>
-                      <td className="px-4 py-3"><StageBadge stage={b.stage} /></td>
+                      <td className="px-4 py-3">
+                        <StageBadge stage={b.stage} />
+                        {b.stage === 'confirmed' && !b.depositPaid && (
+                          <span className="ml-1.5 inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Deposit owing</span>
+                        )}
+                      </td>
                       <td className="px-2"><ChevronRight size={14} className="text-muted-foreground" /></td>
                     </tr>
                   )

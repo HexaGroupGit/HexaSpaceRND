@@ -3,6 +3,8 @@
 // mode='agreement'  — email the Client their agreement/quote signing link  (body: booking, signUrl)
 // mode='signed'     — Client signed → notify the events team               (body: booking)
 // mode='confirmed'  — booking confirmed → email the Client their confirmation (body: booking)
+// mode='held'       — dates blocked ahead of payment → tell the Client it's held,
+//                     and that the deposit + balance are still owed             (body: booking)
 // mode='amend_date' — requested date unavailable → ask the Client to re-pick (body: booking)
 // mode='brochure'   — send the function rate card / indicative quote        (body: booking)
 //
@@ -153,6 +155,8 @@ export default async function handler(req, res) {
       // editable function templates in place of a single hardcoded Date line).
       sessions: sessionRows(b),
       guests: b.guests || '', total: money(q.total), dueNow: money(q.dueNow), balanceDue: money(q.balanceDue),
+      // Everything owed in one figure — what a courtesy hold is invoiced.
+      fullDue: money(q.fullDue ?? ((q.total || 0) + (q.securityDeposit ?? 300))),
       signLink: signUrl || '', website: settings?.company?.website || 'hexaspace.com.au',
       bookLink: functionBookLink(settings, b.requestToken),
     }
@@ -194,6 +198,30 @@ export default async function handler(req, res) {
         summaryRows(b) +
         bP('Questions? Just reply to this email — we can\'t wait to host you.')
       const { subject, html } = pick('function_confirmed', `Confirmed — your function at Hexa Space (${b.eventDate || ''} ${win})`, frame(fromName, inner))
+      const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject, html })
+      return res.status(ok ? 200 : 500).json({ sent: ok })
+    }
+
+    // Management blocked the dates before any payment (admin hub → "Block dates
+    // without payment"). Nothing is waived: instead of the 50/50 split they get
+    // ONE invoice for the full amount, so the copy quotes that figure.
+    if (mode === 'held') {
+      if (!b.email) return res.status(400).json({ error: 'No client email.' })
+      const win = `${b.startTime || ''}–${b.endTime || ''}`
+      const heldRows = `<table style="width:100%;border-collapse:collapse;margin:4px 0 24px">
+        ${sumRow('Event', b.eventName || '—')}
+        ${sessionRows(b)}
+        ${sumRow('Guests', b.guests || '—')}
+        ${sumRow('Venue hire (inc GST)', money(q.total))}
+        ${sumRow('Refundable security deposit', money(q.securityDeposit ?? 300))}
+        ${sumRow('Payable in full', vars.fullDue, true)}
+      </table>`
+      const inner = bKicker('Dates Held') +
+        bH1(`Your dates are locked in, ${b.name || 'there'}`) +
+        bP("We've blocked out your booking in our calendar (plus a 30-minute setup buffer each side) ahead of payment, so nobody else can take it. Your invoice covers the booking in full and is payable no later than 14 days before your event.") +
+        heldRows +
+        bP('Need the invoice re-sent, or have a question? Just reply to this email.')
+      const { subject, html } = pick('function_held', `Your dates are held — Hexa Space (${b.eventDate || ''} ${win})`, frame(fromName, inner))
       const ok = await sendMail(resendKey, { from, to: b.email, replyTo, subject, html })
       return res.status(ok ? 200 : 500).json({ sent: ok })
     }

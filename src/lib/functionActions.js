@@ -6,7 +6,8 @@
 // Flow: enquiry → (brochure w/ Book-a-time link) → requested (website form) →
 // review/approve → invited (portal invite) → client completes portal → deposit
 // raised (awaiting_deposit) → deposit paid → confirmed (balance + calendar) →
-// completed → refunded.
+// completed → refunded. Management can also block the dates before the deposit
+// lands (holdWithoutDeposit) — same confirmed stage, deposit still owed.
 import { supabase } from './supabase.js'
 import { authHeaders } from './apiFetch.js'
 import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money, bookingSessions, sessionsLabel } from './functionBooking.js'
@@ -171,6 +172,60 @@ export async function reissueDeposit({ store, booking }) {
   return data?.[0]?.data || cur
 }
 
+const newInvoiceId = () => `inv${Date.now()}${Math.random().toString(36).slice(2, 6)}`
+
+// Every invoice raised against a booking, read from Supabase rather than the
+// admin store: the store loads once at page load, so an invoice raised
+// server-side by submit.js earlier in the session isn't in it — and deciding
+// "is there already a deposit invoice to void?" off stale data is how a client
+// ends up holding two invoices for the same booking.
+async function fnInvoices(ref) {
+  const { data } = await supabase.from('invoices').select('data').eq('data->>functionRef', ref)
+  return (data ?? []).map((r) => r.data).filter(Boolean)
+}
+
+// Void through the store when it knows the row (keeps the admin UI in step),
+// straight to Supabase when it doesn't.
+async function voidInvoiceRow({ store, invoice }) {
+  if ((store.invoices || []).some((i) => i.id === invoice.id)) store.voidInvoice(invoice.id)
+  else await supabase.from('invoices').upsert({ id: invoice.id, data: { ...invoice, status: 'voided' }, updated_at: nowIso() })
+}
+
+// The single invoice a courtesy hold is billed on: the whole venue hire (GST)
+// plus the refundable security deposit (no GST) — no 50/50 split, because no
+// deposit was taken. Due by the same 14-days-before deadline the terms set for
+// payment in full.
+function fullInvoice({ booking: b, quote: q, base, id }) {
+  return {
+    ...base, id, invoiceType: 'function_full', dueDate: balanceDueDate(b.eventDate) || today(), vatEnabled: true,
+    lineItems: [
+      { description: `Function booking, payable in full · ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.taxable, qty: 1, discountPct: 0 },
+      { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit, qty: 1, discountPct: 0, vatExempt: true },
+    ],
+  }
+}
+
+function invoiceBaseFor(b) {
+  return {
+    tenantId: b.tenantId || b.companyId || null, source: 'function', status: 'pending', sentStatus: 'not_sent',
+    functionRef: b.ref, clientName: b.organisation || b.companyInfo?.businessName || b.name || 'Function client',
+    clientEmail: b.email, issueDate: today(),
+  }
+}
+
+// Re-issue a courtesy hold's full invoice at an adjusted price. There's no
+// deposit split to rebuild, so this never goes near submit.js — void the
+// outstanding invoice and raise a fresh one at the new amount.
+export async function reissueHeldInvoice({ store, booking }) {
+  const q = computeQuote({ ...booking, bookedOn: today() })
+  const open = (await fnInvoices(booking.ref)).find((i) =>
+    i.invoiceType === 'function_full' && !['paid', 'voided'].includes(i.status))
+  if (open) await voidInvoiceRow({ store, invoice: open })
+  const id = newInvoiceId()
+  store.addInvoice(fullInvoice({ booking, quote: q, base: invoiceBaseFor(booking), id }))
+  return persistFn({ ...booking, quote: q, fullInvoiceId: id })
+}
+
 // ── 4. Ask the client to pick a different date (clash) ───────────────────────
 export async function askAmendDate({ booking, settings }) {
   const requestToken = booking.requestToken || randToken()
@@ -182,8 +237,13 @@ export async function askAmendDate({ booking, settings }) {
   return updated
 }
 
-// ── 5. Deposit paid → secure venue: raise balance + place calendar booking ───
-export async function confirmDepositPaid({ store, booking, findFunctionSpace }) {
+// ── 5. Secure the venue: raise the invoices + place the calendar booking ────
+// Two ways in — the deposit landed (confirmDepositPaid), or management chose to
+// block the dates before it did (holdWithoutDeposit). Both place the same
+// calendar holds; they differ in how the money is billed. Deposit paid → the
+// usual 50% deposit + 50% balance. Courtesy hold → ONE invoice for the full
+// amount, payable in full, and no deposit is marked as received.
+async function secureVenue({ store, booking, findFunctionSpace, depositPaid }) {
   const b = booking
   const q = computeQuote({ ...b, bookedOn: today() })
   const tenantId = b.tenantId || b.companyId || null
@@ -192,19 +252,40 @@ export async function confirmDepositPaid({ store, booking, findFunctionSpace }) 
   const has = (type) => invs.some((i) => i.functionRef === b.ref && i.invoiceType === type && i.status !== 'voided')
   const base = { tenantId, source: 'function', status: 'pending', sentStatus: 'not_sent', functionRef: b.ref, clientName, clientEmail: b.email, issueDate: today() }
 
-  // Safety net: raise the deposit (50% + $300 security) if it was never raised
-  // (e.g. a manual hub booking that skipped the portal). One invoice, two lines.
-  if (!has('function_deposit')) store.addInvoice({ ...base, invoiceType: 'function_deposit', dueDate: today(), vatEnabled: true, lineItems: [
-    { description: `50% deposit — function booking · ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf, qty: 1, discountPct: 0 },
-    { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit, qty: 1, discountPct: 0, vatExempt: true },
-  ] })
-
-  // Balance = the remaining 50% of the booking cost (GST), due 14 days before
-  // the FIRST session (b.eventDate always mirrors the first session).
-  if (!has('function_balance')) {
-    store.addInvoice({ ...base, invoiceType: 'function_balance', dueDate: balanceDueDate(b.eventDate) || today(), vatEnabled: true, lineItems: [
-      { description: `50% balance — function booking · ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.balanceHalf, qty: 1, discountPct: 0 },
+  // A courtesy hold is billed as ONE invoice for everything owed, not the 50/50
+  // split — no deposit was taken, so chasing a deposit invoice AND a balance
+  // invoice makes no sense. The pending deposit invoice raised at approve time
+  // is voided so they're never asked for both.
+  let fullInvoiceId = b.fullInvoiceId || null
+  if (!depositPaid) {
+    const live = await fnInvoices(b.ref)
+    const openFull = live.find((i) => i.invoiceType === 'function_full' && i.status !== 'voided')
+    if (openFull) {
+      fullInvoiceId = openFull.id
+    } else {
+      const split = live.filter((i) => ['function_deposit', 'function_balance'].includes(i.invoiceType) && !['paid', 'voided'].includes(i.status))
+      for (const inv of split) await voidInvoiceRow({ store, invoice: inv })
+      fullInvoiceId = newInvoiceId()
+      store.addInvoice(fullInvoice({ booking: b, quote: q, base, id: fullInvoiceId }))
+    }
+  } else if (fullInvoiceId || has('function_full')) {
+    // Already on a full invoice — leave it alone when the money lands later and
+    // this runs again to mark it paid.
+  } else {
+    // Safety net: raise the deposit (50% + $300 security) if it was never raised
+    // (e.g. a manual hub booking that skipped the portal). One invoice, two lines.
+    if (!has('function_deposit')) store.addInvoice({ ...base, invoiceType: 'function_deposit', dueDate: today(), vatEnabled: true, lineItems: [
+      { description: `50% deposit — function booking · ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf, qty: 1, discountPct: 0 },
+      { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit, qty: 1, discountPct: 0, vatExempt: true },
     ] })
+
+    // Balance = the remaining 50% of the booking cost (GST), due 14 days before
+    // the FIRST session (b.eventDate always mirrors the first session).
+    if (!has('function_balance')) {
+      store.addInvoice({ ...base, invoiceType: 'function_balance', dueDate: balanceDueDate(b.eventDate) || today(), vatEnabled: true, lineItems: [
+        { description: `50% balance — function booking · ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.balanceHalf, qty: 1, discountPct: 0 },
+      ] })
+    }
   }
 
   // Place a calendar hold for EVERY session (venue secured) with ±30-min buffer.
@@ -223,13 +304,38 @@ export async function confirmDepositPaid({ store, booking, findFunctionSpace }) 
       return item?.id
     }).filter(Boolean)
   }
-  const updated = await persistFn({ ...b, stage: 'confirmed', confirmedAt: nowIso(), depositPaid: true, quote: q, tenantId, companyId: tenantId, calendarBookingIds, calendarBookingId: calendarBookingIds[0] ?? null })
-  fetch('/api/function-bookings/notify', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ booking: updated, mode: 'confirmed' }) }).catch(() => {})
+  const updated = await persistFn({
+    ...b, stage: 'confirmed', confirmedAt: b.confirmedAt || nowIso(), quote: q, tenantId, companyId: tenantId,
+    depositPaid, depositPaidAt: depositPaid ? (b.depositPaidAt || nowIso()) : null,
+    // heldWithoutDeposit clears the moment the deposit lands; the timestamp stays
+    // as the record that the dates were blocked ahead of payment.
+    heldWithoutDeposit: !depositPaid,
+    heldWithoutDepositAt: b.heldWithoutDepositAt || (depositPaid ? null : nowIso()),
+    fullInvoiceId,
+    calendarBookingIds, calendarBookingId: calendarBookingIds[0] ?? null,
+  })
+  fetch('/api/function-bookings/notify', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ booking: updated, mode: depositPaid ? 'confirmed' : 'held' }) }).catch(() => {})
   // After-hours / weekend sessions need building management to unlock the
   // front door + lift (±30-min buffer) — the endpoint no-ops for business-hours
-  // bookings and is idempotent, so fire it on every confirm.
+  // bookings and is idempotent, so fire it on every confirm. It normally just
+  // SCHEDULES the request (3 business days before the session — building
+  // management programs the lift weekly and won't take it earlier); the daily
+  // function-reminders cron sends it. A booking confirmed inside that window
+  // goes out straight away.
   fetch('/api/function-bookings/access-request', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ id: updated.id }) }).catch(() => {})
   return updated
+}
+
+export function confirmDepositPaid({ store, booking, findFunctionSpace }) {
+  return secureVenue({ store, booking, findFunctionSpace, depositPaid: true })
+}
+
+// Management courtesy: block the dates now, money still owed. Nothing is
+// waived — the client is invoiced the full amount in one hit (hire + GST +
+// security deposit); only the "venue isn't held until the deposit lands" gate
+// moves.
+export function holdWithoutDeposit({ store, booking, findFunctionSpace }) {
+  return secureVenue({ store, booking, findFunctionSpace, depositPaid: false })
 }
 
 // Manual (re)send of the building unlock request — used from the admin hub
@@ -259,7 +365,7 @@ export async function resolveDeposit({ store, booking, damage, refund, overflow,
   // Credit note against the security deposit — routed through the same admin
   // approval + tenant-notify queue as lease bond refunds (Billing → pending
   // bond refunds → Approve → client emailed). Linked to the deposit invoice.
-  if (refund > 0) store.addInvoice({ tenantId, source: 'function', invoiceType: 'bond_refund', status: 'pending', approvalStatus: 'pending', creditNoteForId: booking.depositInvoiceId || null, sentStatus: 'not_sent', functionRef: booking.ref, reference: `Security deposit refund — ${booking.ref}`, clientName, clientEmail: booking.email, issueDate: today(), dueDate: today(), vatEnabled: false, lineItems: [{ description: `Security deposit refund · ${booking.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: -refund, qty: 1, discountPct: 0 }] })
+  if (refund > 0) store.addInvoice({ tenantId, source: 'function', invoiceType: 'bond_refund', status: 'pending', approvalStatus: 'pending', creditNoteForId: booking.fullInvoiceId || booking.depositInvoiceId || null, sentStatus: 'not_sent', functionRef: booking.ref, reference: `Security deposit refund — ${booking.ref}`, clientName, clientEmail: booking.email, issueDate: today(), dueDate: today(), vatEnabled: false, lineItems: [{ description: `Security deposit refund · ${booking.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: -refund, qty: 1, discountPct: 0 }] })
   if (overflow > 0) store.addInvoice({ tenantId, source: 'function', invoiceType: 'function_damage', status: 'pending', sentStatus: 'not_sent', functionRef: booking.ref, clientName, clientEmail: booking.email, issueDate: today(), dueDate: today(), vatEnabled: true, lineItems: [{ description: `Damage / excess cleaning · ${booking.eventName || 'Function'} — ${notes || ''}`, revenueAccount: 'Function Space Hire', unitPrice: overflow, qty: 1, discountPct: 0 }] })
   return persistFn({ ...booking, stage: 'refunded', refundedAt: nowIso(), refundAmount: refund, damageAmount: damage, damageNotes: notes, securityStatus: damage >= 300 ? 'withheld' : damage > 0 ? 'partial' : 'refunded' })
 }
