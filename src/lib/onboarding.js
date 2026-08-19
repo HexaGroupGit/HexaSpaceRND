@@ -12,6 +12,7 @@
 // (paymentSchedule.js is pure — api/auto-billing already bundles it via
 // billingEngine, so it is safe to import at the top level here.)
 import { buildPaymentSchedule } from './paymentSchedule.js'
+import { invoiceCoversLease } from './billingEngine.js'
 import { holdsSpace } from './spaceHold.js'
 
 const PORTAL_URL = 'https://portal.hexaspace.com.au'
@@ -39,6 +40,16 @@ export function depositAmount(lease) {
   return lease?.bondAmount ?? 0
 }
 
+// What's actually INVOICED as a deposit when this contract is signed: the bond
+// it holds, less anything carried across from the contract it replaces. An
+// upgrade moves the existing bond rather than charging a second one, so when
+// the new suite needs no more security than the old one there is no deposit
+// invoice at all — and the access gate below must not sit waiting for one.
+export function depositDue(lease) {
+  const due = depositAmount(lease) - Number(lease?.bondCarriedForward || 0)
+  return Math.round(Math.max(0, due) * 100) / 100
+}
+
 // Does this lease go through the signed-and-paid access gate? Real contracts do
 // (they have a signature workflow, a deposit, or contract line items). Bare
 // quick-assignments (a desk/park/virtual dropped onto a member) do not — they
@@ -51,9 +62,10 @@ export function requiresAccessGate(lease) {
   return false
 }
 
-// Invoices raised against this lease that still count (not voided).
+// Invoices raised against this lease that still count (not voided) — including
+// a combined bill that folded this contract in with the member's others.
 export function leaseInvoices(lease, invoices) {
-  return (invoices ?? []).filter((i) => i.leaseId === lease?.id && i.status !== 'voided')
+  return (invoices ?? []).filter((i) => invoiceCoversLease(i, lease?.id) && i.status !== 'voided')
 }
 
 export function depositInvoice(lease, invoices) {
@@ -112,7 +124,7 @@ export function accessGateMet(lease, invoices, tenant, today = new Date()) {
   // countersign, so it would open the gate before any money landed.
   if (lease.onboardedAt) return true
 
-  const depositOwed = depositAmount(lease) > 0
+  const depositOwed = depositDue(lease) > 0
   if (depositOwed) {
     const dep = depositInvoice(lease, invoices)
     if (!dep || dep.status !== 'paid') return false
@@ -268,10 +280,27 @@ export function onboardingVars({ lease, tenant, space, settings }) {
   }
 }
 
-// Resolve the editable subject + opening paragraph from settings.emailTemplates.onboarding.
+// An upgrade/downgrade contract ('Transfer') moves an existing member between
+// suites. They already know us, already have a portal login and already hold a
+// key — so the onboarding email has to read as moving day, not as a welcome.
+export function isOfficeMove(lease) {
+  return lease?.contractType === 'Transfer' || !!lease?.upgradeFromContractId
+}
+
+// Resolve the editable subject + opening paragraph from settings.emailTemplates.
 export function resolveOnboardingCopy({ lease, tenant, space, settings }) {
-  const tpl = settings?.emailTemplates?.onboarding ?? {}
   const vars = onboardingVars({ lease, tenant, space, settings })
+  if (isOfficeMove(lease)) {
+    const tpl = settings?.emailTemplates?.officeMove ?? {}
+    return {
+      subject: fillVars(tpl.subject || '{{unit}} is ready — your move on {{startDate}}', vars),
+      intro: fillVars(
+        tpl.intro || `Your new agreement is signed and settled — {{unit}} is yours from {{startDate}}. Your current suite stays open until the day before, so you can move across in your own time.`,
+        vars,
+      ),
+    }
+  }
+  const tpl = settings?.emailTemplates?.onboarding ?? {}
   const subject = fillVars(tpl.subject || 'Welcome to {{company}} — your space is ready', vars)
   const intro = fillVars(
     tpl.intro || `Your agreement is signed and settled — {{unit}} is officially yours. Here's everything you need to get started.`,
@@ -326,6 +355,7 @@ const _small = (t) => `<p style="font-family:${_SANS};font-size:12px;line-height
 const _btn = (label, href) => `<a href="${href}" style="display:inline-block;background:${_OLIVE};color:#ffffff;padding:11px 26px;border-radius:6px;text-decoration:none;font-family:${_CAPS};font-size:11px;letter-spacing:.14em;text-transform:uppercase"><span style="color:#ffffff;text-decoration:none">${label}</span></a>`
 const _box = (title, body) => `<div style="background:${_GREIGE};border-radius:8px;padding:18px 20px;margin:0 0 20px"><div style="font-family:${_CAPS};font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:${_OLIVE};margin-bottom:8px">${title}</div>${body}</div>`
 const _startList = `<div style="margin:4px 0 18px"><div style="font-family:${_CAPS};font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:${_OLIVE};margin-bottom:10px">Getting started</div><ul style="margin:0;padding-left:18px;font-family:${_SANS};color:#3a3a3a;font-size:13px;line-height:1.85"><li>Access is 24/7 via your mobile key or access card.</li><li>Add your team members from the portal — each gets their own access.</li><li>Loading, parking and waste follow the House Rules attached to your agreement.</li><li>Report any maintenance or questions through the portal messages.</li></ul></div>`
+const _moveList = `<div style="margin:4px 0 18px"><div style="font-family:${_CAPS};font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:${_OLIVE};margin-bottom:10px">Moving across</div><ul style="margin:0;padding-left:18px;font-family:${_SANS};color:#3a3a3a;font-size:13px;line-height:1.85"><li>Your current suite stays open until the day before you move — take your time.</li><li>Your key opens the new suite from your commencement date; access to the old one ends with the contract.</li><li>Leave the old suite clear and clean, and tell us if you need a hand with furniture.</li><li>Your team's portal access, mail and directory listing all move across automatically.</li></ul></div>`
 
 export function onboardingEmailHtml({ lease, tenant, space, settings, saltoLink }) {
   const company = settings?.company ?? {}
@@ -342,9 +372,16 @@ export function onboardingEmailHtml({ lease, tenant, space, settings, saltoLink 
     ? _box('Door access', `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">Set up your mobile key for ${unit} with Salto. Access is valid from your commencement date.</p>${_btn('Activate door access', saltoLink)}`)
     : ''
 
-  const inner = _k('Welcome') + _h(`Welcome to ${name}.`) + _p(`Hi ${greeting},`) + _p(intro) +
-    _box('Your client portal', `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">View invoices, manage your team, book meeting rooms and message our team. You'll receive a separate email to set your password.</p>${_btn('Open the portal', settings?.portalUrl || PORTAL_URL)}`) +
-    saltoBlock + _startList + _small(`${name} · ${address || website}`)
+  const move = isOfficeMove(lease)
+  const portalBox = move
+    ? _box('Your client portal', `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">Nothing changes here — same login, same team, same invoices. ${unit} appears on your dashboard from your commencement date.</p>${_btn('Open the portal', settings?.portalUrl || PORTAL_URL)}`)
+    : _box('Your client portal', `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">View invoices, manage your team, book meeting rooms and message our team. You'll receive a separate email to set your password.</p>${_btn('Open the portal', settings?.portalUrl || PORTAL_URL)}`)
+
+  const inner =
+    (move ? _k('Moving Day') + _h(`${unit} is ready.`) : _k('Welcome') + _h(`Welcome to ${name}.`)) +
+    _p(`Hi ${greeting},`) + _p(intro) +
+    portalBox + saltoBlock + (move ? _moveList : _startList) +
+    _small(`${name} · ${address || website}`)
   return oShell(inner, { company: name, website })
 }
 

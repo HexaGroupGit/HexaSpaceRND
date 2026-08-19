@@ -47,19 +47,10 @@ export function StatusPill({ status }) {
   )
 }
 
-// A lease that's been given notice / scheduled to terminate but is still live —
-// the occupant is on their way out, so the space is "vacating soon", not simply
-// occupied. Used to flag offices (yellow) and to offer them to new leads early.
-export function isVacating(lease) {
-  return !!(lease && ['active', 'pending'].includes(lease.status) &&
-    (lease.noticeGiven || lease.terminationScheduledFor || lease.vacateDate))
-}
-
-// The date the occupant actually moves out: a served-notice / scheduled
-// termination vacates on its vacate date; otherwise the contract's own end date.
-export function moveOutDate(lease) {
-  return lease?.vacateDate || lease?.terminationScheduledFor || lease?.endDate || null
-}
+// Occupancy timing now lives in lib/officeAvailability.js alongside the "what
+// can we offer" rules that read it, so the CRM proposal and the member upgrade
+// offer share one definition. Re-exported here for the Spaces sub-sections.
+export { isVacating, moveOutDate } from '../../lib/officeAvailability.js'
 
 export const money = (n) => `$${Number(n || 0).toLocaleString('en-AU')}`
 

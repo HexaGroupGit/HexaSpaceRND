@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { authHeaders } from '../lib/apiFetch.js'
 import { format, parseISO } from 'date-fns'
-import { ArrowLeft, Pencil, Building2, Mail, Phone, Hash, Plus, FileDown, Send, MessageSquare, Users, CreditCard, Receipt, Trash2, User, UserPlus, Settings as SettingsIcon, FileText, Ban } from 'lucide-react'
+import { ArrowLeft, Pencil, Building2, Mail, Phone, Hash, Plus, FileDown, Send, MessageSquare, Users, CreditCard, Receipt, Trash2, User, UserPlus, Settings as SettingsIcon, FileText, Ban, TrendingUp } from 'lucide-react'
 import TerminateModal, { TERMINATION_REASONS, applyTermination } from './TerminateModal.jsx'
+import UpgradeOffer from './UpgradeOffer.jsx'
 import InvoiceForm from './InvoiceForm.jsx'
 import DocumentsPanel from './DocumentsPanel.jsx'
 import { jsPDF } from 'jspdf'
@@ -25,6 +26,19 @@ const INV_STATUS = {
 
 function Badge({ label, cls }) {
   return <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded ${cls}`}>{label}</span>
+}
+
+// An upgrade offer only makes sense against a live PRIVATE OFFICE contract that
+// isn't already on its way out: a member who has given notice is leaving, and a
+// superseded contract has had its replacement raised already. Virtual offices
+// hold no suite, so there's nothing to move out of.
+function canOfferUpgrade(lease) {
+  if (!['active', 'pending'].includes(lease.status)) return false
+  if (lease.supersededByContractId) return false
+  if (lease.noticeGiven || lease.renewalDeclined || lease.terminationScheduledFor || lease.vacateDate) return false
+  const type = String(lease.membershipType || '')
+  if (/virtual/i.test(type)) return false
+  return /office/i.test(type) || lease.documentType === 'License Agreement'
 }
 
 function fmt(d) {
@@ -82,6 +96,7 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
   const [showMembership, setShowMembership] = useState(false)
   const [gearLeaseId, setGearLeaseId] = useState(null)          // contract row with the open gear menu
   const [terminateTarget, setTerminateTarget] = useState(null)  // lease to terminate
+  const [upgradeTarget, setUpgradeTarget] = useState(null)      // lease to offer a bigger suite against
   const tenantLeases = leases.filter((l) => l.tenantId === tenant.id)
   const companyMembers = members.filter((m) => m.companyId === tenant.id)
 
@@ -365,7 +380,10 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
                       const space = spaces.find((s) => s.id === l.spaceId)
                       return (
                         <tr key={l.id} className="border-b border-border last:border-0 hover:bg-muted/50 cursor-pointer" onClick={() => onSelectContract?.(l)}>
-                          <td className="px-5 py-3 font-medium text-foreground">{l.contractNumber ?? `CON-${l.id.slice(-3).toUpperCase()}`}</td>
+                          <td className="px-5 py-3 font-medium text-foreground">
+                            {l.contractNumber ?? `CON-${l.id.slice(-3).toUpperCase()}`}
+                            {l.upgradeOffer?.status === 'sent' && <Badge label="Upgrade offered" cls="bg-blue-100 text-blue-700 ml-2 font-normal" />}
+                          </td>
                           <td className="px-5 py-3 text-muted-foreground">{space?.unitNumber ?? '—'}</td>
                           <td className="px-5 py-3 text-muted-foreground text-xs">{fmt(l.startDate)} – {fmt(l.endDate)}</td>
                           <td className="px-5 py-3 text-right font-medium text-foreground">{fmtAud(l.monthlyRent)}/mo</td>
@@ -643,6 +661,14 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
                                 >
                                   <FileText size={13} /> View contract
                                 </button>
+                                {canOfferUpgrade(l) && (
+                                  <button
+                                    onClick={() => { setGearLeaseId(null); setUpgradeTarget(l) }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/60"
+                                  >
+                                    <TrendingUp size={13} /> {l.upgradeOffer?.status === 'sent' ? 'Re-send upgrade offer…' : 'Offer upgrade…'}
+                                  </button>
+                                )}
                                 {['active', 'pending'].includes(l.status) && (
                                   <button
                                     onClick={() => { setGearLeaseId(null); setTerminateTarget(l) }}
@@ -788,6 +814,19 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
     })()}
 
     {gearLeaseId && <div className="fixed inset-0 z-10" onClick={() => setGearLeaseId(null)} />}
+
+    {upgradeTarget && (
+      <UpgradeOffer
+        lease={upgradeTarget}
+        tenant={tenant}
+        spaces={spaces}
+        leases={leases}
+        members={members}
+        settings={settings}
+        updateLease={updateLease}
+        onClose={() => setUpgradeTarget(null)}
+      />
+    )}
 
     {terminateTarget && (
       <TerminateModal

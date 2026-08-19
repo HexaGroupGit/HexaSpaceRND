@@ -22,7 +22,7 @@ import {
 } from '../lib/functionEmails.js'
 import {
   accessGateMet, desiredSpaceStatus, shouldOnboard, requiresAccessGate, depositAmount,
-  exitVirtualOfficeTerm, exitVirtualOfficeApplies,
+  exitVirtualOfficeTerm, exitVirtualOfficeApplies, isOfficeMove,
   onboardingEmailHtml, resolveOnboardingCopy, renderOnboardingTemplate,
   DEFAULT_ONBOARDING_EMAIL_SUBJECT, DEFAULT_ONBOARDING_EMAIL_HTML,
   resolveBondRefundCopy, bondRefundEmailHtml,
@@ -32,6 +32,7 @@ import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, book
 import { bookingRate } from '../lib/dropIn.js'
 import { configureFunctionPricing } from '../lib/functionBooking.js'
 import { isRentFreeMonth } from '../lib/paymentSchedule.js'
+import { invoiceCoversLease } from '../lib/billingEngine.js'
 import { holdsSpace } from '../lib/spaceHold.js'
 
 // All spaces a lease occupies (primary + any bundled items, e.g. parking).
@@ -83,8 +84,12 @@ async function onboardLease({ lease, tenant, space, members, settings, templates
     //    the editable Settings → Email Templates → Onboarding template.
     try {
       // Prefer the editable Templates → Emails → Onboarding template if present,
-      // otherwise fall back to the built-in default email.
-      const onbTpl = (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'onboarding' && t.content)
+      // otherwise fall back to the built-in default email. An office MOVE skips
+      // the template outright — it's written as a welcome, and welcoming a
+      // member of two years to the building reads badly.
+      const onbTpl = isOfficeMove(lease)
+        ? null
+        : (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'onboarding' && t.content)
       let subject, html
       if (onbTpl) {
         ({ subject, html } = renderOnboardingTemplate({ template: onbTpl, lease, tenant, space, settings, saltoLink }))
@@ -497,7 +502,7 @@ const SAMPLE_SPACES = [
   { id: 'hx_mr_south',   unitNumber: 'South',        type: 'meeting', size: 'Up to 8',  monthlyRate: 0, hourlyRate: 60,  status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l4', attributes: 'South (Nan) · $60/hr · up to 8.' },
   { id: 'hx_mr_east',    unitNumber: 'East',         type: 'meeting', size: 'Up to 6',  monthlyRate: 0, hourlyRate: 80,  status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l4', attributes: 'East (Dong) Chinese tearoom · $80/hr · up to 6.' },
   { id: 'hx_mr_west',    unitNumber: 'West',         type: 'meeting', size: 'Up to 8',  monthlyRate: 0, hourlyRate: 80,  status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l4', attributes: 'West (Xi) · $80/hr · up to 8.' },
-  { id: 'hx_mr_central', unitNumber: 'Central',      type: 'meeting', size: 'Up to 14', monthlyRate: 0, hourlyRate: 80,  status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l4', attributes: 'Central (Zhong) · $80/hr · up to 14.' },
+  { id: 'hx_mr_central', unitNumber: 'Central',      type: 'meeting', size: 'Up to 14', monthlyRate: 0, hourlyRate: 80,  status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l2', attributes: 'Central (Zhong) · $80/hr · up to 14.' },
   { id: 'hx_func',       unitNumber: 'Function',     type: 'meeting', size: '20–100',   monthlyRate: 0, hourlyRate: 250, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l4', attributes: 'Hexa Function Space · $250/hr · 20–100 guests.' },
 
   // ── Media Studios & Podcast (Level 5) ──────────────────────────────────────
@@ -1022,7 +1027,7 @@ export function useStore() {
 
           for (const lease of activeLeases) {
             const alreadyBilled = loadedInvoices.some(
-              (inv) => inv.leaseId === lease.id && inv.status !== 'voided' && inv.periodStart?.startsWith(currentMonthKey)
+              (inv) => invoiceCoversLease(inv, lease.id) && inv.status !== 'voided' && inv.periodStart?.startsWith(currentMonthKey)
             )
             if (alreadyBilled) continue
 
@@ -1720,11 +1725,16 @@ export function useStore() {
   const raiseSigningInvoices = useCallback((leaseId) => {
     const lease = leasesRef.current.find((l) => l.id === leaseId)
     if (!lease) return
-    // Renewals continue an existing tenancy: the bond is already held under the
-    // prior contract and the ongoing membership is billed by the monthly bill
-    // run. So a renewal signing must NOT raise a fresh deposit or an opening-
-    // month membership invoice — only an initial signing does.
-    if (lease.previousContractId || lease.contractType === 'Renewal') return
+    // A RENEWAL continues an existing tenancy on identical terms: the bond is
+    // already held under the prior contract and the ongoing membership keeps
+    // being billed by the monthly run, so a renewal signing raises nothing.
+    //
+    // An UPGRADE ('Transfer') also carries its bond forward, but it's a
+    // different suite at a different rate starting part-way through a cycle —
+    // so its opening month still has to be raised, and only the bond
+    // DIFFERENCE is charged (see bondCarriedForward below).
+    const isUpgrade = lease.contractType === 'Transfer'
+    if (!isUpgrade && (lease.previousContractId || lease.contractType === 'Renewal')) return
     const invs = invoicesRef.current
     const s = settingsRef.current || {}
     const space = spacesRef.current.find((sp) => sp.id === lease.spaceId)
@@ -1733,22 +1743,34 @@ export function useStore() {
     const dueFrom = (from) => { const d = new Date(from); d.setDate(d.getDate() + dueDays); return fmt(d) }
     const today = new Date()
 
-    // 1) Security deposit
+    // 1) Security deposit — net of anything already held under the contract this
+    // one replaces, so an upgrade is billed the top-up rather than a second bond.
     const deposit = Number(lease.items?.[0]?.deposit ?? lease.bondAmount ?? 0)
+    const carriedBond = Number(lease.bondCarriedForward || 0)
+    // Matches depositDue() in onboarding.js, which is what the access gate
+    // waits on — if these two ever disagree, a contract either never gets keys
+    // or gets them without paying.
+    const depositOwing = Math.round(Math.max(0, deposit - carriedBond) * 100) / 100
     const hasDeposit = invs.some((i) => i.leaseId === leaseId && i.invoiceType === 'deposit' && i.status !== 'voided')
-    if (deposit > 0 && !hasDeposit) {
+    if (depositOwing > 0 && !hasDeposit) {
+      const unitLabel = space?.unitNumber ?? lease.spaceId
       addInvoice({
         tenantId: lease.tenantId, leaseId, status: 'pending', sentStatus: 'not_sent', source: 'signing',
         // A bond held as security is not a taxable supply — no GST (it only
         // becomes taxable if later forfeited).
         invoiceType: 'deposit', issueDate: fmt(today), dueDate: dueFrom(today), periodStart: null, periodEnd: null, vatEnabled: false,
-        lineItems: [{ description: `Security Deposit — ${space?.unitNumber ?? lease.spaceId}`, revenueAccount: 'Security Deposit', unitPrice: deposit, qty: 1, discountPct: 0 }],
+        lineItems: [{
+          description: carriedBond > 0
+            ? `Security deposit top-up — ${unitLabel} ($${carriedBond.toLocaleString('en-AU')} carried from ${lease.bondCarriedFromContract ?? 'previous contract'})`
+            : `Security Deposit — ${unitLabel}`,
+          revenueAccount: 'Security Deposit', unitPrice: depositOwing, qty: 1, discountPct: 0,
+        }],
       })
     }
 
     // 2) First membership invoice for the lease's opening month (prorated), unless prepaid
     const prepaid = lease.paidInFull && lease.paidUntil
-    const hasRecurring = invs.some((i) => i.leaseId === leaseId && i.status !== 'voided' && !['deposit', 'bond_refund'].includes(i.invoiceType))
+    const hasRecurring = invs.some((i) => invoiceCoversLease(i, leaseId) && i.status !== 'voided' && !['deposit', 'bond_refund'].includes(i.invoiceType))
     const rent = Number(lease.monthlyRent || 0)
     if (!prepaid && !hasRecurring && rent > 0 && lease.startDate) {
       const start = new Date(lease.startDate)
@@ -2091,8 +2113,17 @@ export function useStore() {
         })
     }
 
-    // Bond refund (pending approval), net of any clause-13(b) deduction.
-    createBondRefund(lease, voEnrolment?.deduction ? [voEnrolment.deduction] : [])
+    // Bond refund (pending approval), net of any clause-13(b) deduction. An
+    // UPGRADE is not a departure: the bond carries onto the new contract
+    // (bondCarriedForward there), so refunding it here would credit money we're
+    // still holding — and the deposit invoice this would credit belongs to a
+    // tenancy that hasn't actually ended.
+    if (lease.supersededByContractId) {
+      logAudit('update', 'lease', lease.id, lease.contractNumber ?? lease.id,
+        `Bond retained — carried to ${lease.supersededByContractId} (upgrade), no refund raised`)
+    } else {
+      createBondRefund(lease, voEnrolment?.deduction ? [voEnrolment.deduction] : [])
+    }
   }, [updateLease, updateMember, createBondRefund, enrolExitVirtualOffice])
 
   // Approve a pending bond-refund credit note and notify the tenant.

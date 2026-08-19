@@ -6,6 +6,7 @@ import FunctionSignPage from './components/FunctionSignPage.jsx'
 import FunctionBookPage from './components/FunctionBookPage.jsx'
 import ReferrerDashboard from './components/ReferrerDashboard.jsx'
 import ProposalAccept from './components/ProposalAccept.jsx'
+import UpgradeAccept from './components/UpgradeAccept.jsx'
 import GiveNoticePage from './components/GiveNoticePage.jsx'
 import PayInvoicePage from './components/PayInvoicePage.jsx'
 import DirectoryNamePage from './components/DirectoryNamePage.jsx'
@@ -111,6 +112,9 @@ export default function App() {
 
   const proposalMatch = path.match(/^\/proposal\/([^/]+)/)
   if (proposalMatch) return <ProposalAccept token={proposalMatch[1]} />
+
+  const upgradeMatch = path.match(/^\/upgrade\/([^/]+)/)
+  if (upgradeMatch) return <UpgradeAccept token={upgradeMatch[1]} />
 
   const noticeMatch = path.match(/^\/give-notice\/([^/]+)/)
   if (noticeMatch) return <GiveNoticePage token={noticeMatch[1]} />

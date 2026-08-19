@@ -7,7 +7,7 @@ import {
 import { sendEmail, renderProposalTemplate, messageEmailHtml, brandShell, bKicker, bH1, bP, bBtn, bSmall, PORTAL_URL } from '../lib/sendEmail.js'
 import { randomToken } from '../lib/token.js'
 import { buildProposalPdf, buildDeskBrochurePdf, buildVirtualBrochurePdf, buildOverviewBrochurePdf } from '../lib/proposalPdf.js'
-import { moveOutDate } from './spaces/shared.jsx'
+import { availableOffices, availableParking } from '../lib/officeAvailability.js'
 import TourBookingModal from './TourBookingModal.jsx'
 import { tourWhenLabel, durationLabel } from '../lib/tourInvite.js'
 
@@ -173,31 +173,12 @@ export default function LeadDetail({ lead, store, onClose }) {
   }
 
   // ── Proposal ──────────────────────────────────────────────────────────────
-  const officeHasOccupant = (s) => !!(s.occupantTenantId || s.occupantName || leases.some((l) => l.spaceId === s.id && (l.status === 'active' || l.status === 'pending')))
-  const daysTo = (d) => { try { return Math.ceil((parseISO(d) - new Date()) / 86400000) } catch { return null } }
   const floorLabel = { l2: 'Level 2', l4: 'Level 4', l5: 'Level 5' }
   // Offices to offer: vacant now, plus occupied ones whose occupant is leaving
-  // within 90 days — using the effective move-out date, so a served-notice /
-  // scheduled termination (which sets a vacate date, not a new end date) surfaces
-  // the office to offer to the next tenant.
-  const officeOptions = spaces
-    .filter((s) => s.type === 'office')
-    .map((s) => {
-      const occupied = officeHasOccupant(s)
-      const l = leases.find((x) => x.spaceId === s.id && x.status === 'active')
-      const outDate = moveOutDate(l)
-      const outDays = outDate ? daysTo(outDate) : null
-      const becoming = occupied && outDays != null && outDays >= 0 && outDays <= 90
-      return { space: s, occupied, becoming, availableFrom: becoming ? outDate : null }
-    })
-    .filter((o) => !o.occupied || o.becoming)
-    .sort((a, b) => (a.occupied === b.occupied ? 0 : a.occupied ? 1 : -1) || String(a.space.unitNumber).localeCompare(String(b.space.unitNumber), undefined, { numeric: true }))
-
-  // Unleased parking bays that can be offered as an optional add-on on the proposal.
-  const parkingOptions = spaces
-    .filter((s) => s.type === 'parking' && !officeHasOccupant(s) && s.status !== 'occupied')
-    .map((s) => ({ space: s }))
-    .sort((a, b) => String(a.space.unitNumber).localeCompare(String(b.space.unitNumber), undefined, { numeric: true }))
+  // within 90 days. Shared with the member upgrade offer (officeAvailability.js)
+  // so both pickers see exactly the same suites.
+  const officeOptions = availableOffices({ spaces, leases })
+  const parkingOptions = availableParking({ spaces, leases })
 
   const [picked, setPicked] = useState({}) // spaceId -> { on, price, note }
   const [proposalMsg, setProposalMsg] = useState('')

@@ -167,6 +167,44 @@ function offerCard(o) {
   </div>`
 }
 
+// ── Upgrade comparison page — what they have today, next to what's on offer ──
+// Only rendered for an upgrade proposal (buildProposalPdf's `upgradeFrom`); a
+// lead has nothing to compare against.
+function comparisonPage(from, offices, changeoverDate) {
+  const cheapest = offices.reduce((lo, o) => (lo == null || Number(o.price || 0) < Number(lo.price || 0) ? o : lo), null)
+  const step = cheapest ? Number(cheapest.price || 0) - Number(from.rent || 0) : 0
+  const side = (eyebrow, unit, meta, price, muted) => `<div style="flex:1;min-width:0;">
+    <div class="eyebrow" style="${muted ? 'color:var(--soft);' : ''}">${esc(eyebrow)}</div>
+    <div class="display" style="font-size:${muted ? '40' : '54'}px;margin-top:14px;${muted ? 'color:var(--soft);' : ''}">${esc(String(unit || '—').toUpperCase())}</div>
+    ${meta ? `<div class="label" style="color:var(--soft);margin-top:10px;">${esc(meta)}</div>` : ''}
+    <div class="display" style="font-size:${muted ? '22' : '30'}px;margin-top:22px;${muted ? 'color:var(--soft);' : ''}">$${money(price)}<span style="font-size:11px;color:var(--soft);">/mo</span></div>
+  </div>`
+  const target = offices.length === 1
+    ? side('Your new suite', offices[0].unit, [FLOORS[offices[0].floor]?.label || '', offices[0].pax ? `${offices[0].pax} pax` : ''].filter(Boolean).join(' · '), offices[0].price)
+    : `<div style="flex:1;min-width:0;">
+        <div class="eyebrow">Your options</div>
+        <div style="margin-top:18px;">${offices.map((o) => `<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line);padding:11px 0;gap:12px;">
+          <div class="wm" style="font-size:14px;">${esc(String(o.unit || '').toUpperCase())}</div>
+          <div class="label" style="color:var(--soft);white-space:nowrap;">${esc([FLOORS[o.floor]?.label || '', o.pax ? `${o.pax} pax` : ''].filter(Boolean).join(' · '))}</div>
+          <div class="wm" style="font-size:14px;white-space:nowrap;">$${money(o.price)}</div>
+        </div>`).join('')}</div>
+      </div>`
+  return `<div class="page"><div class="pad" style="display:flex;flex-direction:column;">
+    <div class="eyebrow">Room To Grow</div>
+    <div class="display" style="font-size:50px;margin-top:14px;">Where you are.<br>Where you could be.</div>
+    <div style="display:flex;gap:.7in;align-items:flex-start;margin-top:.55in;">
+      ${side('Your suite today', from.unit, [from.pax ? `${from.pax} pax` : '', from.contract || ''].filter(Boolean).join(' · '), from.rent, true)}
+      <div style="width:1px;align-self:stretch;background:var(--line);"></div>
+      ${target}
+    </div>
+    <div style="margin-top:auto;padding-top:.4in;">
+      <hr class="ruleThin" style="margin-bottom:14px;">
+      <div class="label">${step === 0 ? 'Same monthly rate as today' : `${step > 0 ? '+' : '−'}$${money(Math.abs(step))} per month${offices.length > 1 ? ' from' : ''} · ex GST`}</div>
+      <div class="kicker" style="font-size:12px;margin-top:8px;">Your security deposit carries across — only the difference is invoiced.${changeoverDate ? ` Changeover ${esc(changeoverDate)}.` : ''} Nothing to cancel: your current suite closes off by itself the day before you move.</div>
+    </div>
+  </div>${FOOT}</div>`
+}
+
 function offerPage(offices, coverMsg) {
   return `<div class="page"><div class="pad">
     <div class="eyebrow">Available Suites</div>
@@ -379,7 +417,7 @@ async function renderPagesToPdf(pagesHtml, { compress = false } = {}) {
 }
 
 // `compress`: true → lighter, email-friendly file; false → full quality.
-export async function buildProposalPdf({ offices = [], coverMsg = '', validityDays = 14, lead = {}, settings = {}, dateStr = '', compress = false }) {
+export async function buildProposalPdf({ offices = [], coverMsg = '', validityDays = 14, lead = {}, settings = {}, dateStr = '', compress = false, upgradeFrom = null, changeoverDate = '' }) {
   const ctx = makeCtx(lead, settings, dateStr)
 
   // Group chosen offices by floor (Level 2 → 4 → 5) for the plan pages.
@@ -388,10 +426,13 @@ export async function buildProposalPdf({ offices = [], coverMsg = '', validityDa
   const floorOrder = ['l2', 'l4', 'l5'].filter((f) => byFloor[f])
 
   const pagesHtml = [
-    coverPage(ctx),
+    coverPage(ctx, upgradeFrom ? 'Upgrade Proposal' : 'Workspace Proposal'),
     statementPage(),
     theSpacePage(),
     waysToWorkPage(),
+    // An existing member already knows the building — what they need to see is
+    // the step up from the suite they're in, so it leads the personalised pages.
+    ...(upgradeFrom ? [comparisonPage(upgradeFrom, offices, changeoverDate)] : []),
     offerPage(offices, coverMsg),                        // page 5 — personalised
     ...floorOrder.map((f) => floorPage(f, byFloor[f])),  // where the suite is
     meetingRoomsPage(),
