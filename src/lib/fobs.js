@@ -47,6 +47,13 @@ export function money(n) {
   return `$${Number(n ?? 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+// A migrated assignment whose holder never matched a real member record. The
+// device shows as Issued to a bare name, so it can't be issued to anyone else
+// until an admin links the right member or releases it back to stock.
+export function isUnmatched(assignment) {
+  return !!assignment && (!assignment.memberId || assignment.needsReview === true)
+}
+
 // The live (un-returned) assignment for a device, if issued.
 export function openAssignment(fobId, assignments) {
   return (assignments ?? []).find((a) => a.fobId === fobId && !a.returnedAt) ?? null

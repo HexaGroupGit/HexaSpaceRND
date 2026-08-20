@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
-import { KeyRound, Plus, RefreshCw, X, Search } from 'lucide-react'
+import { KeyRound, Plus, RefreshCw, X, Search, AlertTriangle } from 'lucide-react'
 import {
   DEVICE_TYPES, LOCATIONS, FOB_STATUS, DEPOSIT_STATUS, depositFor, normalizeSerial, money,
-  openAssignment, depositPaid, depositState,
+  openAssignment, depositPaid, depositState, isUnmatched,
 } from '../lib/fobs.js'
 import FobOrderTab from './FobOrderTab.jsx'
 
@@ -30,7 +30,8 @@ export default function Fobs() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('devices')
   const [search, setSearch] = useState('')
-  const [modal, setModal] = useState(null) // { kind:'issue'|'return'|'lost'|'add', fob?, member? }
+  const [onlyUnmatched, setOnlyUnmatched] = useState(false)
+  const [modal, setModal] = useState(null) // { kind:'issue'|'return'|'lost'|'add'|'reassign', fob?, member? }
 
   useEffect(() => { load() }, [])
   async function load() {
@@ -58,17 +59,25 @@ export default function Fobs() {
     requests: pendingRequests.length,
   }), [fobs, pendingRequests.length])
 
+  // Devices still "Issued" to a migrated OfficeRND name that never matched a
+  // member record — out of circulation until an admin reassigns or releases them.
+  const unmatchedCount = useMemo(
+    () => fobs.filter((f) => f.status === 'assigned' && isUnmatched(openAssignment(f.id, assignments))).length,
+    [fobs, assignments],
+  )
+
   const shownFobs = useMemo(() => {
     const q = search.trim().toLowerCase()
     return fobs
       .filter((f) => {
-        if (!q) return true
         const a = openAssignment(f.id, assignments)
+        if (onlyUnmatched && !(f.status === 'assigned' && isUnmatched(a))) return false
+        if (!q) return true
         const holder = a ? `${a.memberName ?? ''} ${a.companyName ?? ''}` : ''
         return `${f.serial} ${f.type} ${holder}`.toLowerCase().includes(q)
       })
       .sort((a, b) => String(a.serial).localeCompare(String(b.serial)))
-  }, [fobs, assignments, search])
+  }, [fobs, assignments, search, onlyUnmatched])
 
   // ── Actions ────────────────────────────────────────────────────────────────
   async function addDevice({ serial, type, location, notes }) {
@@ -110,6 +119,44 @@ export default function Fobs() {
     // Resolve any matching portal request.
     const req = requests.find((r) => r.status === 'pending' && r.memberId === member.id)
     if (req) await resolveRequest(req, 'issued')
+    setModal(null)
+  }
+
+  // Link a migrated (unmatched) assignment to the real member. The device stays
+  // out on the same deposit — this only corrects who the tracker says holds it.
+  async function reassignDevice({ fob, assignment, memberId }) {
+    const member = memberById[memberId]
+    if (!member) return alert('Pick a member.')
+    const company = companyById[member.companyId]
+    const upA = {
+      ...assignment, memberId: member.id, memberName: member.name,
+      companyId: member.companyId ?? null, companyName: company?.businessName ?? '',
+      needsReview: false, matchMethod: 'manual', reassignedAt: nowIso(),
+    }
+    const rA = await persist('fob_assignments', upA)
+    if (rA.error) return alert(`Could not reassign the device — the assignment didn't save.\n\n${rA.error.message}`)
+    setAssignments((prev) => prev.map((a) => (a.id === assignment.id ? upA : a)))
+    const upFob = { ...fob, currentMemberId: member.id, currentCompanyId: member.companyId ?? null }
+    const rF = await persist('fobs', upFob)
+    if (rF.error) return alert(`The holder was corrected, but the device row didn't update:\n\n${rF.error.message}`)
+    setFobs((prev) => prev.map((f) => (f.id === fob.id ? upFob : f)))
+    setModal(null)
+  }
+
+  // Put an unmatched device back into stock so it can be issued normally. No
+  // refund is raised — a migrated deposit has no invoice of ours behind it.
+  async function releaseDevice({ fob, assignment, notes }) {
+    const upA = {
+      ...assignment, returnedAt: nowIso(), needsReview: false, depositStatus: 'waived',
+      returnNotes: notes || 'Released back to stock — migrated holder never matched a member',
+    }
+    const rA = await persist('fob_assignments', upA)
+    if (rA.error) return alert(`Could not release the device — the assignment didn't save.\n\n${rA.error.message}`)
+    setAssignments((prev) => prev.map((a) => (a.id === assignment.id ? upA : a)))
+    const upFob = { ...fob, status: 'available', currentMemberId: null, currentCompanyId: null, currentAssignmentId: null }
+    const rF = await persist('fobs', upFob)
+    if (rF.error) return alert(`The holder was cleared, but the device status didn't update:\n\n${rF.error.message}`)
+    setFobs((prev) => prev.map((f) => (f.id === fob.id ? upFob : f)))
     setModal(null)
   }
 
@@ -183,13 +230,25 @@ export default function Fobs() {
 
       {tab === 'devices' && (
         <>
+          {unmatchedCount > 0 && (
+            <div className="mb-3 flex items-start gap-2 text-sm border border-amber-200 bg-amber-50 text-amber-900 rounded-md px-3 py-2">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+              <div>
+                <strong>{unmatchedCount} device{unmatchedCount === 1 ? '' : 's'}</strong> still show as Issued to a migrated name that never matched a member,
+                so they can't be issued to anyone. Reassign them to the real member, or release them back to stock.
+                <button onClick={() => setOnlyUnmatched((v) => !v)} className="ml-1.5 underline font-medium hover:no-underline">
+                  {onlyUnmatched ? 'Show all devices' : 'Show only these'}
+                </button>
+              </div>
+            </div>
+          )}
           <div className="relative mb-3 max-w-xs">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search serial / holder…" className="pl-8 pr-3 py-1.5 border border-border rounded text-sm bg-background w-full focus:outline-none focus:ring-1 focus:ring-ring" />
           </div>
           <div className="border border-border rounded-lg bg-card overflow-hidden">
             {loading ? <div className="p-10 text-center text-muted-foreground text-sm">Loading…</div>
-              : shownFobs.length === 0 ? <div className="p-10 text-center text-muted-foreground text-sm">No devices yet. Add your first fob or remote.</div>
+              : shownFobs.length === 0 ? <div className="p-10 text-center text-muted-foreground text-sm">{fobs.length === 0 ? 'No devices yet. Add your first fob or remote.' : 'No devices match. Available stock has no holder, so searching a member name only finds devices they already hold.'}</div>
               : (
                 <table className="w-full text-sm">
                   <thead className="text-xs text-muted-foreground uppercase border-b border-border">
@@ -210,13 +269,16 @@ export default function Fobs() {
                           <td className="px-4 py-3 font-mono text-foreground">{f.serial}</td>
                           <td className="px-4 py-3 text-muted-foreground capitalize">{f.type}</td>
                           <td className="px-4 py-3"><Badge map={FOB_STATUS} k={f.status} /></td>
-                          <td className="px-4 py-3 text-foreground">{a ? <>{a.memberName}<span className="text-muted-foreground text-xs block">{a.companyName}</span></> : <span className="text-muted-foreground">—</span>}</td>
+                          <td className="px-4 py-3 text-foreground">{a ? <>{a.memberName || <span className="text-muted-foreground">unnamed</span>}<span className="text-muted-foreground text-xs block">{isUnmatched(a) ? <span className="text-amber-700 font-medium">Not linked to a member</span> : a.companyName}</span></> : <span className="text-muted-foreground">—</span>}</td>
                           <td className="px-4 py-3">{a ? <Badge map={DEPOSIT_STATUS} k={depositState(a, invoices)} /> : <span className="text-muted-foreground">—</span>}</td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
                               {f.status === 'available' && <button onClick={() => setModal({ kind: 'issue', fob: f })} className="text-xs bg-primary text-primary-foreground rounded px-2.5 py-1 font-medium hover:bg-primary/90">Issue</button>}
+                              {f.status === 'assigned' && a && isUnmatched(a) && (
+                                <button onClick={() => setModal({ kind: 'reassign', fob: f, assignment: a })} className="text-xs bg-amber-600 text-white rounded px-2.5 py-1 font-medium hover:bg-amber-700">Reassign</button>
+                              )}
                               {f.status === 'assigned' && a && <>
-                                <button onClick={() => setModal({ kind: 'return', fob: f, assignment: a })} className="text-xs border border-input rounded px-2.5 py-1 font-medium hover:bg-muted/50">Return</button>
+                                {!isUnmatched(a) && <button onClick={() => setModal({ kind: 'return', fob: f, assignment: a })} className="text-xs border border-input rounded px-2.5 py-1 font-medium hover:bg-muted/50">Return</button>}
                                 <button onClick={() => setModal({ kind: 'lost', fob: f, assignment: a })} className="text-xs border border-red-200 text-red-600 rounded px-2.5 py-1 font-medium hover:bg-red-50">Lost</button>
                               </>}
                             </div>
@@ -263,6 +325,7 @@ export default function Fobs() {
 
       {modal?.kind === 'add' && <AddModal fobs={fobs} onClose={() => setModal(null)} onSave={addDevice} />}
       {modal?.kind === 'issue' && <IssueModal fobs={fobs} preFob={modal.fob} members={members} tenants={tenants} requestMemberId={modal.requestMemberId} requestType={modal.requestType} onClose={() => setModal(null)} onIssue={issueDevice} />}
+      {modal?.kind === 'reassign' && <ReassignModal ctx={modal} members={members} tenants={tenants} onClose={() => setModal(null)} onReassign={reassignDevice} onRelease={releaseDevice} />}
       {modal?.kind === 'return' && <ReturnModal ctx={modal} paid={depositPaid(modal.assignment, invoices)} onClose={() => setModal(null)} onReturn={returnDevice} />}
       {modal?.kind === 'lost' && <LostModal ctx={modal} onClose={() => setModal(null)} onLost={markLost} />}
     </div>
@@ -322,38 +385,84 @@ function AddModal({ fobs = [], onClose, onSave }) {
   )
 }
 
+// Type-to-filter member list. The picker is a listbox (not a dropdown) so the
+// match is visible while you type — click a name to select it.
+function MemberPicker({ members, tenants, value, onChange }) {
+  const [mq, setMq] = useState('')
+  const opts = members
+    .filter((m) => { const q = mq.trim().toLowerCase(); if (!q) return true; const c = tenants.find((t) => t.id === m.companyId); return `${m.name} ${m.email ?? ''} ${c?.businessName ?? ''}`.toLowerCase().includes(q) })
+    .slice(0, 50)
+  return (
+    <>
+      <input value={mq} onChange={(e) => setMq(e.target.value)} placeholder="Search members…" className={`${field} mb-1.5`} />
+      {members.length === 0 ? (
+        <p className="text-xs text-amber-700 border border-amber-200 bg-amber-50 rounded px-2 py-1.5">No members loaded — add a member first, then issue the device.</p>
+      ) : (
+        <select value={value} onChange={(e) => onChange(e.target.value)} className={`${field} ${value ? 'ring-1 ring-primary/40' : ''}`} size={5}>
+          {opts.length === 0 && <option value="" disabled>No members match “{mq}”.</option>}
+          {opts.map((m) => { const c = tenants.find((t) => t.id === m.companyId); return <option key={m.id} value={m.id}>{m.name}{c ? ` — ${c.businessName}` : ''}</option> })}
+        </select>
+      )}
+    </>
+  )
+}
+
+// An unmatched (migrated) device: link the real member, or release it to stock.
+function ReassignModal({ ctx, members, tenants, onClose, onReassign, onRelease }) {
+  const { fob, assignment } = ctx
+  const [memberId, setMemberId] = useState('')
+  const [notes, setNotes] = useState('')
+  return (
+    <ModalShell title={`Reassign ${fob.type} — ${fob.serial}`} onClose={onClose}>
+      <p className="text-sm text-muted-foreground">
+        Imported as held by <strong className="text-foreground">{assignment.memberName || 'an unnamed holder'}</strong>, which never matched a member record.
+      </p>
+      <div>
+        <label className="block text-xs text-muted-foreground mb-1">Link to member <span className="text-muted-foreground/70">(click a name)</span></label>
+        <MemberPicker members={members} tenants={tenants} value={memberId} onChange={setMemberId} />
+      </div>
+      <div className="flex items-center justify-end gap-3 pt-1">
+        <button disabled={!memberId} onClick={() => onReassign({ fob, assignment, memberId })} className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:bg-primary/90 disabled:opacity-40">Link member</button>
+      </div>
+      <div className="border-t border-border pt-3">
+        <p className="text-xs text-muted-foreground mb-2">
+          Or, if the device is back in the drawer: release it to stock so it can be issued again. No refund is raised — the imported deposit has no invoice behind it.
+        </p>
+        <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Release notes (optional)" className={`${field} mb-2`} />
+        <div className="flex justify-end">
+          <button onClick={() => onRelease({ fob, assignment, notes })} className="border border-input px-4 py-2 rounded text-sm font-medium hover:bg-muted/50">Release to stock</button>
+        </div>
+      </div>
+    </ModalShell>
+  )
+}
+
 function IssueModal({ fobs, preFob, members, tenants, requestMemberId, requestType, onClose, onIssue }) {
   const available = fobs.filter((f) => f.status === 'available' && (requestType ? f.type === requestType : true))
   const [fobId, setFobId] = useState(preFob?.id || available[0]?.id || '')
   const [memberId, setMemberId] = useState(requestMemberId || '')
   const [expectedReturnAt, setExpectedReturnAt] = useState('')
   const [notes, setNotes] = useState('')
-  const [mq, setMq] = useState('')
   const fob = fobs.find((f) => f.id === fobId) || preFob
-  const memberOpts = members
-    .filter((m) => { const q = mq.trim().toLowerCase(); if (!q) return true; const c = tenants.find((t) => t.id === m.companyId); return `${m.name} ${m.email ?? ''} ${c?.businessName ?? ''}`.toLowerCase().includes(q) })
-    .slice(0, 50)
   return (
     <ModalShell title={`Issue ${fob?.type ?? 'device'}${fob ? ` — ${fob.serial}` : ''}`} onClose={onClose}>
       {!preFob && (
         <div><label className="block text-xs text-muted-foreground mb-1">Device</label>
-          <select value={fobId} onChange={(e) => setFobId(e.target.value)} className={`${field} font-mono`}>
-            <option value="">Select an available device…</option>
-            {available.map((f) => <option key={f.id} value={f.id}>{f.serial} · {f.type}</option>)}
-          </select>
+          {available.length === 0 ? (
+            <p className="text-xs text-amber-700 border border-amber-200 bg-amber-50 rounded px-2 py-1.5">
+              No {requestType ?? 'device'} is available to issue. Add the physical device under “Add device”, or reassign/release one that's stuck with an unmatched holder.
+            </p>
+          ) : (
+            <select value={fobId} onChange={(e) => setFobId(e.target.value)} className={`${field} font-mono`}>
+              <option value="">Select an available device…</option>
+              {available.map((f) => <option key={f.id} value={f.id}>{f.serial} · {f.type}</option>)}
+            </select>
+          )}
         </div>
       )}
       <div>
         <label className="block text-xs text-muted-foreground mb-1">Member <span className="text-red-500">*</span> <span className="text-muted-foreground/70">(click a name)</span></label>
-        <input value={mq} onChange={(e) => setMq(e.target.value)} placeholder="Search members…" className={`${field} mb-1.5`} />
-        {members.length === 0 ? (
-          <p className="text-xs text-amber-700 border border-amber-200 bg-amber-50 rounded px-2 py-1.5">No members loaded — add a member first, then issue the device.</p>
-        ) : (
-          <select value={memberId} onChange={(e) => setMemberId(e.target.value)} className={`${field} ${memberId ? 'ring-1 ring-primary/40' : ''}`} size={5}>
-            {memberOpts.length === 0 && <option value="" disabled>No members match “{mq}”.</option>}
-            {memberOpts.map((m) => { const c = tenants.find((t) => t.id === m.companyId); return <option key={m.id} value={m.id}>{m.name}{c ? ` — ${c.businessName}` : ''}</option> })}
-          </select>
-        )}
+        <MemberPicker members={members} tenants={tenants} value={memberId} onChange={setMemberId} />
       </div>
       <div><label className="block text-xs text-muted-foreground mb-1">Expected return (optional)</label><input type="date" value={expectedReturnAt} onChange={(e) => setExpectedReturnAt(e.target.value)} className={field} /></div>
       <div><label className="block text-xs text-muted-foreground mb-1">Issue notes</label><input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} /></div>
