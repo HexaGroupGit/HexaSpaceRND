@@ -385,23 +385,44 @@ function AddModal({ fobs = [], onClose, onSave }) {
   )
 }
 
-// Type-to-filter member list. The picker is a listbox (not a dropdown) so the
-// match is visible while you type — click a name to select it.
+// Type-to-filter member list. Deliberately NOT a <select size=5>: a controlled
+// select with a value that matches no option makes React pre-select the first
+// option, so clicking that first name fires no change event and the selection
+// silently never registers. Plain buttons always fire.
 function MemberPicker({ members, tenants, value, onChange }) {
   const [mq, setMq] = useState('')
-  const opts = members
-    .filter((m) => { const q = mq.trim().toLowerCase(); if (!q) return true; const c = tenants.find((t) => t.id === m.companyId); return `${m.name} ${m.email ?? ''} ${c?.businessName ?? ''}`.toLowerCase().includes(q) })
-    .slice(0, 50)
+  const q = mq.trim().toLowerCase()
+  const matches = members.filter((m) => {
+    if (!q) return true
+    const c = tenants.find((t) => t.id === m.companyId)
+    return `${m.name} ${m.email ?? ''} ${c?.businessName ?? ''}`.toLowerCase().includes(q)
+  })
+  const opts = matches.slice(0, 50)
   return (
     <>
       <input value={mq} onChange={(e) => setMq(e.target.value)} placeholder="Search members…" className={`${field} mb-1.5`} />
       {members.length === 0 ? (
         <p className="text-xs text-amber-700 border border-amber-200 bg-amber-50 rounded px-2 py-1.5">No members loaded — add a member first, then issue the device.</p>
       ) : (
-        <select value={value} onChange={(e) => onChange(e.target.value)} className={`${field} ${value ? 'ring-1 ring-primary/40' : ''}`} size={5}>
-          {opts.length === 0 && <option value="" disabled>No members match “{mq}”.</option>}
-          {opts.map((m) => { const c = tenants.find((t) => t.id === m.companyId); return <option key={m.id} value={m.id}>{m.name}{c ? ` — ${c.businessName}` : ''}</option> })}
-        </select>
+        <div className={`border rounded bg-background max-h-40 overflow-y-auto ${value ? 'border-primary/40 ring-1 ring-primary/40' : 'border-border'}`}>
+          {opts.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-muted-foreground">No members match “{mq}”.</p>
+          ) : opts.map((m) => {
+            const c = tenants.find((t) => t.id === m.companyId)
+            const on = m.id === value
+            return (
+              <button
+                key={m.id} type="button" onClick={() => onChange(m.id)}
+                className={`w-full text-left px-3 py-1.5 text-sm border-b border-border/50 last:border-0 ${on ? 'bg-primary text-primary-foreground font-medium' : 'text-foreground hover:bg-muted/60'}`}
+              >
+                {m.name}{c ? <span className={on ? 'opacity-80' : 'text-muted-foreground'}> — {c.businessName}</span> : null}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {matches.length > opts.length && (
+        <p className="text-xs text-muted-foreground mt-1">Showing the first {opts.length} of {matches.length} matches — keep typing to narrow it down.</p>
       )}
     </>
   )
