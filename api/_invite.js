@@ -4,6 +4,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { sendResendEmail } from './_email.js'
 import { brandFrame, bKicker, bH2, bP, bBtn, bSmall, bPanel, OLIVE } from './_brand.js'
+import { mintSetPasswordLink } from './_recoveryLink.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -62,13 +63,9 @@ export async function invitePortalUser({ email: rawEmail, redirectTo, subject, h
     return { ok: false, error: createErr.message }
   }
 
-  // Recovery-type link — fires PASSWORD_RECOVERY on the portal client so it
-  // shows the SetPassword screen on arrival.
-  const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
-    type: 'recovery',
-    email,
-    options: { redirectTo: REDIRECT },
-  })
+  // Points at our own /set-password page with the one-time token in the URL
+  // fragment, so mail scanners can't spend the link before the invitee clicks.
+  const { url: setPasswordLink, error: linkErr } = await mintSetPasswordLink(admin, email, REDIRECT)
   if (linkErr) return { ok: false, error: linkErr.message }
 
   // Default invites (no bespoke extraHtml) carry the new-user essentials.
@@ -92,8 +89,8 @@ export async function invitePortalUser({ email: rawEmail, redirectTo, subject, h
       bP(greeting || 'Welcome to Hexa Space.') +
       bP(INTRO) +
       (extras || '') +
-      bBtn(CTA, linkData.properties.action_link) +
-      bSmall(`This link expires in 24 hours.<br><br>Questions? Contact us at <a href="mailto:info@hexaspace.com.au" style="color:${OLIVE};text-decoration:none">info@hexaspace.com.au</a>`),
+      bBtn(CTA, setPasswordLink) +
+      bSmall(`This link expires in 24 hours and can be used once — if you get more than one of these emails, only the newest link works.<br><br>Questions? Contact us at <a href="mailto:info@hexaspace.com.au" style="color:${OLIVE};text-decoration:none">info@hexaspace.com.au</a>`),
       { footerLabel: footerLabel || 'Team Access' }
     ),
   })

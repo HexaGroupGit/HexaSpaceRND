@@ -1,13 +1,29 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { LINK_ERROR, LINK_ERROR_DESC, clearAuthHash } from '../lib/authRecovery.jsx'
+
+// A spent or expired email link lands here as `#error=…`. Without this the
+// member just saw the login form and concluded "the reset link does nothing".
+const DEAD_LINK_MESSAGE =
+  'That link has already been used or has expired. Password links work once only, and asking for ' +
+  'a new one cancels the previous link — so always open the newest email. Send yourself a fresh one below.'
 
 export default function PortalLogin() {
-  const [mode, setMode] = useState('login') // 'login' | 'reset'
+  const [mode, setMode] = useState(LINK_ERROR ? 'reset' : 'login') // 'login' | 'reset'
+  const [linkError] = useState(
+    !LINK_ERROR ? '' :
+    /expired|invalid|access_denied|otp/i.test(LINK_ERROR + ' ' + LINK_ERROR_DESC)
+      ? DEAD_LINK_MESSAGE
+      : (LINK_ERROR_DESC || 'That link could not be used. Send yourself a fresh one below.')
+  )
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [resetSent, setResetSent] = useState(false)
+
+  // Don't let the error fragment replay on refresh or travel in a copied URL.
+  useEffect(() => { if (LINK_ERROR) clearAuthHash() }, [])
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -72,10 +88,12 @@ export default function PortalLogin() {
               <p className="hx-prose mb-6">We'll send a reset link to your email.</p>
               {resetSent ? (
                 <div className="text-sm text-hexa-green bg-hexa-green/5 border border-hexa-green/30 px-3 py-3 text-center">
-                  If an account exists for that email, a reset link is on its way. Check your inbox (and spam).
+                  If an account exists for that email, a reset link is on its way. Open the newest email
+                  and use it within 24 hours. Check your spam folder too.
                 </div>
               ) : (
                 <>
+                  {linkError && <div className="mb-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2">{linkError}</div>}
                   {error && <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>}
                   <form onSubmit={handleReset} className="space-y-4">
                     <div>

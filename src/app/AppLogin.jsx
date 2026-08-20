@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { Label, BigButton } from './ui.jsx'
+import { apiUrl } from './lib/native.js'
 
 // Phone-first sign-in — same Supabase member auth as the portal, restyled for
 // the app: full-height bone screen, serif welcome, big targets.
@@ -23,11 +24,21 @@ export default function AppLogin() {
   async function handleReset(e) {
     e.preventDefault()
     setLoading(true); setError('')
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin,
-    })
-    if (error) setError(error.message)
-    else setResetSent(true)
+    // Same endpoint as the portal: Resend delivery (Supabase's own mailer is
+    // capped at 2 emails/hour) and a scanner-proof /reset-password link. Inside
+    // the native shell window.location.origin isn't a valid Supabase redirect
+    // anyway, so resetPasswordForEmail was the wrong tool here.
+    try {
+      const r = await fetch(apiUrl('/api/auth/reset-password'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        throw new Error(d.error || 'Could not send the reset email.')
+      }
+      setResetSent(true)
+    } catch (err) { setError(err.message) }
     setLoading(false)
   }
 

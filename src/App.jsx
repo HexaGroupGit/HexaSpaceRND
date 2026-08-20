@@ -11,6 +11,7 @@ import GiveNoticePage from './components/GiveNoticePage.jsx'
 import PayInvoicePage from './components/PayInvoicePage.jsx'
 import DirectoryNamePage from './components/DirectoryNamePage.jsx'
 import RefundDetailsPage from './components/RefundDetailsPage.jsx'
+import SetPasswordPage from './components/SetPasswordPage.jsx'
 import DirectoryDisplay from './components/DirectoryDisplay.jsx'
 import PortalApp from './portal/PortalApp.jsx'
 import AdminApp from './AdminApp.jsx'
@@ -127,6 +128,10 @@ export default function App() {
 
   const refundMatch = path.match(/^\/refund-details\/([^/]+)/)
   if (refundMatch) return <RefundDetailsPage token={refundMatch[1]} />
+
+  // Invite / password-reset landing page. The one-time token rides in the URL
+  // fragment, so mail scanners can't spend it before the member arrives.
+  if (/^\/(set|reset)-password\/?$/.test(path)) return <SetPasswordPage invite={path.startsWith('/set-')} />
 
 
   return <RootAuth />

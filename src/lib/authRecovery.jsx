@@ -2,15 +2,28 @@ import { useState } from 'react'
 import { supabase } from './supabase.js'
 
 // Set-password (invite / password-reset) flow, shared by the admin and member
-// apps. Captured ONCE at module load — as early as possible, before Supabase's
-// async URL processing clears the hash — from main.jsx's saved copy AND the live
-// hash. Handled at the RootAuth level so an invited ADMIN (routed to AdminApp)
-// gets the same set-password screen a member does, instead of landing on login
-// with no way to set a password.
-const _saved = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('_initialHash')) || '';
-if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('_initialHash');
-const _live = (typeof window !== 'undefined' && window.location.hash) || '';
-export const IS_RECOVERY_FLOW = [_saved, _live].some((h) => h.includes('type=recovery') || h.includes('type=invite'));
+// apps. The arrival hash is read ONCE, synchronously at module load — before
+// Supabase's async URL processing can clear it — and everything derived from it
+// is exported so no other module has to race for it. Handled at the RootAuth
+// level so an invited ADMIN (routed to AdminApp) gets the same set-password
+// screen a member does, instead of landing on login with no way to set one.
+const _hash = (typeof window !== 'undefined' && window.location.hash) || '';
+const _params = new URLSearchParams(_hash.replace(/^#/, ''));
+
+export const IS_RECOVERY_FLOW = ['recovery', 'invite'].includes(_params.get('type') || '');
+
+// Supabase bounces a spent or expired link back here as
+// `#error=access_denied&error_code=otp_expired`. Surfacing it is the difference
+// between "the link just dumps me on the login page" and an actual explanation.
+export const LINK_ERROR = _params.get('error_code') || _params.get('error') || '';
+export const LINK_ERROR_DESC = _params.get('error_description') || '';
+
+// Strip the fragment so a refresh (or a copied URL) doesn't replay it.
+export function clearAuthHash() {
+  if (typeof window !== 'undefined' && window.location.hash) {
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
+}
 
 // Set once the password has been set, so the member app (which mounts after the
 // RootAuth screen) doesn't prompt a second time for the same link.

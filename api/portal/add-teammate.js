@@ -4,6 +4,7 @@
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH2, bP, bBtn, bSmall, OLIVE } from '../_brand.js'
 import { newUserEssentialsHtml } from '../_invite.js'
+import { mintSetPasswordLink } from '../_recoveryLink.js'
 import { requireMember, isAdminEmail } from '../_auth.js'
 
 export default async function handler(req, res) {
@@ -46,9 +47,9 @@ export default async function handler(req, res) {
       if (!String(e?.message || '').toLowerCase().includes('already')) throw e
     })
     const redirectTo = settings?.portalUrl || `https://${req.headers.host}`
-    const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo } })
+    // /set-password link with the token in the fragment — scanner-proof.
+    const { url: actionLink, error: linkErr } = await mintSetPasswordLink(supabase, email, redirectTo)
     if (linkErr) return res.status(400).json({ error: linkErr.message })
-    const actionLink = linkData?.properties?.action_link
 
     const resendKey = process.env.RESEND_API_KEY
     if (resendKey && actionLink) {
@@ -60,7 +61,7 @@ export default async function handler(req, res) {
         bP(`Hi ${name}, you've been given access to the Hexa Space member portal — book meeting rooms, view your company's details and message our team.`) +
         newUserEssentialsHtml(settings) +
         bBtn('Set up your password', actionLink) +
-        bSmall(`This link expires in 24 hours. Questions? <a href="mailto:info@hexaspace.com.au" style="color:${OLIVE};text-decoration:none">info@hexaspace.com.au</a>`),
+        bSmall(`This link expires in 24 hours and can be used once — if you get more than one of these emails, only the newest link works. Questions? <a href="mailto:info@hexaspace.com.au" style="color:${OLIVE};text-decoration:none">info@hexaspace.com.au</a>`),
         { footerLabel: 'Member Portal' }
       )
       await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: email, subject: `You've been added to ${tenant.businessName || 'Hexa Space'} on the member portal`, html })
