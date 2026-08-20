@@ -377,6 +377,11 @@ export default function Billing() {
         periodStart: orig.periodStart,
         periodEnd: orig.periodEnd,
         reference: `Credit note for ${orig.number}`,
+        // Carry the client across so "Request bank details" has someone to
+        // email — a function/drop-in invoice holds them here, and for a member
+        // the endpoint falls back to the company's billing contact.
+        clientName: orig.clientName ?? tenants.find((t) => t.id === orig.tenantId)?.businessName ?? '',
+        clientEmail: orig.clientEmail ?? '',
         paymentMethod: orig.paymentMethod,
         discountPct: orig.discountPct ?? 0,
         vatEnabled: orig.vatEnabled !== false,

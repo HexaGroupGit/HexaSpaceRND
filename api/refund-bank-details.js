@@ -23,6 +23,31 @@ const money = (v) => `$${Number(v || 0).toLocaleString('en-AU', { minimumFractio
 const amountOf = (inv) => Math.abs((inv.lineItems ?? []).reduce(
   (s, li) => s + Number(li.unitPrice ?? 0) * Number(li.qty ?? 1) * (1 - Number(li.discountPct ?? 0) / 100), 0))
 
+// Who the refund belongs to. Credit notes reach here from two directions: a
+// function/drop-in refund stamps clientName/clientEmail on itself, while one
+// raised against a member's invoice carries only tenantId — so fall back to the
+// company record, then to its billing person, the way invoice emails do.
+async function refundRecipient(sb, credit) {
+  const name = credit.clientName ?? ''
+  const email = credit.clientEmail ?? ''
+  if (name && email) return { name, email }
+  if (!credit.tenantId) return { name, email }
+
+  const { data: tRow } = await sb.from('tenants').select('data').eq('id', credit.tenantId).single()
+  const tenant = tRow?.data
+  if (!tenant) return { name, email }
+
+  let fallbackEmail = tenant.email ?? ''
+  let fallbackName = tenant.businessName || tenant.contactName || ''
+  if (!fallbackEmail) {
+    const { data: mRows } = await sb.from('members').select('data').eq('data->>companyId', credit.tenantId)
+    const mine = (mRows ?? []).map((r) => r.data).filter((m) => m?.email)
+    const m = mine.find((x) => x.billingPerson) ?? mine.find((x) => x.contactPerson) ?? mine[0]
+    if (m) { fallbackEmail = m.email; fallbackName = fallbackName || m.name || '' }
+  }
+  return { name: name || fallbackName, email: email || fallbackEmail }
+}
+
 // Australian BSB is 6 digits (usually shown 000-000); account numbers run 5-10.
 function validateBank(b) {
   const name = String(b?.accountName ?? '').trim()
@@ -55,8 +80,13 @@ export default async function handler(req, res) {
       const credit = row?.data
       if (!credit) return res.status(404).json({ error: 'Refund not found.' })
 
-      const to = credit.clientEmail
-      if (!to) return res.status(400).json({ error: 'No client email on this refund.' })
+      // Who to ask. A function/drop-in refund carries the client on the credit
+      // note itself; a credit note raised against a member's invoice carries
+      // only tenantId, so fall back to the company and then to whoever handles
+      // its billing — the same order the invoice emails use.
+      const who = await refundRecipient(sb, credit)
+      const to = who.email
+      if (!to) return res.status(400).json({ error: 'No email on file for this client — add one on their profile first.' })
 
       const refundToken = credit.refundBankToken || randomBytes(18).toString('hex')
       const nowIso = new Date().toISOString()
@@ -74,10 +104,14 @@ export default async function handler(req, res) {
       const link = `${portal}/refund-details/${refundToken}`
       const amount = amountOf(credit)
 
-      const inner = bKicker('Security deposit refund') +
+      // Deposits (function security deposits, lease bonds) get the wording that
+      // fits them; anything else credited back reads as a plain refund.
+      const isDeposit = /deposit|bond/i.test(`${credit.invoiceType ?? ''} ${credit.reference ?? ''}`)
+      const what = isDeposit ? 'security deposit' : 'refund'
+      const inner = bKicker(isDeposit ? 'Security deposit refund' : 'Refund') +
         bH1(`We’re returning ${money(amount)}`) +
-        bP(`Hi ${credit.clientName || 'there'},`) +
-        bP(`Your event is done and your security deposit of <strong>${money(amount)}</strong> is ready to come back. We just need the account it should go to.`) +
+        bP(`Hi ${who.name || 'there'},`) +
+        bP(`Your ${what} of <strong>${money(amount)}</strong> is ready to come back to you. We just need the account it should go to.`) +
         bBtn('Enter your bank details', link) +
         bSmall(`The link is private to your refund. If the button doesn’t work, copy this:<br><a href="${link}" style="word-break:break-all">${link}</a>`) +
         bSmall('We never ask for a card number, password or ID for a refund — only your BSB and account number.')
@@ -86,8 +120,8 @@ export default async function handler(req, res) {
         from: `${fromName} <${fromEmail}>`,
         to: [to],
         replyTo: settings?.emails?.replyTo,
-        subject: `Your ${money(amount)} security deposit — where should we send it?`,
-        html: brandFrame(inner, { footerLabel: 'Security Deposit' }),
+        subject: `Your ${money(amount)} ${what} — where should we send it?`,
+        html: brandFrame(inner, { footerLabel: isDeposit ? 'Security Deposit' : 'Refund' }),
       })
       return res.status(r.ok || r.skipped ? 200 : 500).json({ sent: !!(r.ok || r.skipped), link })
     }

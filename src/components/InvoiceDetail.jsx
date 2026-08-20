@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { authHeaders } from '../lib/apiFetch.js'
 import { format, parseISO, differenceInDays } from 'date-fns'
-import { ArrowLeft, Send, RefreshCw, Ban, FileMinus, FileDown, Plus, MessageSquare, ToggleLeft, ToggleRight, Trash2, Pencil, X } from 'lucide-react'
+import { ArrowLeft, Send, RefreshCw, Ban, FileMinus, FileDown, Plus, MessageSquare, ToggleLeft, ToggleRight, Trash2, Pencil, X, Landmark } from 'lucide-react'
 import { sendEmail, invoiceEmailHtml, resolveEmailTemplate, brandShell, bKicker, bH1, bP, bSmall, bBtn, makePayToken, invoicePayLink } from '../lib/sendEmail.js'
 import { logAudit } from '../lib/audit.js'
 import { billingEmailFor } from '../lib/credits.js'
@@ -52,10 +52,16 @@ export default function InvoiceDetail({
   const [showDetach, setShowDetach] = useState(false)
   const [detachSelected, setDetachSelected] = useState([])
   const [showEdit, setShowEdit] = useState(false)
+  const [bankBusy, setBankBusy] = useState(false)
+  const [bankSentAt, setBankSentAt] = useState(null) // this session's send, until the row reloads
 
   const taxRatePct = settings?.billingRules?.taxRate ?? 10
   const taxRate = taxRatePct / 100
   const totals = calcTotals(invoice, taxRate)
+  // Anything that pays money OUT: a bond refund, a function security deposit
+  // coming back, or a credit note raised by hand against an invoice.
+  const isCreditNote = totals.total < 0 || !!invoice.creditNoteForId || invoice.invoiceType === 'bond_refund'
+  const requestedAt = invoice.refundBankRequestedAt || bankSentAt
   const today = new Date()
   const daysLeft = invoice.dueDate ? differenceInDays(parseISO(invoice.dueDate), today) : null
 
@@ -392,6 +398,35 @@ export default function InvoiceDetail({
     onUpdate('__create_credit_note__', { originalInvoice: invoice, creditLines })
   }
 
+  // Ask the client where a refund should land. Any credit note can do this —
+  // a lease bond, a function security deposit, or a credit raised by hand —
+  // because they all pay out the same way: a transfer to an account we don't
+  // hold until they tell us. The email carries a private per-refund link.
+  async function requestBankDetails() {
+    const resend = !!requestedAt
+    if (!window.confirm(
+      `${resend ? 'Re-send' : 'Send'} ${tenant?.businessName || 'the client'} a secure link to enter their bank details for this refund?`
+    )) return
+    setBankBusy(true)
+    try {
+      const r = await fetch('/api/refund-bank-details', {
+        method: 'POST', headers: await authHeaders(),
+        body: JSON.stringify({ action: 'request', invoiceId: invoice.id }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d.error ?? 'Could not send the request.')
+      // Local only — deliberately NOT onUpdate(). The server just stamped the
+      // access token on this row, and our copy predates it: writing the merged
+      // local record back would wipe the token out of the link we just emailed.
+      setBankSentAt(new Date().toISOString())
+      window.alert('Sent — they’ll get a link to enter their bank details. It shows here once they have.')
+    } catch (e) {
+      window.alert(e.message)
+    } finally {
+      setBankBusy(false)
+    }
+  }
+
   function submitPayment() {
     // Fall back to the outstanding balance if the field was left on its
     // placeholder — otherwise Record silently no-ops on an empty amount.
@@ -472,6 +507,16 @@ export default function InvoiceDetail({
                 <Trash2 size={13} /> Delete
               </button>
             )}
+            {/* A credit note pays money OUT, so it needs an account to pay it
+                to — whether it's a lease bond, a function security deposit or a
+                credit raised by hand. Once they've entered it, the account
+                shows in the panel below instead of this button. */}
+            {isCreditNote && invoice.status !== 'voided' && !invoice.refundBank && (
+              <button onClick={requestBankDetails} disabled={bankBusy}
+                className="flex items-center gap-1.5 text-xs border border-input rounded px-3 py-1.5 hover:bg-muted/50 text-foreground font-medium disabled:opacity-40">
+                <Landmark size={13} /> {bankBusy ? 'Sending…' : requestedAt ? 'Re-send bank details request' : 'Request bank details'}
+              </button>
+            )}
             <button onClick={handleCreditNote}
               className="flex items-center gap-1.5 text-xs border border-input rounded px-3 py-1.5 hover:bg-muted/50 text-foreground">
               <FileMinus size={13} /> Credit Note
@@ -524,6 +569,37 @@ export default function InvoiceDetail({
                 ))}
               </div>
             </div>
+
+            {/* Where a refund is going. Only credit notes pay money out, so
+                this panel is theirs alone — the account arrives from the
+                client's own link, we never key it in from an email. */}
+            {isCreditNote && (
+              <div className="bg-card border border-border rounded-xl shadow-sm p-4 text-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-foreground">Refund to</span>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${invoice.refundBank ? 'bg-green-100 text-green-700' : requestedAt ? 'bg-orange-100 text-orange-700' : 'bg-muted text-muted-foreground'}`}>
+                    {invoice.refundBank ? 'Received' : requestedAt ? 'Requested' : 'Not asked'}
+                  </span>
+                </div>
+                {invoice.refundBank ? (
+                  <div className="space-y-1 text-xs text-foreground">
+                    <div>{invoice.refundBank.accountName}</div>
+                    <div className="tabular-nums text-muted-foreground">BSB {invoice.refundBank.bsb} · ACC {invoice.refundBank.accountNumber}</div>
+                    {invoice.refundBankReceivedAt && (
+                      <p className="text-muted-foreground pt-1">Entered by the client on {format(parseISO(invoice.refundBankReceivedAt), 'dd MMM yyyy')}.</p>
+                    )}
+                  </div>
+                ) : requestedAt ? (
+                  <p className="text-xs text-muted-foreground">
+                    Link emailed {format(parseISO(requestedAt), 'dd MMM yyyy')} — the account appears here once they've entered it (refresh after they do).
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No account on file. Use <strong>Request bank details</strong> above to email a secure link — or skip it if this one goes back to a card.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Xero sync status — read-only: xeroInvoiceId/xeroSync are stamped
                 by the Xero push (or the migration linker), never toggled by hand */}
