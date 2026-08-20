@@ -268,9 +268,13 @@ ${boardStyles(layout)}
 <div id="bg"></div>
 <div id="fit"><div class="hxdir ${layout}">${boardBodyHtml(board, boards)}</div></div>
 <script>
-// Scale the board to whatever screen it lands on — kiosk TVs, a laptop, a
-// projector — without scrolling or clipping. ES5 on purpose (old smart TVs).
+// Fit the board to whatever screen it lands on — kiosk TVs, a laptop, a
+// projector — without scrolling or clipping, and fill the screen while it's at
+// it. On a tall panel the board is laid out narrower so it wraps taller, then
+// scaled up harder: same trick the PNG export uses, so the two agree.
+// ES5 on purpose (old smart TVs).
 (function () {
+  var BASE = ${BOARD_WIDTH[layout]}, MIN = Math.round(${BOARD_WIDTH[layout]} * 0.62);
   function fit() {
     var w = document.getElementById('fit');
     // Measure the board itself, not the full-width centring wrapper.
@@ -279,9 +283,25 @@ ${boardStyles(layout)}
     w.style.transform = 'none';
     var vh = window.innerHeight || document.documentElement.clientHeight;
     var vw = window.innerWidth || document.documentElement.clientWidth;
-    var h = el.offsetHeight, ww = el.offsetWidth;
-    if (!h || !ww) return;
-    w.style.transform = 'scale(' + Math.min(vh / h, vw / ww) + ')';
+    // Height the board ends up with once it's blown up to the full screen width.
+    function fittedHeight(width) {
+      el.style.width = width + 'px';
+      return (vw / width) * el.offsetHeight;
+    }
+    var hi = BASE, lo = MIN;
+    if (fittedHeight(hi) < vh - 1) {
+      if (fittedHeight(lo) <= vh) hi = lo;
+      else {
+        for (var i = 0; i < 12 && hi - lo > 4; i++) {
+          var mid = Math.round((lo + hi) / 2);
+          if (fittedHeight(mid) > vh) lo = mid; else hi = mid;
+        }
+      }
+    }
+    el.style.width = hi + 'px';
+    var h = el.offsetHeight;
+    if (!h) return;
+    w.style.transform = 'scale(' + Math.min(vw / hi, vh / h) + ')';
   }
   fit();
   setTimeout(fit, 60);

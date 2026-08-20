@@ -9,8 +9,8 @@
 //
 // The PNG comes out at a fixed portrait size (see PNG_SIZE): the panels are
 // printed to one physical size, so every board has to be the same file size
-// whatever it happens to contain. The board is scaled to fit and centred, and
-// the backdrop is painted full-bleed so the spare space reads as margin.
+// whatever it happens to contain. The board is laid out to fill that panel
+// rather than float in the middle of it — see fillWidth.
 
 import html2canvas from 'html2canvas'
 import { boardBodyHtml, boardStyles, buildBoardDocument, layoutOf, BOARD_WIDTH } from './directoryHtml.js'
@@ -87,12 +87,43 @@ function paintBackdrop(ctx, w, h, layout, scale) {
   }
 }
 
+// The design width the board is laid out at. Narrower than the panel means the
+// same markup wraps taller, and it's then scaled up more to reach the panel
+// width — so shrinking the design width is how the board grows into a tall
+// panel without stretching the type. FILL_MIN caps how far that can go before
+// long business names start wrapping badly.
+const FILL_MIN = 0.62
+
+// Pick the design width whose scaled-to-fit render comes closest to filling the
+// panel height. Scaled height is 1/width-ish, so it falls as the width grows —
+// a plain bisection finds the width that lands on outH.
+function fillWidth(node, baseWidth, outW, outH) {
+  // Height the board ends up with once it's blown up to the full panel width.
+  const fittedHeight = (w) => {
+    node.style.width = `${w}px`
+    return (outW / w) * node.offsetHeight
+  }
+  let hi = baseWidth
+  // Already taller than the panel at full width — nothing to gain by narrowing.
+  if (fittedHeight(hi) >= outH - 1) return hi
+  let lo = Math.round(baseWidth * FILL_MIN)
+  // As narrow as we're willing to go and still short — take it and let the
+  // board sit a little shy of the bottom rather than wrap to shreds.
+  if (fittedHeight(lo) <= outH) return lo
+  for (let i = 0; i < 12 && hi - lo > 4; i++) {
+    const mid = Math.round((lo + hi) / 2)
+    if (fittedHeight(mid) > outH) lo = mid
+    else hi = mid
+  }
+  return hi
+}
+
 // Render a board offscreen and return a finished canvas of exactly outW × outH.
 export async function boardToCanvas(board, boards, { width: outW = PNG_SIZE.width, height: outH = PNG_SIZE.height } = {}) {
   const layout = layoutOf(board)
-  const width = BOARD_WIDTH[layout]
+  const baseWidth = BOARD_WIDTH[layout]
   const host = document.createElement('div')
-  host.style.cssText = `position:fixed;left:-20000px;top:0;width:${width}px;z-index:-1;pointer-events:none`
+  host.style.cssText = `position:fixed;left:-20000px;top:0;width:${baseWidth}px;z-index:-1;pointer-events:none`
   host.innerHTML = `<style>${boardStyles(layout)}</style><div class="hxdir ${layout}">${boardBodyHtml(board, boards)}</div>`
   document.body.appendChild(host)
   try {
@@ -100,9 +131,12 @@ export async function boardToCanvas(board, boards, { width: outW = PNG_SIZE.widt
     // Let CJK glyphs and the multi-column list settle before measuring.
     await new Promise((r) => setTimeout(r, 200))
     const node = host.querySelector('.hxdir')
+    const width = fillWidth(node, baseWidth, outW, outH)
+    host.style.width = `${width}px`
+    node.style.width = `${width}px`
     const height = node.offsetHeight
-    // Biggest scale that still fits the panel — a short board is rasterised
-    // larger (and stays crisp), a long one is shrunk rather than cropped.
+    // Biggest scale that still fits the panel — with the width chosen above
+    // that lands on a board which fills the panel top to bottom.
     const scale = Math.min(outW / width, outH / height)
     const content = await html2canvas(node, {
       scale,
