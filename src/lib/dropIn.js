@@ -12,17 +12,19 @@ import { memberRoomRate, spendableCredits, hasActiveMembership, isDropIn, CREDIT
 export { hasActiveMembership, isDropIn }
 
 /**
- * Is the 30%-off member room rate live? The app and portal currently charge the
- * LIST rate to everyone (see memberRoomRate in credits.js — the discounted rate
- * exists but isn't switched on across both surfaces yet), so this stays false
- * and drop-in pricing changes nothing for members. Flip it in ONE place when the
- * member rate is agreed, and members get the discount while drop-ins keep list.
+ * Is the 30%-off member room rate live? YES — since 20 Aug 2026, on every
+ * surface at once (admin calendar + Bookings, portal, app, and the drop-in
+ * charge), because they all quote through bookingRate.
  *
- * Flipping it moves MONEY only. Credit allowances are unaffected: they are drawn
- * at the list rate either way (creditRate), so a membership's included hours
- * stay the same number of hours before and after the switch.
+ * Who gets it: a company holding an ACTIVE membership. Anyone else pays the full
+ * listed rate — a walk-in with no record, and equally a client record whose
+ * membership has lapsed or hasn't started. hasActiveMembership is the only test.
+ *
+ * It moves MONEY only. The credit allowance is drawn at the list rate either way
+ * (creditRate), so a member spends their included hours at list value first and
+ * the 30% lands on the cash they pay once that allowance is exhausted.
  */
-export const MEMBER_RATE_DISCOUNTED = false
+export const MEMBER_RATE_DISCOUNTED = true
 
 /**
  * Hourly rate for this booker, in MONEY. Drop-ins always pay the list rate — the
