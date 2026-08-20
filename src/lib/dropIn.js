@@ -5,7 +5,7 @@
 // either sat unpaid or (with no company record at all) was never raised — the
 // room went out free. Drop-ins now add a card and are charged before the booking
 // exists.
-import { memberRoomRate, spendableCredits, hasActiveMembership, isDropIn, CREDIT_VALUE } from './credits.js'
+import { memberRoomRate, spendableCredits, hasActiveMembership, isDropIn, CREDIT_VALUE, creditsForCost, round2 } from './credits.js'
 
 // The membership test itself lives in credits.js so the credit model can apply
 // it without importing this module; re-exported here for existing callers.
@@ -17,16 +17,53 @@ export { hasActiveMembership, isDropIn }
  * exists but isn't switched on across both surfaces yet), so this stays false
  * and drop-in pricing changes nothing for members. Flip it in ONE place when the
  * member rate is agreed, and members get the discount while drop-ins keep list.
+ *
+ * Flipping it moves MONEY only. Credit allowances are unaffected: they are drawn
+ * at the list rate either way (creditRate), so a membership's included hours
+ * stay the same number of hours before and after the switch.
  */
 export const MEMBER_RATE_DISCOUNTED = false
 
 /**
- * Hourly rate for this booker. Drop-ins always pay the list rate — the member
- * discount is a membership benefit, not a walk-in price.
+ * Hourly rate for this booker, in MONEY. Drop-ins always pay the list rate — the
+ * member discount is a membership benefit, not a walk-in price.
  */
 export function bookingRate(room, companyId, leases) {
   const isMember = hasActiveMembership(companyId, leases) && MEMBER_RATE_DISCOUNTED
   return memberRoomRate(room, isMember)
+}
+
+/**
+ * Hourly rate the CREDIT allowance is drawn down at — always the listed rate,
+ * for everyone.
+ *
+ * WHY this is not bookingRate: the 30% member discount is a discount on MONEY,
+ * not a bigger allowance. Priced off the member rate, a credit would buy 1/0.7
+ * of a listed hour, so the same pool would silently stretch ~43% further and a
+ * membership's included hours would change without anyone deciding to change
+ * them. Credits are denominated in list dollars (CREDIT_VALUE each) and burn at
+ * list; the discount lands on the cash a member actually pays.
+ */
+export function creditRate(room) {
+  return memberRoomRate(room, false)
+}
+
+/** Credits an unbooked window would consume — at the list rate, per creditRate. */
+export function creditsForBooking(room, hours) {
+  return creditsForCost(creditRate(room) * (Number(hours) || 0))
+}
+
+/**
+ * Money payable for credits the allowance could not cover. The shortfall is
+ * counted in list-priced credits, so the member discount is applied HERE — this
+ * is the one place list-denominated credits turn back into cash, and the only
+ * place the discount touches the credit path. Drop-ins pay the ratio 1.
+ */
+export function payableForCredits(credits, room, companyId, leases) {
+  const list = creditRate(room)
+  if (!list) return 0
+  const cash = bookingRate(room, companyId, leases)
+  return round2(Number(credits || 0) * CREDIT_VALUE * (cash / list))
 }
 
 /**
@@ -36,13 +73,16 @@ export function bookingRate(room, companyId, leases) {
  */
 export function priceBooking({ room, hours, company, leases, isPerk = false }) {
   const rate = bookingRate(room, company?.id, leases)
-  const cost = isPerk ? 0 : Math.round(rate * hours * 100) / 100
-  const needed = isPerk ? 0 : Math.round((cost / CREDIT_VALUE) * 100) / 100
+  const cost = isPerk ? 0 : round2(rate * hours)
+  // Credits are drawn at the LIST rate even when the cash rate is discounted,
+  // so `needed` is NOT cost/CREDIT_VALUE for a member — see creditRate.
+  const listCost = isPerk ? 0 : round2(creditRate(room) * hours)
+  const needed = isPerk ? 0 : creditsForCost(listCost)
   const balance = spendableCredits(company, leases)
   const creditsUsed = isPerk ? 0 : Math.max(0, Math.min(balance, needed))
-  const shortfallCredits = isPerk ? 0 : Math.round((needed - creditsUsed) * 100) / 100
-  const payNow = Math.round(shortfallCredits * CREDIT_VALUE * 100) / 100
-  return { rate, cost, needed, balance, creditsUsed, shortfallCredits, payNow }
+  const shortfallCredits = isPerk ? 0 : round2(needed - creditsUsed)
+  const payNow = isPerk ? 0 : payableForCredits(shortfallCredits, room, company?.id, leases)
+  return { rate, cost, listCost, needed, balance, creditsUsed, shortfallCredits, payNow }
 }
 
 // ── Cancelling a room you've already had ────────────────────────────────────

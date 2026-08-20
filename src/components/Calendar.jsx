@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, X, Users, Clock, CalendarClock } from 'lucid
 import { format, addDays } from 'date-fns'
 import { DatePicker } from './ui/date-picker.jsx'
 import { bookingFeeName, afterHoursConfig, spendableCredits, hasActiveMembership, creditMonthKey } from '../lib/credits.js'
-import { bookingRate, bookingWasUsed } from '../lib/dropIn.js'
+import { bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
 import { to12h, durationLabel, addMinutes } from '../lib/tourInvite.js'
 
@@ -97,15 +97,17 @@ export default function Calendar() {
         const hrs = Math.max(0, toDec(next.endTime) - toDec(next.startTime))
         // The member discount is a MEMBERSHIP benefit, not a "has a company
         // record" one — a drop-in with a client record still pays list rate.
+        // It discounts CASH only: credits are drawn at the list rate for
+        // everyone, so `need` comes off creditsForBooking, not `rate`.
         const rate = bookingRate(room, companyId, leases)
-        const need = round2(hrs * rate / CREDIT_VALUE)
+        const need = creditsForBooking(room, hrs)
         if (need <= 0) paidBy = 'free'
         else {
           creditsUsed = Math.max(0, Math.min(available, need))
           const shortfall = round2(Math.max(0, need - available))
           available = round2(available - creditsUsed)
           if (shortfall > 0) {
-            feeAmount = round2(shortfall * CREDIT_VALUE)
+            feeAmount = payableForCredits(shortfall, room, companyId, leases)
             const fee = addFee?.({
               name: bookingFeeName({ roomName: room?.unitNumber, rate, date: next.date, startTime: next.startTime, endTime: next.endTime, usedCredits: creditsUsed }),
               type: 'Booking Fee', memberId: next.memberId ?? null, companyId,
@@ -336,10 +338,11 @@ function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, lease
   // Balance is the COMPANY's monthly allowance pool, not the individual member.
   const companyId = f.companyId || member?.companyId
   const company = tenants.find((t) => t.id === companyId)
-  // Preview mirrors the reconcile charge exactly: members get 30% off and can
-  // draw on the pool; a drop-in pays list rate with no credits.
-  const cost = f.free ? 0 : hrs * bookingRate(room, companyId, leases)
-  const credits = round2(cost / CREDIT_VALUE)
+  // Preview mirrors the reconcile charge exactly: members get 30% off the cash
+  // rate and can draw on the pool; a drop-in pays list rate with no credits.
+  // Credits are counted at the list rate, so they don't track `cost` 1:1.
+  const cost = f.free ? 0 : round2(hrs * bookingRate(room, companyId, leases))
+  const credits = f.free ? 0 : creditsForBooking(room, hrs)
   const bal = spendableCredits(company, leases)
 
   function pickCompany(e) {

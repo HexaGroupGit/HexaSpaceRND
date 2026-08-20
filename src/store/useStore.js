@@ -29,7 +29,7 @@ import {
   provisionSaltoAccess, revokeSaltoAccess,
 } from '../lib/onboarding.js'
 import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, bookingFeeName, billingEmailFor, spendableCredits, creditMonthKey } from '../lib/credits.js'
-import { bookingRate } from '../lib/dropIn.js'
+import { bookingRate, creditsForBooking, payableForCredits } from '../lib/dropIn.js'
 import { configureFunctionPricing } from '../lib/functionBooking.js'
 import { isRentFreeMonth } from '../lib/paymentSchedule.js'
 import { invoiceCoversLease } from '../lib/billingEngine.js'
@@ -1412,11 +1412,13 @@ export function useStore() {
       const room = spacesRef.current.find((s) => s.id === item.resourceId)
       const toDec = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return (h || 0) + (m || 0) / 60 }
       const hrs = Math.max(0, toDec(item.endTime) - toDec(item.startTime))
-      // Members get 30% off and can draw on the credit pool; a drop-in (a client
-      // record with no active membership) pays the list rate with no credits.
+      // Members get 30% off the CASH rate and can draw on the credit pool; a
+      // drop-in (a client record with no active membership) pays the list rate
+      // with no credits. Credits burn at the list rate for everyone, so `need`
+      // comes off creditRate, not the discounted `rate`.
       const leases = leasesRef.current
       const rate = bookingRate(room, item.companyId, leases)
-      const need = round2(hrs * rate / CREDIT_VALUE)
+      const need = creditsForBooking(room, hrs)
       if (tenant && need > 0) {
         // Monthly pool with rollover, mirroring the portal calendar.
         const mk = creditMonthKey()
@@ -1431,7 +1433,7 @@ export function useStore() {
             name: bookingFeeName({ roomName: room?.unitNumber, rate, date: item.date, startTime: item.startTime, endTime: item.endTime, usedCredits: used }),
             type: 'Booking Fee', memberId: item.memberId ?? null, companyId: item.companyId,
             date: item.date || new Date().toISOString().split('T')[0],
-            price: round2(shortfall * CREDIT_VALUE), status: 'Not Paid',
+            price: payableForCredits(shortfall, room, item.companyId, leases), status: 'Not Paid',
             notes: `${need} credits needed · ${used} from allowance · ${shortfall} over · admin booking`,
           })
           item.feeId = fee?.id ?? null

@@ -1,7 +1,7 @@
 import { supabase } from '../../lib/supabase.js'
 import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow, spendableCredits, hasActiveMembership } from '../../lib/credits.js'
 import { blockingResourceIds } from '../../lib/roomConflicts.js'
-import { priceBooking, requiresUpfrontPayment, bookingRate, bookingWasUsed } from '../../lib/dropIn.js'
+import { priceBooking, requiresUpfrontPayment, bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../../lib/dropIn.js'
 import { apiUrl } from './native.js'
 
 // Booking writes for the app — mirrors the portal's PortalCalendar confirm()
@@ -156,9 +156,10 @@ export async function amendBooking({ booking, room, date, startTime, endTime, me
     }
   }
 
-  const rate = bookingRate(room, company?.id, leases) // members 30% off, drop-ins list rate
-  const cost = isPerk ? 0 : hrs * rate
-  const perCredits = Math.round((cost / CREDIT_VALUE) * 100) / 100
+  const rate = bookingRate(room, company?.id, leases) // members 30% off the CASH rate
+  // Credits are drawn at the LIST rate for everyone — the member discount is off
+  // the money, not the allowance (see creditRate in lib/dropIn.js).
+  const perCredits = isPerk ? 0 : creditsForBooking(room, hrs)
   // Refund the old credits first, then re-charge the new window from that pool.
   // Drop-ins have no pool, so nothing to refund into and nothing to draw down.
   const oldUsed = hasActiveMembership(company?.id, leases) ? Number(booking.creditsUsed ?? 0) : 0
@@ -192,7 +193,7 @@ export async function amendBooking({ booking, room, date, startTime, endTime, me
       name: bookingFeeName({ roomName: room.unitNumber, rate, date, startTime, endTime, usedCredits: used }),
       type: 'Booking Fee', memberId: member?.id ?? null, companyId: company.id,
       date: new Date().toISOString().split('T')[0],
-      price: Math.round(shortfall * CREDIT_VALUE * 100) / 100,
+      price: payableForCredits(shortfall, room, company?.id, leases),
       status: 'Not Paid', notes: `Amended booking · ${shortfall} credits over allowance`,
       createdAt: new Date().toISOString().split('T')[0],
     }
@@ -308,7 +309,7 @@ export async function createBooking({ room, date, startTime, endTime, title, mem
       }),
       type: 'Booking Fee', memberId: member?.id ?? null, companyId: company.id,
       date: new Date().toISOString().split('T')[0],
-      price: Math.round(shortfall * CREDIT_VALUE * 100) / 100,
+      price: quote.payNow,
       status: 'Not Paid', notes: `Portal booking · ${shortfall} credits over allowance`,
       createdAt: new Date().toISOString().split('T')[0],
     }

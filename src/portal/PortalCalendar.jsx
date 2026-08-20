@@ -3,7 +3,7 @@ import { X, Repeat, Check, User } from 'lucide-react'
 import { format, addDays, addMonths } from 'date-fns'
 import { supabase } from '../lib/supabase.js'
 import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig, spendableCredits, hasActiveMembership, creditMonthKey } from '../lib/credits.js'
-import { bookingRate, bookingWasUsed } from '../lib/dropIn.js'
+import { bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
 import { Card, DateDropdown } from './ui.jsx'
 
@@ -267,7 +267,9 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
   const perCost = isPerk ? 0 : hrs * rate
   const count = f.repeat === 'none' ? 1 : Math.max(1, Math.min(12, Number(f.occurrences) || 1))
   const totalCost = perCost * count
-  const totalCredits = Math.round((totalCost / CREDIT_VALUE) * 100) / 100
+  // Credits burn at the LIST rate, so this is not totalCost/CREDIT_VALUE once
+  // the member discount is live — the discount is off the cash, not the pool.
+  const totalCredits = isPerk ? 0 : Math.round(creditsForBooking(room, hrs) * count * 100) / 100
   // Balance is the COMPANY's monthly allowance pool — nil for a drop-in.
   const balance = remaining != null ? Number(remaining) : spendableCredits(company, leases)
 
@@ -357,7 +359,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
     if (isPerk) {
       created.forEach((b) => { b.creditsUsed = 0; b.paidBy = 'included' })
     } else {
-      const perCredits = Math.round(((hrs * rate) / CREDIT_VALUE) * 100) / 100
+      const perCredits = creditsForBooking(room, hrs)
       created.forEach((b) => {
         const used = Math.max(0, Math.min(bal, perCredits))
         bal = Math.round((bal - used) * 100) / 100
@@ -390,7 +392,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
         }),
         type: 'Booking Fee', memberId: member?.id ?? null, companyId: company.id,
         date: new Date().toISOString().split('T')[0],
-        price: Math.round(shortfallCredits * CREDIT_VALUE * 100) / 100,
+        price: payableForCredits(shortfallCredits, feeRoom, company?.id, leases),
         status: 'Not Paid', notes: `Portal booking · ${shortfallCredits} credits over allowance`,
         createdAt: new Date().toISOString().split('T')[0],
       }
@@ -527,12 +529,13 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
   const win = resourceBookingWindow(room, canAfterHours, settings)
 
   const oldHrs = Math.max(0, toDec(b.endTime) - toDec(b.startTime))
-  const oldNeed = round2c(oldHrs * rate / CREDIT_VALUE)
+  // Credits are counted at the list rate for everyone — see creditRate.
+  const oldNeed = creditsForBooking(room, oldHrs)
   const oldUsed = Number(b.creditsUsed || 0)
   const oldShort = Math.max(0, round2c(oldNeed - oldUsed))
 
   const newHrs = Math.max(0, toDec(f.endTime) - toDec(f.startTime))
-  const newNeed = round2c(newHrs * rate / CREDIT_VALUE)
+  const newNeed = creditsForBooking(room, newHrs)
   // Refund the old spend first — but only into a pool the company is actually
   // entitled to; a drop-in's wrongly-granted credits don't come back as a balance,
   // and neither does a booking that's already been used (see saveChanges' guard).
@@ -610,7 +613,7 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
         name: bookingFeeName({ roomName: room?.unitNumber, rate, date: f.date, startTime: f.startTime, endTime: f.endTime, usedCredits: newUsed }),
         type: 'Booking Fee', memberId: b.memberId ?? null, companyId: company.id,
         date: new Date().toISOString().split('T')[0],
-        price: round2c(extraFee * CREDIT_VALUE), status: 'Not Paid',
+        price: payableForCredits(extraFee, room, company?.id, leases), status: 'Not Paid',
         notes: `Amended portal booking · ${extraFee} extra credits over allowance`,
         createdAt: new Date().toISOString().split('T')[0],
       }, updated_at: nowIso() })

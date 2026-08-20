@@ -113,11 +113,17 @@ export function spendableCredits(company, leases) {
 
 // Members get 30% off the listed meeting-room hourly rate. room.hourlyRate is
 // the STANDARD/EXTERNAL rate; any booking attached to a member/company is
-// priced at 70% of it. This single helper feeds every pricing path (credit
-// consumption, overage Booking Fee, and the invoice line alike) so the member
-// rate is applied identically no matter who created the booking — the member
-// (portal/app) or an admin (calendar / Bookings). External (non-member)
+// priced at 70% of it. This single helper feeds every CASH pricing path (the
+// quoted $/hr, the overage Booking Fee, and the invoice line alike) so the
+// member rate is applied identically no matter who created the booking — the
+// member (portal/app) or an admin (calendar / Bookings). External (non-member)
 // bookings pass isMember=false and pay the full listed rate.
+//
+// NOT the credit path: credits are denominated in list dollars and drawn at the
+// list rate for everyone, so the discount can't quietly enlarge an allowance.
+// Callers pricing a credit draw use creditRate/creditsForBooking in dropIn.js;
+// callers turning leftover credits into money use payableForCredits, which is
+// where this discount re-enters.
 export const MEMBER_ROOM_DISCOUNT = 0.30
 export function memberRoomRate(room, isMember = true) {
   const rate = Number(room?.hourlyRate ?? room?.rate ?? 0)
