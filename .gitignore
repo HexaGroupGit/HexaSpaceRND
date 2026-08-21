@@ -35,3 +35,9 @@ marketing-out
 
 # Desktop shell build output (installers are ~95MB — never commit them)
 desktop/release
+
+# Operational data pulled from prod by scripts/ — reconciliation dumps, pre-change
+# row backups, cross-check exports. Regenerable, and they hold member data.
+*.csv
+AUDIT-*.json
+*-backup.json
