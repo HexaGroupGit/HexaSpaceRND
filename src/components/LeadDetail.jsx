@@ -39,8 +39,8 @@ const MEMBERSHIP_TYPES = [
 
 // Virtual Office packages.
 const VIRTUAL_PACKAGES = {
-  address: { key: 'address', label: 'Virtual Office — Business Address', price: 75, includes: ['Registered business address', 'Mail handling'] },
-  plus: { key: 'plus', label: 'Virtual Office Plus', price: 150, includes: ['Registered business address & mail handling', '9am–5pm lounge access with tea & coffee', '2 hours free daily in our 4-pax office'] },
+  address: { key: 'address', label: 'Virtual Office — Business Address', price: 75, includes: ['Registered business address with your own Level 4 suite number', 'Mail handling'] },
+  plus: { key: 'plus', label: 'Virtual Office Plus', price: 150, includes: ['Registered business address with your own Level 4 suite number', 'Mail handling', '9am–5pm lounge access with tea & coffee', '2 hours free daily in our 4-pax office'] },
 }
 
 // Term + incentive rules. Free months are the client's LAST months and only apply

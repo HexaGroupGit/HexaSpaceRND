@@ -727,7 +727,7 @@ function voAddressPage() {
     <div style="width:47%;display:flex;flex-direction:column;">
       <div class="eyebrow">Premium Business Address</div>
       <div class="display" style="font-size:50px;margin-top:16px;">The second CBD<br>of Melbourne.</div>
-      <div class="kicker" style="margin-top:18px;">Level 4, 830 Whitehorse Road, Box Hill VIC 3128.</div>
+      <div class="kicker" style="margin-top:18px;">Suite ___, Level 4, 830 Whitehorse Road, Box Hill VIC 3128.<br><span style="font-size:11px;color:var(--soft);">Your own suite number is allocated the moment you sign.</span></div>
       <p class="body" style="margin-top:20px;max-width:4.3in;">Box Hill is Melbourne's thriving second CBD — a diverse, fast-growing hub of new businesses, minutes from the train, tram and Box Hill Central. Put your company at the centre of it: a genuine, prestigious address for your registration, website, cards and correspondence — backed by a real, staffed workspace whenever you need it.</p>
       <div style="margin-top:auto;display:flex;gap:14px;padding-top:24px;">
         ${stat('1,763', 'SQM Centre')}${stat('8', 'Meeting Rooms')}${stat('2', 'Media Studios')}${stat('3', 'Levels')}
@@ -764,6 +764,7 @@ function voPackagesPage(offer) {
         <hr class="ruleThin" style="margin:16px 0;">
         <ul class="bullets">
           ${bl('Registered business address · Box Hill')}
+          ${bl('Your own Level 4 suite number, allocated on signing')}
           ${bl('Business &amp; online directory listing')}
           ${bl('Mail handling &amp; forwarding')}
           ${bl('Reception service')}

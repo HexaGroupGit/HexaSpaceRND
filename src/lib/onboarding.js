@@ -14,6 +14,7 @@
 import { buildPaymentSchedule } from './paymentSchedule.js'
 import { invoiceCoversLease } from './billingEngine.js'
 import { holdsSpace } from './spaceHold.js'
+import { virtualSuiteLabel } from './virtualSuites.js'
 
 const PORTAL_URL = 'https://portal.hexaspace.com.au'
 
@@ -466,11 +467,14 @@ export function portalWelcomeInvitePayload({ tenant, space, settings }) {
 // ── Getting-started pack (sent alongside the signed copy at countersign) ───────
 
 // The exact address a member should use for business registration, Google,
-// bank and mail. Offices carry their suite; VO/desk memberships use the
-// Level 4 coworking address.
+// bank and mail. Offices carry their suite, and so does a virtual office —
+// its allocated 4xx suite is the whole point of the membership. Desk/flex
+// memberships fall back to the plain Level 4 coworking address.
 export function registeredAddressFor(space) {
   const BASE = '830 Whitehorse Road, Box Hill VIC 3128'
   const level = { l2: 'Level 2', l4: 'Level 4', l5: 'Level 5' }[space?.floor] ?? 'Level 4'
+  const voSuite = virtualSuiteLabel(space)
+  if (voSuite) return `${voSuite}, ${level}/${BASE}`
   return space?.type === 'office' && space?.unitNumber
     ? `${space.unitNumber}, ${level}/${BASE}`
     : `${level}/${BASE}`

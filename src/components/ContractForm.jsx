@@ -656,7 +656,13 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                                 if (s.assignedCompanyId) return false
                                 return !leases.some((l) => l.spaceId === s.id && holdsSpace(l))
                               }
-                              if (s.type === 'virtual') return true // show all virtual-office options
+                              // A VO suite number is a mailing address, so it
+                              // can't be handed to two members: only offer the
+                              // ones no live contract or company holds.
+                              if (s.type === 'virtual') {
+                                if (s.assignedCompanyId || s.occupantTenantId) return false
+                                return !leases.some((l) => l.spaceId === s.id && holdsSpace(l))
+                              }
                               return s.status === 'vacant'
                             })
                             .map((s) => (

@@ -34,6 +34,7 @@ import { configureFunctionPricing } from '../lib/functionBooking.js'
 import { isRentFreeMonth } from '../lib/paymentSchedule.js'
 import { invoiceCoversLease } from '../lib/billingEngine.js'
 import { holdsSpace } from '../lib/spaceHold.js'
+import { allocateVirtualSuite } from '../lib/virtualSuites.js'
 
 // All spaces a lease occupies (primary + any bundled items, e.g. parking).
 function leaseSpaceIds(lease) {
@@ -516,9 +517,12 @@ const SAMPLE_SPACES = [
   { id: 'hx_park_3', unitNumber: 'P3', type: 'parking', monthlyRate: 0, rate: 300, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l2', attributes: '' },
   { id: 'hx_park_4', unitNumber: 'P4', type: 'parking', monthlyRate: 0, rate: 300, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l2', attributes: '' },
 
-  // ── Virtual Offices (suite numbers auto-increment from 403) ────────────────
-  { id: 'hx_vo_403', unitNumber: 'Suite 403', type: 'virtual', monthlyRate: 0, rate: 150, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l4', attributes: 'Virtual office — mail & business address.' },
-  { id: 'hx_vo_404', unitNumber: 'Suite 404', type: 'virtual', monthlyRate: 0, rate: 150, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l4', attributes: 'Virtual office — mail & business address.' },
+  // ── Virtual Offices ────────────────────────────────────────────────────────
+  // Numbered in the BUILDING's Level 4 series, starting at 424 where the
+  // OfficeRND ones sit (424, 428, 430, 433, 435, 436). The physical numbered
+  // suites are all on Level 2, so nothing collides. See lib/virtualSuites.js.
+  { id: 'hx_vo_suite_425', unitNumber: 'Suite 425', type: 'virtual', monthlyRate: 0, rate: 150, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l4', attributes: 'Virtual office — mail & business address.' },
+  { id: 'hx_vo_suite_426', unitNumber: 'Suite 426', type: 'virtual', monthlyRate: 0, rate: 150, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l4', attributes: 'Virtual office — mail & business address.' },
 
   // ── Dedicated Desks (Level 4 coworking) ────────────────────────────────────
   { id: 'hx_desk_1', unitNumber: 'Dedicated Desk 1', type: 'desk', monthlyRate: 0, rate: 650, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l4', attributes: '' },
@@ -1964,14 +1968,20 @@ export function useStore() {
       .filter((n) => !isNaN(n) && n < 100000)
     const contractNumber = `CON-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0')}`
 
-    // Placeholder virtual space (matches the vo-from-lease import pattern).
+    // The exit VO is a real membership, so it gets a real suite number — the
+    // departing member keeps a usable registered address for the 3 months.
+    const alloc = allocateVirtualSuite({
+      spaces: spacesRef.current, leases: leasesRef.current, rate: price, tenantId: lease.tenantId,
+    })
     const voSpace = {
-      id: `hx_vo_${contractNumber}`, type: 'virtual', floor: 'l4', source: 'vo-exit-enrol',
+      ...alloc.space, type: 'virtual', floor: 'l4', source: 'vo-exit-enrol',
       status: 'occupied', address: '830 Whitehorse Rd, Box Hill', location: 'whitehorse',
-      unitNumber: `Virtual Office ${contractNumber}`, rate: price, monthlyRate: price,
-      membershipType: 'Virtual Office', assignedCompanyId: lease.tenantId,
+      rate: price, monthlyRate: price,
+      membershipType: 'Virtual Office', assignedCompanyId: lease.tenantId, occupantTenantId: lease.tenantId,
     }
-    setSpaces((prev) => [...prev, voSpace])
+    setSpaces((prev) => alloc.created
+      ? [...prev, voSpace]
+      : prev.map((s) => (s.id === voSpace.id ? voSpace : s)))
     syncRow('spaces', voSpace.id, voSpace)
 
     // paidInFull/paidUntil keeps the bill runs off it (the 3 months are settled

@@ -6,6 +6,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { fillVars, findEmailTemplate, sendResend } from './_leads.js'
 import { proposalExpired } from './_proposal.js'
+import { allocateVirtualSuite } from '../src/lib/virtualSuites.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -153,15 +154,39 @@ export default async function handler(req, res) {
     const items = contractItems.map((o, i) => ({ spaceId: o.spaceId, deposit: i === 0 ? deposit : 0, steps: [{ startDate, endDate, listPrice: Number(o.price || 0), qty: 1, discount: '' }] }))
     const MEMBERSHIP_LABEL = { virtual: 'Virtual Office', flexi: 'Flexible Desk', dedicated: 'Dedicated Desk' }
     const membershipLabel = MEMBERSHIP_LABEL[lead.proposal?.membershipType] || 'Membership'
+
+    // A Virtual Office is a membership, but it still needs one thing a desk
+    // doesn't: the member's own suite number at Level 4, which is the address
+    // they register their company at. Allocate it here, on acceptance, so the
+    // agreement they're about to sign, the directory and the getting-started
+    // pack all carry it — reusing a free suite where one exists rather than
+    // running the series up. (Desks and flexi stay space-less.)
+    let voSpace = null
+    if (isMembership && lead.proposal?.membershipType === 'virtual') {
+      const { data: allSpaceRows } = await supabase.from('spaces').select('id, data')
+      const alloc = allocateVirtualSuite({
+        spaces: (allSpaceRows ?? []).map((r) => r.data).filter(Boolean),
+        leases: (leaseRows ?? []).map((r) => r.data).filter(Boolean),
+        rate: membershipPrice,
+        tenantId,
+      })
+      voSpace = { ...alloc.space, status: 'reserved', occupantTenantId: tenantId }
+      const { error: voErr } = await supabase
+        .from('spaces')
+        .upsert({ id: voSpace.id, data: voSpace, updated_at: now.toISOString() })
+      // A suite we couldn't persist is a suite two members could be handed —
+      // fall back to a space-less membership rather than issue a phantom one.
+      if (voErr) { console.error('proposal-accept VO suite:', voErr.message); voSpace = null }
+    }
     const leaseId = contractNumber
     const eToken = rid('sign')
     const portalBase = settings?.portalUrl || `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || req.headers.host}`
     const memberLink = `${portalBase}/sign/${eToken}`
     const lease = {
       id: leaseId, contractNumber, tenantId, memberId, memberName: contactName, companyName: businessName,
-      ...(isMembership ? {} : { spaceId: contractItems[0].spaceId }),
+      ...(isMembership ? (voSpace ? { spaceId: voSpace.id } : {}) : { spaceId: contractItems[0].spaceId }),
       resource: isMembership
-        ? (lead.proposal?.typeLabel || membershipLabel)
+        ? [lead.proposal?.typeLabel || membershipLabel, voSpace?.unitNumber].filter(Boolean).join(' · ')
         : contractItems.map((o) => o.unit).filter(Boolean).join(', '),
       membershipType: isMembership ? membershipLabel : 'Private Office',
       documentType: isMembership ? 'Membership Agreement' : 'License Agreement',
@@ -222,12 +247,12 @@ export default async function handler(req, res) {
 
       const adminTo = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
       if (adminTo.length) {
-        const adminHtml = `<div style="font-family:Arial,sans-serif;padding:24px;max-width:560px"><h2 style="font-size:16px">Proposal accepted 🎉</h2><p><strong>${businessName}</strong> (${contactName}, ${email}) accepted their proposal.</p><p>Client created, contract <strong>${contractNumber}</strong> raised for ${isMembership ? (lead.proposal?.typeLabel || membershipLabel) : offices.map((o) => o.unit).join(', ')} at $${monthlyRent.toLocaleString('en-AU')}/mo (${termMonths}-month term from ${startDate}${rentFreeMonths ? `, ${rentFreeMonths} month${rentFreeMonths > 1 ? 's' : ''} rent-free` : ''}) and sent for e-signature. Countersign it once they've signed.</p>${warnings.length ? `<p style="color:#b45309"><strong>Warning:</strong> ${warnings.join(' ')}</p>` : ''}</div>`
+        const adminHtml = `<div style="font-family:Arial,sans-serif;padding:24px;max-width:560px"><h2 style="font-size:16px">Proposal accepted 🎉</h2><p><strong>${businessName}</strong> (${contactName}, ${email}) accepted their proposal.</p><p>Client created, contract <strong>${contractNumber}</strong> raised for ${isMembership ? [lead.proposal?.typeLabel || membershipLabel, voSpace?.unitNumber].filter(Boolean).join(' · ') : offices.map((o) => o.unit).join(', ')} at $${monthlyRent.toLocaleString('en-AU')}/mo (${termMonths}-month term from ${startDate}${rentFreeMonths ? `, ${rentFreeMonths} month${rentFreeMonths > 1 ? 's' : ''} rent-free` : ''}) and sent for e-signature. Countersign it once they've signed.</p>${warnings.length ? `<p style="color:#b45309"><strong>Warning:</strong> ${warnings.join(' ')}</p>` : ''}</div>`
         await sendResend(resendKey, { fromName, fromEmail, to: adminTo, subject: `Proposal accepted — ${businessName} (${contractNumber})`, html: adminHtml, replyTo }).catch(() => {})
       }
     }
 
-    return res.status(200).json({ ok: true, contractNumber, signLink: memberLink, ...(warnings.length ? { warnings } : {}) })
+    return res.status(200).json({ ok: true, contractNumber, signLink: memberLink, suite: voSpace?.unitNumber ?? null, ...(warnings.length ? { warnings } : {}) })
   } catch (err) {
     console.error('proposal-accept error:', err)
     return res.status(500).json({ error: 'Internal server error' })

@@ -2,14 +2,22 @@
 // Membership Agreement (screen/e-sign template + PDF export).
 // Two packages: $75+GST (basic) and $150+GST (premium). The premium-only
 // lines below are dropped from contracts priced under $150/month.
+import { virtualSuiteLabel } from './virtualSuites.js'
+
 export const VO_PREMIUM_ONLY = [
   'Daily Access to Sky & Tian Meeting Room + Consulting Rooms (2 Hours Daily)',
   'Coworking lounge access with Enterprise-Grade WiFi. 9:00AM - 5:30PM',
   'Complimentary Tea & Coffee',
 ]
 
+// The address line — and the same line once the member has their own suite.
+export const VO_ADDRESS_INCLUSION =
+  'Premium Business Address in Box Hill (Level 4/830 Whitehorse Road Box Hill VIC 3128)'
+const voAddressInclusion = (suite) =>
+  `Premium Business Address in Box Hill (${suite}, Level 4/830 Whitehorse Road Box Hill VIC 3128)`
+
 export const VO_INCLUSIONS = [
-  'Premium Business Address in Box Hill (Level 4/830 Whitehorse Road Box Hill VIC 3128)',
+  VO_ADDRESS_INCLUSION,
   'Mail & Package Handling',
   'Access to Reception Services',
   'Booking access to meeting rooms, event spaces and media studios with member’s discount (Refer to Meeting Room Pricing Guide)',
@@ -20,8 +28,11 @@ export const VO_INCLUSIONS = [
   'Complimentary Tea & Coffee',
 ]
 
+// membershipType counts too: a VO born from an accepted proposal is written as
+// a generic "Membership Agreement", so documentType alone missed it entirely.
 export const isVirtualOfficeAgreement = (lease, space) =>
-  /virtual office/i.test(String(lease?.documentType ?? '')) || space?.type === 'virtual'
+  /virtual office/i.test(`${lease?.documentType ?? ''} ${lease?.membershipType ?? ''}`) ||
+  space?.type === 'virtual'
 
 // The VO package is priced off the contract's LIST monthly (a discounted
 // premium contract is still the premium package).
@@ -41,5 +52,11 @@ export function leaseInclusions(lease, space) {
   const base = voListMonthly(lease) >= 150
     ? VO_INCLUSIONS
     : VO_INCLUSIONS.filter((i) => !VO_PREMIUM_ONLY.includes(i))
-  return [...base, ...custom]
+  // Once the member holds a suite, the agreement names it: this exact line is
+  // what they register with ASIC and hand to their bank.
+  const suite = virtualSuiteLabel(space)
+  const withSuite = suite
+    ? base.map((i) => (i === VO_ADDRESS_INCLUSION ? voAddressInclusion(suite) : i))
+    : base
+  return [...withSuite, ...custom]
 }

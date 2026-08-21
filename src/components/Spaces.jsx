@@ -7,6 +7,7 @@ import LocationsTab from './spaces/LocationsTab.jsx'
 import MeetingRoomsTab from './spaces/MeetingRoomsTab.jsx'
 import PrivateOfficesTab from './spaces/PrivateOfficesTab.jsx'
 import AssignableResourceTab from './spaces/AssignableResourceTab.jsx'
+import { VO_SUITE_START } from '../lib/virtualSuites.js'
 
 // Per-type config for the generic assignable resource manager.
 const RESOURCE_CONFIG = {
@@ -15,9 +16,9 @@ const RESOURCE_CONFIG = {
   parking: { type: 'parking', noun: 'Parking Slot',   prefix: 'P',             start: 1,   rateLabel: 'Monthly Rate', ratePer: '/mo' },
   desk:    { type: 'desk',    noun: 'Dedicated Desk',  prefix: 'Dedicated Desk ', start: 1, rateLabel: 'Monthly Rate', ratePer: '/mo' },
   virtual: {
-    type: 'virtual', noun: 'Virtual Office', prefix: 'Suite ', start: 403,
+    type: 'virtual', noun: 'Virtual Office', prefix: 'Suite ', start: VO_SUITE_START,
     rateLabel: 'Monthly Rate', ratePer: '/mo', autoAssignOnAdd: true,
-    note: 'Suite numbers auto-increment from Suite 403. “Add Virtual Office” creates the next available suite and prompts you to assign the member.',
+    note: `Suite numbers run in the building's Level 4 series from Suite ${VO_SUITE_START}, skipping every number a physical suite or another virtual office already uses. “Add Virtual Office” creates the next free suite and prompts you to assign the member — accepted Virtual Office proposals allocate one automatically.`,
   },
 }
 

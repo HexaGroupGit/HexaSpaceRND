@@ -4,6 +4,7 @@ import {
   FLOORS, floorLabel, StatusPill, money, Field, Modal, ic,
   memberOptions, assignmentFor, nextUnitNumber,
 } from './shared.jsx'
+import { nextVirtualSuite } from '../../lib/virtualSuites.js'
 
 // Generic manager for assignable, auto-numbered resources:
 // Media Studios, Podcast Room, Parking Slots, Dedicated Desks, Virtual Offices.
@@ -14,7 +15,7 @@ export default function AssignableResourceTab({ ctx, config }) {
     rateLabel = 'Monthly Rate', ratePer = '/mo',
     note, autoAssignOnAdd = false,
   } = config
-  const { spaces, members, tenants, addSpace, updateSpace, deleteSpace } = ctx
+  const { spaces, members, tenants, leases = [], addSpace, updateSpace, deleteSpace } = ctx
 
   const [editId, setEditId] = useState(undefined) // undefined=closed, null=new
   const [form, setForm] = useState({})
@@ -26,7 +27,12 @@ export default function AssignableResourceTab({ ctx, config }) {
   const memberOpts = memberOptions(members, tenants)
 
   function blank() {
-    const { unitNumber } = nextUnitNumber(spaces, type, prefix, start)
+    // Virtual offices are numbered in the BUILDING's Level 4 series, so their
+    // next number has to dodge the physical suites and the legacy OfficeRND
+    // VOs that live only on a contract — nextUnitNumber can only see spaces.
+    const { unitNumber } = type === 'virtual'
+      ? nextVirtualSuite({ spaces, leases })
+      : nextUnitNumber(spaces, type, prefix, start)
     return { unitNumber, floor: 'l4', size: '', rate: '', attributes: '' }
   }
   function openNew() {

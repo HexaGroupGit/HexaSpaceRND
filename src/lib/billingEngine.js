@@ -87,7 +87,12 @@ export function buildMonthlyInvoiceForLease(lease, monthStart, { invoices = [], 
   const itemIds = (lease.items?.length ? lease.items : [{ spaceId: lease.spaceId }]).map((it) => it.spaceId)
   const isParking = (id) => /_park_|parking/i.test(String(id ?? ''))
   const unitNames = (ids) => ids.map((id) => spaceById[id]?.unitNumber).filter(Boolean).join(', ')
-  const officeUnits = unitNames(itemIds.filter((id) => !isParking(id))) || lease.resource || lease.contractNumber || 'Membership'
+  // A virtual office now carries a space (its allocated suite), so name the
+  // membership as well — "Suite 429" alone reads like a private office.
+  const isVirtualLease = /virtual/i.test(`${lease.membershipType ?? ''} ${lease.documentType ?? ''}`)
+  const unitsNamed = unitNames(itemIds.filter((id) => !isParking(id)))
+  const officeUnits = (isVirtualLease && unitsNamed ? `Virtual Office ${unitsNamed}` : unitsNamed) ||
+    lease.resource || lease.contractNumber || 'Membership'
   const parkingUnits = unitNames(itemIds.filter(isParking))
 
   const lineItems = []

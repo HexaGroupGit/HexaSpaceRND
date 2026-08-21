@@ -224,6 +224,13 @@ export default function ProposalAccept({ token }) {
               <div className="hx-eyebrow text-hexa-green">{result?.alreadyAccepted ? 'Already accepted' : 'Proposal accepted'}</div>
               <h2 className="font-display font-extralight text-3xl text-ink">{result?.alreadyAccepted ? "You're all set." : 'Welcome aboard. 🎉'}</h2>
               <p className="hx-prose text-[14px]">Your licence agreement{result?.contractNumber ? ` (${result.contractNumber})` : ''} is ready to sign — we've also emailed you the link.</p>
+              {/* Virtual office: the suite allocated on acceptance IS the product — show it here as well as in the agreement. */}
+              {result?.suite && (
+                <div className="border border-border rounded-md px-4 py-3 inline-block text-left">
+                  <div className="hx-eyebrow text-portal-muted">Your business address</div>
+                  <div className="text-[15px] font-medium text-ink mt-1">{result.suite}, Level 4/830 Whitehorse Road, Box Hill VIC 3128</div>
+                </div>
+              )}
               {result?.signLink && (
                 <a href={result.signLink} className="hx-btn inline-block">Review &amp; sign now →</a>
               )}
