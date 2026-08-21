@@ -43,6 +43,7 @@ export default function InvoiceDetail({
   onVoid,
   onDelete,
   onAddPayment,
+  onDeletePayment,
   onAddComment,
   isSuperAdmin = false,
 }) {
@@ -437,6 +438,19 @@ export default function InvoiceDetail({
     setPayForm({ amount: '', date: format(new Date(), 'yyyy-MM-dd'), method: 'Bank Transfer', note: '' })
   }
 
+  // Undo a payment recorded in error. The store re-opens the invoice (pending
+  // or overdue) when the remaining payments no longer cover the total.
+  function deletePayment(pay) {
+    if (!onDeletePayment) return
+    const amt = Number(pay.amount || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })
+    const when = pay.date ? ` dated ${format(parseISO(pay.date), 'dd/MM/yyyy')}` : ''
+    if (!window.confirm(
+      `Remove the $${amt} ${pay.method ?? ''} payment${when} from ${invoice.number}?\n\n` +
+      'The invoice returns to unpaid if this leaves a balance owing. A receipt already emailed is not recalled, and a payment that came from Xero must be reversed there too or the next sync will re-apply it.'
+    )) return
+    onDeletePayment(invoice.id, pay.id)
+  }
+
   function submitComment() {
     if (!commentText.trim()) return
     onAddComment(invoice.id, commentText.trim())
@@ -780,6 +794,15 @@ export default function InvoiceDetail({
                         Receipt
                       </button>
                     )}
+                    {onDeletePayment && (
+                      <button
+                        onClick={() => deletePayment(pay)}
+                        title="Remove this payment — use when it was recorded in error"
+                        className="text-muted-foreground hover:text-red-600 p-1 rounded hover:bg-red-50"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -908,6 +931,8 @@ function EditInvoiceModal({ invoice, taxRate, onClose, onSave }) {
     reference: invoice.reference ?? '',
     issueDate: invoice.issueDate ?? '',
     dueDate: invoice.dueDate ?? '',
+    periodStart: invoice.periodStart ?? '',
+    periodEnd: invoice.periodEnd ?? '',
     lineItems: (invoice.lineItems ?? []).map((l) => ({ ...l })),
   })
   const up = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
@@ -928,7 +953,14 @@ function EditInvoiceModal({ invoice, taxRate, onClose, onSave }) {
       .filter((l) => (l.description || '').trim())
       .map((l) => ({ ...l, description: l.description.trim(), unitPrice: Number(l.unitPrice) || 0, qty: Number(l.qty) || 1, discountPct: Number(l.discountPct) || 0 }))
     if (cleaned.length === 0) { alert('An invoice needs at least one line item.'); return }
-    onSave({ number: f.number.trim(), reference: f.reference.trim(), issueDate: f.issueDate, dueDate: f.dueDate, lineItems: cleaned })
+    if (f.periodStart && f.periodEnd && f.periodEnd < f.periodStart) { alert('The period end cannot fall before the period start.'); return }
+    onSave({
+      number: f.number.trim(), reference: f.reference.trim(), issueDate: f.issueDate, dueDate: f.dueDate,
+      // Blank clears the period rather than storing '' — the rent line's
+      // description is rendered from these, so they drive the invoice text too.
+      periodStart: f.periodStart || null, periodEnd: f.periodEnd || null,
+      lineItems: cleaned,
+    })
   }
 
   return (
@@ -945,7 +977,12 @@ function EditInvoiceModal({ invoice, taxRate, onClose, onSave }) {
             <div><label className={lab}>Reference</label><input value={f.reference} onChange={up('reference')} className={inp} placeholder="Optional" /></div>
             <div><label className={lab}>Issue date</label><input type="date" value={f.issueDate} onChange={up('issueDate')} className={inp} /></div>
             <div><label className={lab}>Due date</label><input type="date" value={f.dueDate} onChange={up('dueDate')} className={inp} /></div>
+            <div><label className={lab}>Period start</label><input type="date" value={f.periodStart} onChange={up('periodStart')} className={inp} /></div>
+            <div><label className={lab}>Period end</label><input type="date" value={f.periodEnd} onChange={up('periodEnd')} className={inp} /></div>
           </div>
+          <p className="-mt-2 text-xs text-muted-foreground">
+            The billing period also writes the rent line's description (e.g. "Level 4 Suite 426 · 1 Jul – 31 Jul 2026").
+          </p>
 
           <div>
             <div className="grid grid-cols-[1fr_140px_90px_60px_70px_80px_28px] gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 px-0.5">

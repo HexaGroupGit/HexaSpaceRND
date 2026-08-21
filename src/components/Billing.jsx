@@ -36,7 +36,7 @@ function calcAmountDue(invoice, taxRate = 0.1) {
 
 export default function Billing() {
   const {
-    invoices, addInvoice, updateInvoice, voidInvoice, deleteInvoice, addPaymentToInvoice, addCommentToInvoice, approveBondRefund,
+    invoices, addInvoice, updateInvoice, voidInvoice, deleteInvoice, addPaymentToInvoice, deletePaymentFromInvoice, addCommentToInvoice, approveBondRefund,
     discounts, addDiscount, updateDiscount, deleteDiscount,
     tenants, leases, spaces, settings, currentUserRole, members = [],
   } = useOutletContext()
@@ -449,6 +449,7 @@ export default function Billing() {
         onDelete={deleteInvoice}
         isSuperAdmin={currentUserRole === 'super_admin'}
         onAddPayment={addPaymentToInvoice}
+        onDeletePayment={deletePaymentFromInvoice}
         onAddComment={addCommentToInvoice}
       />
     )

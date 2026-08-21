@@ -1884,6 +1884,45 @@ export function useStore() {
     if (paidInvoice) setTimeout(() => sendPaymentReceipt(paidInvoice), 0)
   }, [provisionAndOnboardLease, sendPaymentReceipt])
 
+  // Reverse a recorded payment — an invoice marked paid in error (a bank
+  // transfer that never landed, a duplicate entry, a bulk 'Mark paid' that
+  // caught the wrong row). Drops the payment and re-opens the invoice when it
+  // is no longer covered: overdue if the due date has already passed, else
+  // pending. A voided invoice keeps its status.
+  const deletePaymentFromInvoice = useCallback((invoiceId, paymentId) => {
+    setInvoices((prev) => {
+      const inv = prev.find((i) => i.id === invoiceId)
+      const pay = (inv?.payments ?? []).find((p) => p.id === paymentId)
+      if (!inv || !pay) return prev
+      const remaining = (inv.payments ?? []).filter((p) => p.id !== paymentId)
+      const paid = remaining.reduce((s, p) => s + Number(p.amount || 0), 0)
+      // Same totals maths as the invoice screen (GST only on non-exempt lines).
+      const taxRate = (settingsRef.current?.billingRules?.taxRate ?? 10) / 100
+      const lines = inv.lineItems ?? []
+      const lineTotal = (l) => Math.round(Number(l.unitPrice || 0) * Number(l.qty || 0) * (1 - (Number(l.discountPct) || 0) / 100) * 100) / 100
+      const subtotal = lines.reduce((s, l) => s + lineTotal(l), 0)
+      const discountAmount = Math.round(subtotal * ((Number(inv.discountPct) || 0) / 100) * 100) / 100
+      const taxable = Math.max(0, lines.filter((l) => !l.vatExempt).reduce((s, l) => s + lineTotal(l), 0) - discountAmount)
+      const gst = inv.vatEnabled !== false ? Math.round(taxable * taxRate * 100) / 100 : 0
+      const total = Math.round((subtotal - discountAmount + gst) * 100) / 100
+      const todayStr = new Date().toISOString().split('T')[0]
+      const stillCovered = paid + 0.005 >= total
+      const status = inv.status === 'voided' || stillCovered
+        ? inv.status
+        : (inv.dueDate && inv.dueDate < todayStr ? 'overdue' : 'pending')
+      logAudit('payment-reversed', 'invoice', invoiceId, inv.number ?? invoiceId,
+        `Removed $${Number(pay.amount || 0).toFixed(2)} via ${pay.method ?? '—'}${pay.date ? ` dated ${pay.date}` : ''}`)
+      const next = prev.map((i) => i.id === invoiceId
+        // Clearing receiptSentAt with the last payment lets a genuine payment
+        // later still send its receipt (sendPaymentReceipt is idempotent on it).
+        ? { ...i, payments: remaining, status, ...(remaining.length === 0 ? { receiptSentAt: null } : {}) }
+        : i)
+      const updated = next.find((i) => i.id === invoiceId)
+      if (updated) syncRow('invoices', invoiceId, updated)
+      return next
+    })
+  }, [])
+
   const addCommentToInvoice = useCallback((invoiceId, text) => {
     setInvoices((prev) => {
       const next = prev.map((i) => i.id === invoiceId
@@ -2539,7 +2578,7 @@ export function useStore() {
     leases, addLease, updateLease, deleteLease, provisionAndOnboardLease,
     templates, addTemplate, updateTemplate, deleteTemplate,
     sops, addSop, updateSop, deleteSop,
-    invoices, addInvoice, updateInvoice, voidInvoice, deleteInvoice, addPaymentToInvoice, addCommentToInvoice, approveBondRefund, runAutoBillRun,
+    invoices, addInvoice, updateInvoice, voidInvoice, deleteInvoice, addPaymentToInvoice, deletePaymentFromInvoice, addCommentToInvoice, approveBondRefund, runAutoBillRun,
     discounts, addDiscount, updateDiscount, deleteDiscount,
     maintenance, addMaintenanceIssue, updateMaintenanceIssue, deleteMaintenanceIssue,
     pricingRequests, addPricingRequest, updatePricingRequest,
