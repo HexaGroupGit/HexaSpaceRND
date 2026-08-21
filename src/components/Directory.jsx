@@ -28,8 +28,19 @@ export default function Directory() {
   const [error, setError] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [exporting, setExporting] = useState('')  // 'png' | 'html' | ''
+  // The registered-business box edits as plain text — one business per line.
+  // It keeps its own draft so a half-typed line survives: tidying on every
+  // keystroke (trim + drop blank lines) ate the space bar and swallowed Enter,
+  // because the newline was stripped before React could re-render it. The draft
+  // is only straightened out when you leave the box; `community` on the board
+  // is kept in sync as you type, so Save and the exports never see stray blanks.
+  const [commDraft, setCommDraft] = useState('')
+  const [commSeq, setCommSeq] = useState(0)   // bump to re-seed the draft from the board
 
   useEffect(() => { load() }, [])
+  // Re-seed on a board switch, a reload, or a live-data refresh — never while
+  // typing, or the tidy-up would fight the cursor again.
+  useEffect(() => { setCommDraft((boards[level]?.community ?? []).join('\n')) }, [level, commSeq])   // eslint-disable-line react-hooks/exhaustive-deps
   async function load() {
     setLoading(true)
     try {
@@ -37,6 +48,7 @@ export default function Directory() {
       const next = emptyBoards()
       ;(data ?? []).forEach((row) => { if (row.data && next[row.id]) next[row.id] = row.data })
       setBoards(next)
+      setCommSeq((n) => n + 1)
     } catch { /* keep seed */ }
     setLoading(false)
   }
@@ -152,13 +164,15 @@ export default function Directory() {
         spaces: (s.data ?? []).map((r) => r.data),
       }
       patchBoard(buildDirectoryBoard(level, board, live))
+      setCommSeq((n) => n + 1)
     } catch (e) {
       setError(e?.message || 'Could not load live data.')
     }
     setSyncing(false)
   }
 
-  const communityText = (board.community || []).join('\n')
+  // One business per line; blank lines and stray spacing are dropped here.
+  const parseCommunity = (text) => text.split('\n').map((x) => x.trim()).filter(Boolean)
 
   return (
     <div className="p-8 max-w-4xl">
@@ -450,8 +464,12 @@ export default function Directory() {
                   into {isLobby ? 'four' : 'three'} columns automatically.
                 </p>
                 <textarea
-                  value={communityText}
-                  onChange={(e) => patchBoard({ community: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) })}
+                  value={commDraft}
+                  onChange={(e) => {
+                    setCommDraft(e.target.value)
+                    patchBoard({ community: parseCommunity(e.target.value) })
+                  }}
+                  onBlur={() => setCommDraft(parseCommunity(commDraft).join('\n'))}
                   rows={12}
                   className="w-full border border-border rounded px-3 py-2 text-sm bg-background font-mono resize-y focus:outline-none focus:ring-1 focus:ring-ring"
                 />
