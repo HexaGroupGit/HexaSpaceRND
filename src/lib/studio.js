@@ -48,6 +48,24 @@ export const MIN_SESSION_HOURS = 1
 /** How long working copies are kept before deletion (policy §Files). */
 export const RETENTION_DAYS = 14
 
+// ── Who hears about a studio request ─────────────────────────────────────────
+// Both the website endpoint and the portal notifier send here, so this is the
+// ONE place to change who gets told.
+//
+// Towhid runs the studio (DCOL Project / Olivecast), so he needs the request at
+// the same moment we do — he is the person who can actually say whether the
+// slot can be staffed, which is the check approval waits on. Note he is not in
+// the `admins` table, so he receives the email but cannot approve in the admin
+// app; add an admins row if that changes.
+//
+// These emails carry the requester's contact details and questionnaire, so keep
+// this list to people who genuinely need them.
+export const STUDIO_NOTIFY_EMAILS = [
+  'eric@hexaspace.com.au',
+  'info@hexaspace.com.au',
+  'towhid.hussain@tutamail.com',
+]
+
 /** Target turnaround for confirming a request — used in copy, everywhere. */
 export const CONFIRM_SLA = '1 business day'
 

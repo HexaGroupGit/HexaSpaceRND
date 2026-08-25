@@ -19,10 +19,10 @@ import { brandFrame, bKicker, bH1, bP, bTable, bSmall, bPanel, CAPS, SANS, OLIVE
 import {
   emptyQuestionnaire, validateQuestionnaire, validateStudioSlot, buildStudioPayload,
   questionnaireRows, recordingMinutesFor, studioDmy, studioTo12, CONFIRM_SLA,
-  STUDIO_POLICY_VERSION, QUESTIONNAIRE_FIELDS,
+  STUDIO_POLICY_VERSION, QUESTIONNAIRE_FIELDS, STUDIO_NOTIFY_EMAILS,
 } from '../src/lib/studio.js'
 
-const OPS_EMAILS = ['eric@hexaspace.com.au', 'info@hexaspace.com.au']
+const OPS_EMAILS = STUDIO_NOTIFY_EMAILS
 const ADMIN_URL = 'https://admin.hexaspace.com.au/studio-requests'
 const MAX_TEXT = 2000
 const RATE_WINDOW_MS = 60 * 60 * 1000   // an hour

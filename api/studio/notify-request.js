@@ -19,10 +19,10 @@ import { brandFrame, bKicker, bH1, bP, bTable, bSmall, bPanel, CAPS, SANS, OLIVE
 import { applyCors } from '../_cors.js'
 import {
   questionnaireRows, recordingMinutesFor, studioDmy, studioTo12,
-  CONFIRM_SLA, RETENTION_DAYS, STUDIO_POLICY,
+  CONFIRM_SLA, RETENTION_DAYS, STUDIO_POLICY, STUDIO_NOTIFY_EMAILS,
 } from '../../src/lib/studio.js'
 
-const OPS_EMAILS = ['eric@hexaspace.com.au', 'info@hexaspace.com.au']
+const OPS_EMAILS = STUDIO_NOTIFY_EMAILS
 const ADMIN_URL = 'https://admin.hexaspace.com.au/studio-requests'
 
 const hoursBetween = (s, e) => {
