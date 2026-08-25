@@ -66,7 +66,12 @@ Open the request in **Studio Requests**. Before you touch a button, check:
    ~15 min transfer are allowed for. If they've asked for 45 minutes of
    recording in a one-hour slot, **propose a longer session** rather than
    approving and having the conversation on the day.
-3. **Own cards or ours?** Determines what you install before they arrive.
+3. **Cards and drives — ask, don't assume.** The request form no longer asks
+   whether they're bringing their own SD cards; it needs a conversation (what
+   cards, what speed rating, whether they're formatted). Settle it in the
+   pre-booking call along with what drive they're bringing for the files:
+   **an hour of recording is roughly 300 GB, about 100 GB per camera.** People
+   arrive with a 64 GB stick and find out at handover.
 4. **Policy accepted?** Should show green. If it doesn't (an admin-created
    booking), confirm the terms with the client before approving.
 
@@ -102,8 +107,9 @@ while they watch:
 - Confirm free space on every card.
 - Tidy the table, chairs and background.
 
-Set from the questionnaire: number of seats and mics, card set (studio vs
-client), and anything in "special requirements".
+Set from the questionnaire: number of seats and mics (two on camera, maximum),
+and anything in "special requirements". The card set comes from the pre-booking
+call, not the form.
 
 ## 4 · The session
 

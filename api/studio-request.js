@@ -86,7 +86,9 @@ export default async function handler(req, res) {
     peopleOnCamera: Math.max(1, Math.min(2, Number(body.peopleOnCamera) || 1)),
     expectedRecordingMins: Number(body.expectedRecordingMins) || 0,
     ownCrew: !!body.ownCrew,
-    ownCards: !!body.ownCards,
+    // ownCards intentionally omitted — settled in the pre-booking call, not on
+    // the form. Left undefined rather than false so nobody reads a default as
+    // something the client actually told us.
     transferHelp: body.transferHelp !== false,
     specialRequirements: clip(body.specialRequirements),
     deliverables: 'raw',

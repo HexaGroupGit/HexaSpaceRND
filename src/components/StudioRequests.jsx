@@ -6,6 +6,7 @@ import { authHeaders } from '../lib/apiFetch.js'
 import {
   isRequestGated, studioRequestState, STUDIO_STATE_STYLE, questionnaireRows,
   recordingMinutesFor, staleRequests, CONFIRM_SLA, RETENTION_DAYS, creditsAllowed,
+  gbForHours,
 } from '../lib/studio.js'
 import { bookingRate } from '../lib/dropIn.js'
 import { bookingFeeName, round2 } from '../lib/credits.js'
@@ -328,7 +329,9 @@ function RequestDrawer({ request: r, ctx, leases, onClose, onUpdated }) {
             </div>
             <p className="text-xs text-muted-foreground mt-2">
               Use this to prep: card set, seating, mic count and lighting are all decided from these answers before the client arrives.
-              {q?.ownCards ? ' They are bringing their own cards — return them at the end.' : ` Studio cards; working copy kept ${RETENTION_DAYS} days.`}
+              {q?.ownCards === true
+                ? ' They are bringing their own cards — return them at the end.'
+                : ` Confirm the card set and what drive they're bringing in the pre-booking call — ${hrs}h of recording is roughly ${gbForHours(hrs)} GB. Working copy kept ${RETENTION_DAYS} days.`}
             </p>
           </section>
 

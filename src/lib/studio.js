@@ -48,6 +48,16 @@ export const MIN_SESSION_HOURS = 1
 /** How long working copies are kept before deletion (policy §Files). */
 export const RETENTION_DAYS = 14
 
+// ── How much data a session actually produces ────────────────────────────────
+// Three cameras recording 4K 10-bit ≈ 100 GB per camera per hour, so an hour of
+// recording lands around 300 GB before audio. People turn up with a 64 GB stick
+// and discover this at handover, which is the worst possible moment — so the
+// figure is stated wherever someone is deciding what to bring.
+export const GB_PER_CAMERA_HOUR = 100
+export const CAMERA_COUNT = 3
+export const gbForHours = (hours) =>
+  Math.round(GB_PER_CAMERA_HOUR * CAMERA_COUNT * (Number(hours) || 0))
+
 // ── Who hears about a studio request ─────────────────────────────────────────
 // Both the website endpoint and the portal notifier send here, so this is the
 // ONE place to change who gets told.
@@ -114,13 +124,13 @@ export const QUESTIONNAIRE_FIELDS = [
     key: 'ownCrew', label: 'Bringing your own camera / audio operator?', type: 'boolean', default: false,
     help: 'Our team operates the studio by default.',
   },
-  {
-    key: 'ownCards', label: 'Bringing your own SD / microSD cards?', type: 'boolean', default: false,
-    help: 'If not, we record to studio cards and hand your files over at the end of the session.',
-  },
+  // NOTE: whether the client brings their own SD/microSD cards is deliberately
+  // NOT asked here. It needs a conversation — what cards, what speed rating,
+  // whether they're formatted — and a yes/no on a form invites a wrong answer
+  // we'd then plan the session around. Covered in the pre-booking call instead.
   {
     key: 'transferHelp', label: 'Need help transferring the files?', type: 'boolean', default: true,
-    help: 'Bring a USB drive or portable SSD if you can — it is much faster than cloud transfer.',
+    help: `An hour of recording is roughly ${gbForHours(1)} GB (about ${GB_PER_CAMERA_HOUR} GB per camera), so bring a drive with room to spare — an SSD is much faster than a USB stick, and far faster than cloud transfer.`,
   },
   {
     key: 'specialRequirements', label: 'Anything else we should set up?', type: 'textarea', required: false,
@@ -200,7 +210,7 @@ export const STUDIO_POLICY = [
   },
   {
     title: 'Your files',
-    body: `Recordings are copied and verified before you leave, and handed over as raw files — multi-camera video and multi-track audio. Bring a USB drive or portable SSD if you can. We keep a working copy for ${RETENTION_DAYS} days as a safety net, then delete it, so please confirm you have everything you need within that window.`,
+    body: `Recordings are copied and verified before you leave, and handed over as raw files — multi-camera video and multi-track audio. Please bring a portable SSD or USB drive with enough space: an hour of recording is roughly ${gbForHours(1)} GB, about ${GB_PER_CAMERA_HOUR} GB per camera. We keep a working copy for ${RETENTION_DAYS} days as a safety net, then delete it, so please confirm you have everything you need within that window.`,
   },
   {
     title: 'Studio hours',
@@ -366,7 +376,9 @@ export function questionnaireRows(q) {
     ['People on camera', q.peopleOnCamera != null ? String(q.peopleOnCamera) : '—'],
     ['Expected recording', q.expectedRecordingMins ? `${q.expectedRecordingMins} minutes` : '—'],
     ['Own crew', yn(q.ownCrew)],
-    ['Own cards', yn(q.ownCards)],
+    // Only shown when it was actually answered — a blank "No" against a
+    // question we stopped asking reads as a real answer from the client.
+    ...(q.ownCards == null ? [] : [['Own cards', yn(q.ownCards)]]),
     ['Needs transfer help', yn(q.transferHelp)],
     ['Files', 'Raw footage handed over on the day'],
     ['Special requirements', q.specialRequirements || '—'],
