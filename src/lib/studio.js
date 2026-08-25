@@ -95,7 +95,7 @@ export function recordingMinutesFor(hours) {
 export const QUESTIONNAIRE_FIELDS = [
   {
     key: 'recordingType', label: 'What are you recording?', type: 'select', required: true,
-    options: ['Interview', 'Solo / monologue', 'Video podcast', 'Remote guest', 'Other'],
+    options: ['Interview', 'Solo / monologue', 'Video podcast', 'Other'],
   },
   {
     key: 'peopleOnCamera', label: 'People on camera', type: 'number', required: true,
