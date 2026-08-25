@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase.js'
 import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow, spendableCredits, hasActiveMembership } from '../../lib/credits.js'
 import { blockingResourceIds } from '../../lib/roomConflicts.js'
 import { priceBooking, requiresUpfrontPayment, bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../../lib/dropIn.js'
+import { isRequestGated } from '../../lib/studio.js'
 import { apiUrl } from './native.js'
 
 // Booking writes for the app — mirrors the portal's PortalCalendar confirm()
@@ -129,6 +130,13 @@ export async function amendBooking({ booking, room, date, startTime, endTime, me
   if (!canModifyBooking(booking)) {
     throw new Error('This booking has already started — its time can no longer be changed.')
   }
+  // A CONFIRMED studio session can't be moved by the member: its Salto grant is
+  // already pre-scheduled, and the remove pass only reclaims a grant once the
+  // window ends or the booking is cancelled. Flipping it back to Pending here
+  // would strand the original door grant. Cancel + re-request instead.
+  if (isRequestGated(room) && booking.status === 'Confirmed') {
+    throw new Error('This studio session is already confirmed — cancel it and send a new request, or contact the studio team to move it.')
+  }
   // Clash check against server truth (conflict-aware), excluding this booking.
   await assertSlotFree({ resourceId: room.id, date, startTime, endTime, spaces, excludeId: booking.id })
 
@@ -169,11 +177,17 @@ export async function amendBooking({ booking, room, date, startTime, endTime, me
   const shortfall = isPerk ? 0 : Math.round((perCredits - used) * 100) / 100
 
   const nowIso = new Date().toISOString()
+  // Moving a staffed studio session returns it to Pending — an operator was
+  // rostered for the old slot, so the new one needs re-approving. Without this,
+  // "change time" is a back door to confirming your own request (and confirmed
+  // is what grants door access). Mirrors the portal's AmendModal.
+  const gated = isRequestGated(room)
   const updated = {
     ...booking, date, startTime, endTime,
-    creditsUsed: used,
-    paidBy: isPerk ? 'included' : (shortfall > 0 ? (used > 0 ? 'part_credits' : 'fee') : 'credits'),
-    status: 'Confirmed', amendedAt: nowIso,
+    creditsUsed: gated ? 0 : used,
+    paidBy: gated ? 'pending_approval' : (isPerk ? 'included' : (shortfall > 0 ? (used > 0 ? 'part_credits' : 'fee') : 'credits')),
+    status: gated ? 'Pending' : 'Confirmed', amendedAt: nowIso,
+    ...(gated ? { studio: { ...(booking.studio ?? {}), approval: null } } : {}),
     // Time changed → re-queue the door-access grant for the new window.
     roomAccessSentAt: null, roomAccessRemovedAt: null,
   }
@@ -230,6 +244,12 @@ export { creditBalance, spendableCredits } from '../../lib/credits.js'
  * Returns { booking, company: updatedCompany, fee } — throws on clash/db error.
  */
 export async function createBooking({ room, date, startTime, endTime, title, member, company, allBookings, leases, spaces, settings }) {
+  // The podcast studio is staffed, so it can never be self-confirmed. Refuse it
+  // here as well as in the UI: this function is the last thing between a tap and
+  // a Confirmed row, and a confirmed booking is what grants door access.
+  if (isRequestGated(room)) {
+    throw new Error('The podcast studio is booked by request — open Studios in the member portal to send one.')
+  }
   await assertSlotFree({ resourceId: room.id, date, startTime, endTime, spaces })
 
   const hrs = Math.max(0, toDec(endTime) - toDec(startTime))

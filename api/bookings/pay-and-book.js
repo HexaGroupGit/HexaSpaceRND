@@ -12,6 +12,7 @@ import { requireMember } from '../_auth.js'
 import { ensureClientForMember } from '../_dropin.js'
 import { priceBooking, requiresUpfrontPayment } from '../../src/lib/dropIn.js'
 import { blockingResourceIds } from '../../src/lib/roomConflicts.js'
+import { isRequestGated } from '../../src/lib/studio.js'
 import { companyPerk, isPerkRoom } from '../../src/lib/credits.js'
 
 const toDec = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return h + (m || 0) / 60 }
@@ -47,6 +48,13 @@ export default async function handler(req, res) {
 
     const room = spaces.find((s) => s.id === resourceId)
     if (!room) return res.status(404).json({ error: 'That room no longer exists.' })
+    // The podcast studio is staff-operated: it needs an operator rostered, a
+    // pre-session questionnaire and a policy acceptance, none of which this
+    // endpoint collects — and this endpoint writes a CONFIRMED booking, which
+    // grants door access. Refuse it outright.
+    if (isRequestGated(room)) {
+      return res.status(400).json({ error: 'The podcast studio is booked by request — send one from Studios in the member portal.' })
+    }
 
     // A drop-in with no client record gets one, so the card has a home.
     const { companyId } = await ensureClientForMember(sb, auth.user, auth.companyId)

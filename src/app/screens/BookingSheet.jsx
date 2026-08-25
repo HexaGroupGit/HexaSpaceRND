@@ -9,6 +9,7 @@ import { floorLabel } from '../../lib/roomFloor.js'
 import {
   bookingPhase, canModifyBooking, cancelBooking, amendBooking,
 } from '../lib/bookingActions.js'
+import { isRequestGated, CONFIRM_SLA } from '../../lib/studio.js'
 
 // Booking detail sheet: unlock the door while the booking is live, or change
 // its time / cancel it while it's still upcoming. Amend & cancel are locked once
@@ -58,7 +59,10 @@ export default function BookingSheet({ booking, onClose }) {
 
   // ── Cancel / amend ───────────────────────────────────────────────────────
   async function doCancel() {
-    if (!window.confirm('Cancel this booking? Any credits used will return to your allowance.')) return
+    const msg = booking.status === 'Pending'
+      ? 'Withdraw this session request? The slot is released straight away.'
+      : 'Cancel this booking? Any credits used will return to your allowance.'
+    if (!window.confirm(msg)) return
     setBusy(true); setError('')
     try {
       const { booking: updated, company: updatedCompany } = await cancelBooking({ booking, company, leases })
@@ -98,7 +102,8 @@ export default function BookingSheet({ booking, onClose }) {
         <p className="font-display font-extralight text-[28px] leading-tight text-ink">{title}</p>
         <p className="hx-prose text-[13px] mt-1">{fmt(booking.date)} · {timeStr}</p>
         <div className="mt-3 flex justify-center gap-2">
-          {phase === 'active' ? <Chip tone="green">Happening now</Chip>
+          {booking.status === 'Pending' ? <Chip tone="ink">Awaiting confirmation</Chip>
+            : phase === 'active' ? <Chip tone="green">Happening now</Chip>
             : phase === 'past' ? <Chip tone="ink">Ended</Chip>
             : booking.status === 'Cancelled' ? <Chip tone="ink">Cancelled</Chip>
             : <Chip tone="ink">Upcoming</Chip>}
@@ -106,8 +111,22 @@ export default function BookingSheet({ booking, onClose }) {
         </div>
       </div>
 
+      {/* Requested, not yet confirmed — no key, and nothing to unlock. */}
+      {booking.status === 'Pending' && (
+        <div className="border border-amber-300 bg-amber-50 p-4 mb-5">
+          <p className="text-[13px] leading-relaxed text-amber-900">
+            {isRequestGated(room)
+              ? `The studio team is confirming an operator for this session — usually within ${CONFIRM_SLA}. We'll email you your confirmation and the guest recording guide. Nothing is charged yet.`
+              : 'This booking is waiting for our team to confirm it.'}
+          </p>
+          <p className="text-[12px] leading-relaxed text-amber-900/80 mt-2">
+            Your access pass won't open the door until it's confirmed.
+          </p>
+        </div>
+      )}
+
       {/* Live → unlock */}
-      {phase === 'active' && booking.status !== 'Cancelled' && (
+      {phase === 'active' && booking.status === 'Confirmed' && (
         <div className="mb-5">
           {door === undefined ? (
             <div className="border border-ink/10 p-4 text-center"><p className="hx-prose text-[12px]">Checking your key…</p></div>
@@ -148,7 +167,7 @@ export default function BookingSheet({ booking, onClose }) {
           <BigButton tone="outline" onClick={() => setEditing(true)}><Clock size={14} className="inline -mt-0.5 mr-2" />Change time</BigButton>
           <button onClick={doCancel} disabled={busy}
             className="w-full min-h-[48px] font-heading uppercase tracking-nav text-[11px] text-red-700 border border-red-200 active:bg-red-50 disabled:opacity-50">
-            {busy ? 'Cancelling…' : 'Cancel booking'}
+            {busy ? 'Cancelling…' : booking.status === 'Pending' ? 'Withdraw request' : 'Cancel booking'}
           </button>
           <p className="hx-prose text-[11px] text-center pt-1">Free to change or cancel until your booking starts.</p>
         </div>

@@ -29,6 +29,7 @@ import {
   provisionSaltoAccess, revokeSaltoAccess,
 } from '../lib/onboarding.js'
 import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, bookingFeeName, billingEmailFor, spendableCredits, creditMonthKey } from '../lib/credits.js'
+import { creditsAllowed } from '../lib/studio.js'
 import { bookingRate, creditsForBooking, payableForCredits } from '../lib/dropIn.js'
 import { configureFunctionPricing } from '../lib/functionBooking.js'
 import { isRentFreeMonth } from '../lib/paymentSchedule.js'
@@ -1411,7 +1412,12 @@ export function useStore() {
     // month end). Skipped when the caller already charged (Calendar's
     // reconcile passes paidBy), for function venue holds, and for bookings
     // without a company or a priced room.
-    if (item.paidBy == null && item.type !== 'function' && item.status !== 'Cancelled' && item.companyId) {
+    // A PENDING booking has not been granted yet — it is a held request awaiting
+    // staff approval (the podcast studio works this way). Charging at request
+    // time would bill someone for a session we might still decline, so the
+    // charge is raised when it is approved instead.
+    if (item.paidBy == null && item.type !== 'function' && item.status !== 'Cancelled'
+        && item.status !== 'Pending' && item.companyId) {
       const tenant = tenantsRef.current.find((t) => t.id === item.companyId)
       const room = spacesRef.current.find((s) => s.id === item.resourceId)
       const toDec = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return (h || 0) + (m || 0) / 60 }
@@ -1422,8 +1428,28 @@ export function useStore() {
       // comes off creditRate, not the discounted `rate`.
       const leases = leasesRef.current
       const rate = bookingRate(room, item.companyId, leases)
-      const need = creditsForBooking(room, hrs)
-      if (tenant && need > 0) {
+      // The podcast studio takes NO CREDITS — it is staffed labour, not a room
+      // sitting empty, so it always bills as cash however much allowance is
+      // left, and the company's balance is never touched. (Studio requests are
+      // normally charged on approval in StudioRequests; this covers an admin
+      // creating one directly from Bookings.)
+      const noCredits = !creditsAllowed(room)
+      const need = noCredits ? 0 : creditsForBooking(room, hrs)
+      if (noCredits) {
+        const price = round2(rate * hrs)
+        item.creditsUsed = 0
+        item.paidBy = 'fee'
+        if (tenant && price > 0) {
+          const fee = addFee({
+            name: bookingFeeName({ roomName: room?.unitNumber, rate, date: item.date, startTime: item.startTime, endTime: item.endTime, usedCredits: 0 }),
+            type: 'Booking Fee', memberId: item.memberId ?? null, companyId: item.companyId,
+            date: item.date || new Date().toISOString().split('T')[0],
+            price, status: 'Not Paid',
+            notes: `Studio session · ${hrs}h @ A$${rate}/hr · credits not applicable`,
+          })
+          item.feeId = fee?.id ?? null
+        }
+      } else if (tenant && need > 0) {
         // Monthly pool with rollover, mirroring the portal calendar.
         const mk = creditMonthKey()
         const available = spendableCredits(tenant, leases)

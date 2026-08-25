@@ -6,10 +6,11 @@ import {
   Wrench, BarChart2, Menu, X, Calendar, MessageSquare,
   ClipboardList, Megaphone, Building2, User, Tag, DollarSign,
   CalendarCheck, Activity, CalendarDays, PartyPopper, Mailbox, Croissant, KeyRound,
-  MonitorPlay, DoorOpen, BadgeDollarSign, GraduationCap,
+  MonitorPlay, DoorOpen, BadgeDollarSign, GraduationCap, Mic,
 } from 'lucide-react'
 import { logout } from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
+import { pendingStudioRequests } from '../lib/studio.js'
 
 const GROUPS = [
   { items: [{ to: '/', icon: LayoutDashboard, label: 'Dashboard' }] },
@@ -24,6 +25,7 @@ const GROUPS = [
       { to: '/fobs', icon: KeyRound, label: 'Fobs & Remotes' },
       { to: '/bookings', icon: CalendarCheck, label: 'Bookings' },
       { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
+      { to: '/studio-requests', icon: Mic, label: 'Studio Requests' },
       { to: '/activity', icon: Activity, label: 'Activity Log' },
       { to: '/access-log', icon: DoorOpen, label: 'Access Log' },
     ],
@@ -67,6 +69,9 @@ export default function Layout({ store, onLogout }) {
   const [open, setOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
   const unreadEnquiries = (store?.leads ?? []).filter((l) => !l.read).length
+  // Studio sessions are held, not booked, until someone answers them — surface
+  // the count so a request can't sit unanswered while a client waits.
+  const pendingStudio = pendingStudioRequests(store?.bookings, store?.spaces).length
 
   useEffect(() => {
     loadUnread()
@@ -121,6 +126,11 @@ export default function Layout({ store, onLogout }) {
                 {to === '/messages' && unreadMessages > 0 && (
                   <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
                     {unreadMessages}
+                  </span>
+                )}
+                {to === '/studio-requests' && pendingStudio > 0 && (
+                  <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                    {pendingStudio}
                   </span>
                 )}
                 {to === '/crm' && unreadEnquiries > 0 && (

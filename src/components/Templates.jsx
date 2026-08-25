@@ -9,6 +9,7 @@ const TEMPLATE_TYPES = [
   { value: 'house-rules', label: 'House Rules' },
   { value: 'privacy', label: 'Privacy Policy' },
   { value: 'whs', label: 'WHS Policy' },
+  { value: 'studio-policy', label: 'Podcast Studio Policy' },
   { value: 'other', label: 'Other' },
 ]
 
@@ -17,6 +18,7 @@ const TYPE_BADGE = {
   'house-rules': 'bg-green-50 text-green-700 border-green-200',
   privacy: 'bg-purple-50 text-purple-700 border-purple-200',
   whs: 'bg-orange-50 text-orange-700 border-orange-200',
+  'studio-policy': 'bg-rose-50 text-rose-700 border-rose-200',
   other: 'bg-gray-100 text-gray-600 border-gray-200',
 }
 
@@ -43,6 +45,11 @@ const EMAIL_TYPES = [
   { value: 'overdue_final_warning', label: 'Overdue — Cancellation warning' },
   { value: 'membership_cancelled', label: 'Overdue — Membership cancelled' },
   { value: 'renewal_confirmation', label: 'Renewal — Auto-renew confirmation' },
+  { value: 'studio_request_received', label: 'Studio — Request received' },
+  { value: 'studio_approved', label: 'Studio — Session confirmed' },
+  { value: 'studio_guide', label: 'Studio — Guest recording guide' },
+  { value: 'studio_declined', label: 'Studio — Request declined' },
+  { value: 'studio_rescheduled', label: 'Studio — New time proposed' },
   { value: 'custom', label: 'Custom' },
 ]
 const EMAIL_TYPE_BADGE = {
@@ -65,6 +72,11 @@ const EMAIL_TYPE_BADGE = {
   overdue_final_warning: 'bg-red-50 text-red-700 border-red-200',
   membership_cancelled: 'bg-red-100 text-red-800 border-red-300',
   renewal_confirmation: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  studio_request_received: 'bg-rose-50 text-rose-700 border-rose-200',
+  studio_approved: 'bg-rose-100 text-rose-800 border-rose-300',
+  studio_guide: 'bg-rose-50 text-rose-700 border-rose-200',
+  studio_declined: 'bg-rose-50 text-rose-700 border-rose-200',
+  studio_rescheduled: 'bg-rose-50 text-rose-700 border-rose-200',
   custom: 'bg-gray-100 text-gray-600 border-gray-200',
 }
 // Placeholders available per email type (filled at send time).
@@ -90,6 +102,11 @@ const VARS_BY_TYPE = {
   overdue_final_warning: ['{{company}}', '{{tenantName}}', '{{amountOwing}}', '{{daysOverdue}}', '{{daysUntilCancel}}', '{{cancelDate}}', '{{oldestDueDate}}', '{{portalUrl}}', '{{website}}'],
   membership_cancelled: ['{{company}}', '{{tenantName}}', '{{amountOwing}}', '{{daysOverdue}}', '{{oldestDueDate}}', '{{portalUrl}}', '{{website}}'],
   renewal_confirmation: ['{{company}}', '{{tenantName}}', '{{unit}}', '{{contract}}', '{{newEndDate}}', '{{previousEndDate}}', '{{monthlyRent}}', '{{giveNoticeUrl}}', '{{portalUrl}}', '{{website}}'],
+  studio_request_received: ['{{company}}', '{{name}}', '{{studio}}', '{{sessionDate}}', '{{startTime}}', '{{endTime}}', '{{hours}}', '{{recordingMins}}', '{{reference}}', '{{reason}}', '{{website}}'],
+  studio_approved: ['{{company}}', '{{name}}', '{{studio}}', '{{sessionDate}}', '{{startTime}}', '{{endTime}}', '{{hours}}', '{{recordingMins}}', '{{reference}}', '{{reason}}', '{{website}}'],
+  studio_guide: ['{{company}}', '{{name}}', '{{studio}}', '{{sessionDate}}', '{{startTime}}', '{{endTime}}', '{{hours}}', '{{recordingMins}}', '{{reference}}', '{{reason}}', '{{website}}'],
+  studio_declined: ['{{company}}', '{{name}}', '{{studio}}', '{{sessionDate}}', '{{startTime}}', '{{endTime}}', '{{hours}}', '{{recordingMins}}', '{{reference}}', '{{reason}}', '{{website}}'],
+  studio_rescheduled: ['{{company}}', '{{name}}', '{{studio}}', '{{sessionDate}}', '{{startTime}}', '{{endTime}}', '{{hours}}', '{{recordingMins}}', '{{reference}}', '{{reason}}', '{{website}}'],
 }
 const varsFor = (emailType) => VARS_BY_TYPE[emailType] || ['{{company}}', '{{tenantName}}', '{{website}}']
 const PREVIEW_VARS = {
@@ -117,6 +134,9 @@ const PREVIEW_VARS = {
   daysUntilCancel: '28', cancelDate: '1 September 2026', oldestDueDate: '3 June 2026',
   newEndDate: '30/06/2027', previousEndDate: '30/06/2026', monthlyRent: '$1,200.00 AUD',
   giveNoticeUrl: 'https://portal.hexaspace.com.au/give-notice/sample-token',
+  studio: 'The Podcast Studio', sessionDate: '3 Sep 2026', hours: '2',
+  recordingMins: '75', reference: 'BKG-482913',
+  reason: 'No operator available that morning — Thursday 10am is free.',
 }
 const fillPreview = (html) => String(html || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (k in PREVIEW_VARS ? PREVIEW_VARS[k] : m))
 

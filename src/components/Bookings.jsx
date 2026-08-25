@@ -42,7 +42,9 @@ export default function Bookings() {
   const resource = (id) => spaces.find((s) => s.id === id)
   const member = (id) => members.find((m) => m.id === id)
   const companyName = (id) => tenants.find((t) => t.id === id)?.businessName
-  const rooms = spaces.filter((s) => s.type === 'meeting')
+  // Meeting rooms AND media/podcast studios — an admin booking a studio on
+  // someone's behalf had no way to select it before.
+  const rooms = spaces.filter((s) => ['meeting', 'studio', 'podcast'].includes(s.type))
 
   const rows = bookings
     .map((b) => {

@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase.js'
 import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig, spendableCredits, hasActiveMembership, creditMonthKey } from '../lib/credits.js'
 import { bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
+import { isRequestGated, studioRequestState } from '../lib/studio.js'
+import StudioRequestModal from './StudioRequestModal.jsx'
 import { Card, DateDropdown } from './ui.jsx'
 
 // Mirrors the admin Calendar so the portal reads/writes the SAME bookings table.
@@ -144,10 +146,15 @@ export default function PortalCalendar({ resources, allBookings, member, company
                     // → soft green; anyone else's → charcoal "Booked".
                     const mine = !!b.memberId && b.memberId === member?.id
                     const team = !mine && !!b.companyId && b.companyId === company?.id
-                    const cls = mine ? 'bg-hexa-green text-paper'
+                    // A studio session still awaiting the team's confirmation
+                    // reads as held, not booked — amber, not green.
+                    const awaiting = b.status === 'Pending'
+                    const cls = awaiting && (mine || team) ? 'bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-400'
+                      : mine ? 'bg-hexa-green text-paper'
                       : team ? 'bg-hexa-green/20 text-ink ring-1 ring-inset ring-hexa-green/50'
                       : 'bg-charcoal text-paper/90'
-                    const label = mine ? (b.title || 'Your booking')
+                    const label = awaiting && (mine || team) ? 'Awaiting confirmation'
+                      : mine ? (b.title || 'Your booking')
                       : team ? (b.title || 'Team booking')
                       : 'Booked'
                     // Own bookings are editable — click to amend times or cancel.
@@ -179,7 +186,9 @@ export default function PortalCalendar({ resources, allBookings, member, company
         <span className="inline-flex items-center gap-1.5 hx-prose text-[11px]"><span className="h-2.5 w-2.5 bg-hexa-green/20 ring-1 ring-inset ring-hexa-green/50 inline-block" /> Your team</span>
         <span className="inline-flex items-center gap-1.5 hx-prose text-[11px]"><span className="h-2.5 w-2.5 bg-charcoal inline-block" /> Booked</span>
       </div>
-      <p className="hx-prose text-[12px] mt-2">Click any open slot to request a booking. Credits = A${CREDIT_VALUE} each · our team confirms portal requests.</p>
+      <p className="hx-prose text-[12px] mt-2">{resources.every(isRequestGated)
+        ? 'Click any open slot to request a session. The studio team confirms every request — nothing is charged until they do, and studio time doesn’t use meeting-room credits.'
+        : `Click any open slot to request a booking. Credits = A$${CREDIT_VALUE} each · our team confirms portal requests.`}</p>
       <p className="hx-prose text-[12px] mt-1">{resources.every(isStudioSpace)
         ? `Studios are bookable ${t12(afterHoursConfig(settings).coreStart)}–${t12(afterHoursConfig(settings).coreEnd)} — the same hours as external bookings.`
         : canAfterHours
@@ -199,7 +208,16 @@ export default function PortalCalendar({ resources, allBookings, member, company
         />
       )}
 
-      {modal && (
+      {/* Request-gated resources (the podcast studio) never open the instant
+          booking modal — they take the questionnaire + policy path instead. */}
+      {modal && isRequestGated(resources.find((r) => r.id === modal.resourceId)) ? (
+        <StudioRequestModal
+          slot={modal} resources={resources} member={member} company={company}
+          allSpaces={allSpaces ?? resources}
+          onClose={() => setModal(null)}
+          onRequested={(created) => setBookings((prev) => [...prev, created])}
+        />
+      ) : modal && (
         <BookingModal
           slot={modal} resources={resources} bookings={bookings} member={member} company={company} remaining={remaining}
           leases={leases} settings={settings} allSpaces={allSpaces ?? resources}
@@ -565,6 +583,15 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
     if (alreadyUsed) {
       return setError('This booking has already started, so it can no longer be moved. Please book a new time instead.')
     }
+    // A CONFIRMED studio session can't be moved from here. Door access for it
+    // has already been pre-scheduled with Salto (roomAccessSentAt), and the
+    // remove pass only reconciles a grant away once the window ends or the
+    // booking is cancelled — so silently flipping this back to Pending would
+    // leave the original grant live and unreclaimed. Cancelling keeps the
+    // existing, tested clean-up path.
+    if (isRequestGated(room) && b.status === 'Confirmed') {
+      return setError('This studio session is already confirmed. Please cancel it and send a new request, or email us and we’ll move it for you.')
+    }
     if (newHrs <= 0) return setError('End time must be after start time.')
     if (toDec(f.startTime) < win.start || toDec(f.endTime) > win.end) {
       return setError(win.studioGated
@@ -596,11 +623,17 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
     }
     setSaving(true)
     const attendees = parseEmails(f.attendees)
+    // A staffed studio can never be self-confirmed by the member. Moving a
+    // studio session returns it to Pending: an operator was rostered for the
+    // old slot, so the new one has to be re-approved. Without this, "change
+    // the time" would be a back door to approving your own request.
+    const gated = isRequestGated(room)
     const updated = {
       ...b, date: f.date, startTime: f.startTime, endTime: f.endTime, attendees,
       creditsUsed: isPerk ? 0 : newUsed,
       paidBy: isPerk ? 'included' : (newNeed > newUsed ? (newUsed > 0 ? 'part_credits' : 'fee') : 'credits'),
-      status: 'Confirmed', amendedAt: nowIso(),
+      status: gated ? 'Pending' : 'Confirmed', amendedAt: nowIso(),
+      ...(gated ? { creditsUsed: 0, paidBy: 'pending_approval', studio: { ...(b.studio ?? {}), approval: null } } : {}),
       // Times changed — the door-access window must be re-queued when the
       // team re-confirms, so clear the sent stamp.
       roomAccessSentAt: null,
@@ -691,7 +724,9 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
               )}
             </div>
           )}
-          <p className="hx-prose text-[12px]">Your booking updates instantly — room access follows the new time automatically.</p>
+          <p className="hx-prose text-[12px]">{isRequestGated(room)
+            ? 'Changing the time sends this session back to the studio team to re-confirm — an operator is rostered for your slot.'
+            : 'Your booking updates instantly — room access follows the new time automatically.'}</p>
           {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>}
         </div>
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-ink/10">

@@ -9,6 +9,7 @@ import { priceBooking, requiresUpfrontPayment, bookingRate } from '../../lib/dro
 import { floorLabel } from '../../lib/roomFloor.js'
 import { apiUrl, openPayment } from '../lib/native.js'
 import { isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow, afterHoursConfig } from '../../lib/credits.js'
+import { isRequestGated, recordingMinutesFor, CONFIRM_SLA } from '../../lib/studio.js'
 
 // Single-room day calendar — the app's version of the website's booking grid:
 // a date dropdown + scrollable day strip on top, an hour column below with
@@ -154,7 +155,9 @@ export default function RoomDetail({ room, onBack }) {
           ? 'studios keep business hours for all bookings.'
           : canAfterHours
             ? 'after-hours booking is on for your membership.'
-            : 'after-hours is included with Private Office & Dedicated Desk memberships.'} Requests confirmed usually within the hour.
+            : 'after-hours is included with Private Office & Dedicated Desk memberships.'} {isRequestGated(room)
+          ? `Sessions are confirmed by the studio team, usually within ${CONFIRM_SLA}.`
+          : 'Requests confirmed usually within the hour.'}
       </p>
 
       {slot && (
@@ -311,6 +314,39 @@ function SlotSheet({ room, date, start, member, company, allBookings, balance, l
     } finally {
       setSaving(false)
     }
+  }
+
+  // The podcast studio is staff-operated: a session needs the pre-session
+  // questionnaire and a policy acceptance, which live in the portal's request
+  // flow. Rather than half-build that form on a phone, point people at it —
+  // and never let this sheet write a booking for a gated room.
+  if (isRequestGated(room)) {
+    return (
+      <Sheet open onClose={onClose} title="Request a session">
+        <div className="text-center pt-1 pb-5">
+          <p className="font-display font-extralight text-[28px] text-ink">{room.unitNumber}</p>
+          <p className="hx-prose text-[13px] mt-1">{fmt(date)} · from {to12(start)}</p>
+        </div>
+        <Rule className="mb-5" />
+        <div className="bg-bone border border-ink/10 p-4">
+          <p className="hx-prose text-[13px]">
+            The studio is run by our team, so sessions are <strong>requested rather than booked instantly</strong>.
+            We'll ask a few questions about your recording — how many people, how long, whether you're bringing
+            your own cards — and confirm within {CONFIRM_SLA}.
+          </p>
+          <p className="hx-prose text-[12px] mt-3">
+            Setup and file handover happen inside your booking, so an hour leaves about {recordingMinutesFor(1)} minutes
+            of recording.
+          </p>
+        </div>
+        <BigButton
+          onClick={() => { window.open('https://portal.hexaspace.com.au/studios', '_blank', 'noopener'); onClose() }}
+          className="mt-6">
+          Request a session
+        </BigButton>
+        <p className="hx-prose text-[11px] text-center mt-3">Opens the member portal, where the request form lives.</p>
+      </Sheet>
+    )
   }
 
   return (
