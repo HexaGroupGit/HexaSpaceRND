@@ -81,8 +81,11 @@ export const QUESTIONNAIRE_FIELDS = [
   },
   {
     key: 'peopleOnCamera', label: 'People on camera', type: 'number', required: true,
-    min: 1, max: 4, default: 2,
-    help: 'The studio seats a host plus one guest comfortably. Tell us if you need more.',
+    // Two, hard. The room is built around two Shure SM7B microphones — a host
+    // and one guest — so a third person on camera has nothing to speak into.
+    // validateQuestionnaire enforces this from here, on every surface.
+    min: 1, max: 2, default: 2,
+    help: 'The studio is set up for a host and one guest — two microphones, two camera angles. Talk to us first if you need more.',
   },
   {
     key: 'expectedRecordingMins', label: 'Expected recording length (minutes)', type: 'number', required: true,
