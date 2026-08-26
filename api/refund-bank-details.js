@@ -15,7 +15,7 @@ import { createClient } from '@supabase/supabase-js'
 import { randomBytes } from 'crypto'
 import { applyCors } from './_cors.js'
 import { sendResendEmail } from './_email.js'
-import { brandFrame, bKicker, bH1, bP, bBtn, bSmall } from './_brand.js'
+import { brandFrame, bKicker, bH1, bH2, bP, bBtn, bSmall, bTable } from './_brand.js'
 import { requireAdmin } from './_auth.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
@@ -48,6 +48,31 @@ async function refundRecipient(sb, credit) {
   return { name: name || fallbackName, email: email || fallbackEmail }
 }
 
+// Who gets told when a client fills the form in. Accounts needs the details to
+// actually pay the refund, so this is a fixed ops list rather than the tenant's
+// own contacts — same shape as LEAD_NOTIFY, plus the Settings override.
+const REFUND_NOTIFY = [
+  'admin@hexa.com.au',
+  'eric@hexaspace.com.au',
+  'scarlett@hexaspace.com.au',
+  'brittany@hexaspace.com.au',
+]
+
+const fmtBsb = (b) => String(b ?? '').replace(/[^\d]/g, '').replace(/^(\d{3})(\d{3})$/, '$1-$2')
+const fmtWhen = (iso) => {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (isNaN(d)) return '—'
+  // Melbourne — the refund gets paid from a Melbourne bank on a Melbourne day.
+  return d.toLocaleString('en-AU', {
+    timeZone: 'Australia/Melbourne', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).replace(',', ' ·') + ' AEST'
+}
+// Everything client-supplied lands in an HTML email — escape it.
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+
 // Australian BSB is 6 digits (usually shown 000-000); account numbers run 5-10.
 function validateBank(b) {
   const name = String(b?.accountName ?? '').trim()
@@ -57,6 +82,53 @@ function validateBank(b) {
   if (bsb.length !== 6) return 'BSB must be 6 digits.'
   if (acc.length < 5 || acc.length > 10) return 'Account number must be between 5 and 10 digits.'
   return null
+}
+
+// The "bank details received" notification, built with no I/O so it can be
+// rendered or test-sent on its own. Everything interpolated below is either
+// client-supplied or free text, so it all goes through esc().
+export function buildBankDetailsEmail({ credit, who, bank, receivedAt, fromName = 'Hexa Space', fallbackNumber = '' }) {
+  const amount = amountOf(credit)
+  const isDeposit = /deposit|bond/i.test(`${credit.invoiceType ?? ''} ${credit.reference ?? ''}`)
+  const what = isDeposit ? 'Security deposit refund' : 'Refund'
+
+  const rows = [
+    ['Credit note', esc(credit.number ?? fallbackNumber), true],
+    ['Type', what, false],
+    ['Amount to pay', `<strong>${money(amount)} AUD</strong>`, true],
+    ['Client', esc(who.name || '—'), false],
+    ['Client email', who.email ? `<a href="mailto:${esc(who.email)}">${esc(who.email)}</a>` : '—', false],
+    ['Reference', esc(credit.reference ?? '—'), false],
+    credit.functionRef ? ['Function ref', esc(credit.functionRef), false] : null,
+    credit.contractNumber ? ['Contract', esc(credit.contractNumber), false] : null,
+    ['Issued', esc(credit.issueDate ?? '—'), false],
+    ['Details requested', fmtWhen(credit.refundBankRequestedAt), false],
+    ['Details received', fmtWhen(receivedAt), true],
+  ].filter(Boolean)
+
+  const bankRows = [
+    ['Account name', esc(bank.accountName), true],
+    ['BSB', esc(fmtBsb(bank.bsb)), true],
+    ['Account number', esc(bank.accountNumber), true],
+  ]
+
+  const inner =
+    bKicker('Bank details received') +
+    bH1(`${money(amount)} to pay out`) +
+    bP(`<strong>${esc(who.name || 'A client')}</strong> has entered their bank details for ${isDeposit ? 'their security deposit refund' : 'a refund'}. Pay it from the Hexa Space account, then mark the credit note refunded in the platform so it stops showing as outstanding.`) +
+    bH2('Refund') +
+    bTable(rows) +
+    bH2('Pay to') +
+    bTable(bankRows) +
+    bSmall('Entered by the client via their private refund link, so these are the details they nominated — check the account name against the payer before sending funds. Treat this email as confidential: it contains full account details.') +
+    bSmall(`Automated notification from ${esc(fromName)}.`)
+
+  return {
+    isDeposit,
+    amount,
+    subject: `Bank details received — ${money(amount)} ${isDeposit ? 'deposit refund' : 'refund'} for ${who.name || credit.number || 'a client'}`,
+    html: brandFrame(inner, { footerLabel: isDeposit ? 'Security Deposit' : 'Refund' }),
+  }
 }
 
 export default async function handler(req, res) {
@@ -161,6 +233,36 @@ export default async function handler(req, res) {
         data: { ...credit, refundBank: clean, refundBankReceivedAt: nowIso },
         updated_at: nowIso,
       })
+
+      // Tell Accounts. Until this existed, a client could fill the form in and
+      // nothing happened — the details sat on the credit note and the refund
+      // was only found if someone went looking. Deliberately AFTER the write
+      // and awaited, but never allowed to fail the submission: the client has
+      // done their part, so a bad send must not show them an error.
+      try {
+        const { data: sRow } = await sb.from('settings').select('data').eq('id', 'global').single()
+        const settings = sRow?.data ?? {}
+        const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
+        const fromEmail = settings?.emails?.fromEmail || 'noreply@hexaspace.com.au'
+        const to = [...new Set([...REFUND_NOTIFY, settings?.emails?.notificationEmail]
+          .filter(Boolean).map((e) => e.toLowerCase()))]
+
+        const who = await refundRecipient(sb, credit)
+        const mail = buildBankDetailsEmail({
+          credit, who, bank: clean, receivedAt: nowIso, fromName, fallbackNumber: found.id,
+        })
+
+        await sendResendEmail({
+          from: `${fromName} <${fromEmail}>`,
+          to,
+          replyTo: who.email || settings?.emails?.replyTo,
+          subject: mail.subject,
+          html: mail.html,
+        })
+      } catch (e) {
+        console.error('refund bank-details notification failed:', e)
+      }
+
       return res.status(200).json({ success: true })
     }
 
