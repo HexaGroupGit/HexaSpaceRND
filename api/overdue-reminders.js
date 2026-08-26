@@ -25,6 +25,28 @@ function addBusinessDays(fromStr, n) {
   return d.toISOString().split('T')[0]
 }
 
+// Invoice total inc-GST, from its line items.
+function invoiceTotalInc(inv) {
+  const sub = (inv.lineItems ?? []).reduce((t, l) =>
+    t + Math.round(Number(l.unitPrice ?? 0) * Number(l.qty ?? 1) * (1 - Number(l.discountPct ?? 0) / 100) * 100) / 100, 0)
+  return Math.round(sub * (inv.vatEnabled !== false ? 1.1 : 1) * 100) / 100
+}
+
+// A credit note is money WE owe THEM — there is nothing to pay, so it must never
+// be marked overdue or chased. Nothing here guarded on a negative total before,
+// so a credit note left 'pending' flipped to 'overdue' the next day and started
+// dunning the customer for their own refund.
+const isCreditNote = (inv) =>
+  inv.invoiceType === 'bond_refund' || !!inv.creditNoteForId || invoiceTotalInc(inv) <= 0
+
+// Invoices that must never appear in a client-facing overdue reminder: credit
+// notes, plus security deposits. A deposit is money we HOLD against a contract,
+// not revenue owed on trading terms, and a "Payment reminder — 1 overdue
+// invoice" email reads to the client as a demand to pay their bond a second
+// time. Deposits still show as overdue in the admin UI so they can be chased
+// deliberately; they just stop being dunned automatically.
+const isChaseable = (inv) => !isCreditNote(inv) && inv.invoiceType !== 'deposit'
+
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
@@ -61,7 +83,7 @@ export default async function handler(req, res) {
 
     // 2. Find invoices that should be overdue
     const nowOverdue = invoices.filter(
-      (inv) => inv.status === 'pending' && inv.dueDate && inv.dueDate < todayStr
+      (inv) => inv.status === 'pending' && inv.dueDate && inv.dueDate < todayStr && !isCreditNote(inv)
     )
 
     // Mark overdue in Supabase
@@ -231,7 +253,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (!resendKey || allOverdue.length === 0) {
+    if (!resendKey || !allOverdue.some(isChaseable)) {
       return res.status(200).json({ marked: nowOverdue.length, reminded: 0, charged: charged.length, notified: chargeNotified.length, chargeFailed, blocked, unblocked })
     }
 
@@ -247,8 +269,11 @@ export default async function handler(req, res) {
       (inv.remindersSent ?? 0) < MAX_REMINDERS &&
       (!inv.lastReminderAt || inv.lastReminderAt <= remindCutoff)
 
+    // Filtered here rather than out of allOverdue, so a deposit still counts
+    // for the admin overdue view and the clause 7(d) access check — it just
+    // never appears in a dunning email.
     const byTenant = {}
-    for (const inv of allOverdue) {
+    for (const inv of allOverdue.filter(isChaseable)) {
       if (!byTenant[inv.tenantId]) byTenant[inv.tenantId] = []
       byTenant[inv.tenantId].push(inv)
     }
