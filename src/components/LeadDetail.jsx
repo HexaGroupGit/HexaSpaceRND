@@ -122,6 +122,54 @@ export default function LeadDetail({ lead, store, onClose }) {
   // invitation, as opposed to the "pick a time yourself" invite above.
   const [bookingTour, setBookingTour] = useState(false)
   const tourConfirmed = lead.tourStatus === 'confirmed' && !!lead.tourDate
+  // A tour asked for from the website. They have picked a PREFERRED time and
+  // been told we will come back within a business day — nothing is agreed
+  // until someone here confirms it, which is what sends the invitation.
+  const tourPending = lead.tourStatus === 'pending' && !!lead.tourDate
+
+  const [decliningTour, setDecliningTour] = useState(false)
+  const [declineMsg, setDeclineMsg] = useState('')
+  const [decliningBusy, setDecliningBusy] = useState(false)
+  const [declineResult, setDeclineResult] = useState('')
+
+  // Turning a requested time down. We told them we'd confirm within a business
+  // day, so this emails them back rather than silently clearing the queue —
+  // otherwise a declined request looks identical to being ignored.
+  async function declineTour() {
+    const when = tourWhenLabel(lead.tourDate, lead.tourTime) || lead.tourDate
+    setDecliningBusy(true); setDeclineResult('')
+    try {
+      if (lead.email) {
+        const firstName = (lead.name || '').trim().split(/\s+/)[0] || 'there'
+        const companyName = settings?.company?.name || 'Hexa Space'
+        await sendEmail({
+          to: lead.email,
+          subject: `About your tour on ${when} — can we find another time?`,
+          html: brandShell(
+            bKicker('Book A Tour') +
+            bH1('Sorry — that time is taken') +
+            bP(`Hi ${firstName},`) +
+            bP(`Thanks for asking to come and see the space. Unfortunately <strong>${when}</strong> doesn't work at our end — sorry about that.`) +
+            (declineMsg.trim() ? bP(declineMsg.trim()) : '') +
+            bP('Pick any other time that suits and we’ll confirm it, or just reply to this email and we’ll work something out.') +
+            bBtn('Choose another time', tourLink) +
+            bSmall('Level 4, 402/830 Whitehorse Road, Box Hill VIC 3128 — two minutes from Box Hill Central, parking available.'),
+            { company: companyName, website: settings?.company?.website || 'hexaspace.com.au' },
+          ),
+          settings,
+          emailType: 'tour_declined',
+        })
+      }
+      updateLead(lead.id, { tourStatus: 'declined', tourDeclinedAt: new Date().toISOString() })
+      appendLeadActivity(lead.id, {
+        type: lead.email ? 'email' : 'note',
+        text: `Tour request declined — ${when}${lead.email ? ' — asked them to pick another time' : ' (no email on file, not notified)'}`,
+      })
+      setDecliningTour(false); setDeclineMsg('')
+    } catch (e) {
+      setDeclineResult(e.message)
+    } finally { setDecliningBusy(false) }
+  }
 
   const tourLink = (() => {
     if (settings?.leads?.tourUrl) return settings.leads.tourUrl
@@ -599,7 +647,53 @@ export default function LeadDetail({ lead, store, onClose }) {
               {/* Confirmed booking — the phone-enquiry path. */}
               <div className="bg-card border border-border rounded-xl shadow-sm p-4">
                 <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-1">Book the tour</h3>
-                {tourConfirmed ? (
+                {tourPending ? (
+                  <>
+                    <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-md px-3 py-2 text-sm mb-3">
+                      <div className="font-semibold">
+                        Requested: {tourWhenLabel(lead.tourDate, lead.tourTime) || `${lead.tourDate} ${lead.tourTime || ''}`}
+                      </div>
+                      <div className="text-xs mt-0.5">
+                        Asked for from the website{lead.tourRequestedAt ? ` ${rel(lead.tourRequestedAt)}` : ''} · not confirmed yet
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      They've been told we'll confirm within one business day. Confirming opens the booking form with
+                      their requested time already filled in — change it there if the slot doesn't work, and they'll get
+                      the invitation for the time you actually pick.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button onClick={() => setBookingTour(true)}
+                        className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90">
+                        <CalendarClock size={14} /> Confirm &amp; send invite
+                      </button>
+                      <button onClick={() => setDecliningTour((v) => !v)}
+                        className="border border-input px-4 py-2 rounded-md text-sm font-medium hover:bg-muted/50">
+                        Can't make that time
+                      </button>
+                    </div>
+                    {decliningTour && (
+                      <div className="mt-3 border border-border rounded-md p-3 bg-muted/30">
+                        <p className="text-xs text-muted-foreground mb-2">
+                          Emails {lead.email || 'the lead'} to say the slot doesn't work and asks them to pick another,
+                          then clears the request.
+                        </p>
+                        <textarea value={declineMsg} onChange={(e) => setDeclineMsg(e.target.value)} rows={2}
+                          placeholder="Optional — e.g. we're out that morning, but any afternoon this week is wide open."
+                          className={`${input} resize-none mb-2`} />
+                        <div className="flex items-center gap-3">
+                          <button onClick={declineTour} disabled={decliningBusy}
+                            className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
+                            {decliningBusy ? 'Sending…' : lead.email ? 'Send & decline' : 'Decline (no email on file)'}
+                          </button>
+                          <button onClick={() => { setDecliningTour(false); setDeclineResult('') }}
+                            className="text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+                          {declineResult && <span className="text-sm text-red-600">{declineResult}</span>}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : tourConfirmed ? (
                   <>
                     <div className="bg-green-50 border border-green-200 text-green-800 rounded-md px-3 py-2 text-sm mb-3">
                       <div className="font-semibold">{tourWhenLabel(lead.tourDate, lead.tourTime) || `${lead.tourDate} ${lead.tourTime || ''}`}</div>

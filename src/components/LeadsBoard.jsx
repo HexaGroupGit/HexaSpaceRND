@@ -295,6 +295,13 @@ function LeadCard({ lead, spaces, tenants, onEdit, onDelete, onConvert, onOpen, 
         {lead.source && <span className="text-xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground capitalize border border-border">{lead.source}</span>}
       </div>
 
+      {lead.tourStatus === 'pending' && lead.tourDate && (
+        <div className="flex items-center gap-1 mt-2 text-xs font-semibold text-amber-700">
+          <CalendarClock size={11} className="shrink-0" />
+          Tour requested {lead.tourDate.split('-').reverse().join('/')}{lead.tourTime ? ` · ${to12h(lead.tourTime)}` : ''} — confirm
+        </div>
+      )}
+
       {lead.tourStatus === 'confirmed' && lead.tourDate && (
         <div className="flex items-center gap-1 mt-2 text-xs font-medium text-teal-700">
           <CalendarClock size={11} className="shrink-0" />
