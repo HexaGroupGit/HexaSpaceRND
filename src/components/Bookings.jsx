@@ -48,7 +48,10 @@ function to12(t) {
 // Asks Maxa OC + Pro Facility Management to unlock the front door and enable
 // lift access for one after-hours booking. Manual on purpose: staff press it
 // when they want it to go out.
-function UnlockButton({ booking }) {
+//
+// Exported because the Calendar's booking modal shows it too — a weekend
+// booking is usually spotted on the calendar, not in the Bookings list.
+export function UnlockButton({ booking }) {
   const need = needsBuildingAccess(booking)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState('')

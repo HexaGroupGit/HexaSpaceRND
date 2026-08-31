@@ -7,6 +7,7 @@ import { bookingFeeName, afterHoursConfig, spendableCredits, hasActiveMembership
 import { bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
 import { to12h, durationLabel, addMinutes } from '../lib/tourInvite.js'
+import { UnlockButton } from './Bookings.jsx'
 
 const HOUR_H = 52
 const CREDIT_VALUE = 40 // $40 per credit
@@ -458,7 +459,11 @@ function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, lease
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-border sticky bottom-0 bg-card">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={f.notify} onChange={chk('notify')} /> Send notification</label>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={f.notify} onChange={chk('notify')} /> Send notification</label>
+            {/* Weekend / after-hours booking — building management has to unlock the lift. */}
+            {edit && <UnlockButton booking={init} />}
+          </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="px-4 py-2 text-sm text-foreground border border-input rounded-md hover:bg-muted/50">Close</button>
             {edit && <button onClick={() => { if (window.confirm('Delete this booking?')) onDelete() }} className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700">Delete</button>}
