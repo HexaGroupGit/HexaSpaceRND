@@ -13,21 +13,12 @@
 // confirmed inside its own lead window sends straight away — better late than
 // never — as does an admin pressing resend (force).
 import { bookingSessions, bufferedWindow, isWeekendDate, accessRequestSendDate, ACCESS_LEAD_DAYS } from '../../src/lib/functionBooking.js'
-import { sendResendEmail } from '../_email.js'
+import { OPEN, CLOSE, to12, shape, melbourneToday, sendAccessRequestEmail } from '../_buildingAccess.js'
 
-const TO = ['info@maxaoc.com.au', 'pbh@profacilitymanagement.com.au']
-const CC = ['eric@hexaspace.com.au', 'info@hexaspace.com.au', 'scarlett@hexaspace.com.au', 'brittany@hexaspace.com.au']
-const OPEN = '09:00', CLOSE = '17:00' // building's staffed hours, Mon–Fri
-const TZ = 'Australia/Melbourne'
-
-export const melbourneToday = () =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
-
-const dmy = (d) => { const [y, m, day] = String(d).split('-'); return `${day}/${m}/${y}` }
-const dayName = (d) => new Date(`${d}T00:00:00`).toLocaleDateString('en-AU', { weekday: 'long' })
-// A late finish buffers out to "24:00" — show that as 12:00am, not 12:00pm.
-const to12 = (t) => { let [h, m] = String(t).split(':').map(Number); if (h >= 24) h -= 24; const ap = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12; return `${h}:${String(m).padStart(2, '0')}${ap}` }
-const shape = (w) => ({ date: w.date, from: w.blockStart, to: w.blockEnd })
+// Recipients, formatting and the email body itself now live in
+// ../_buildingAccess.js, shared with the room-booking unlock button so the
+// building manager gets one consistent request from either side.
+export { melbourneToday }
 
 // The sessions that need an unlock: weekend, or the ±30-min buffered window
 // starts before opening / ends after close. `from` drops sessions already past.
@@ -59,44 +50,17 @@ export function accessRequestDue(b, from = null) {
   return accessRequestGroups(b, from).find((g) => !g.sentAt)?.sendOn ?? null
 }
 
-function emailHtml(b, windows) {
-  const rowsHtml = windows.map((w) => `
-      <tr>
-        <td style="padding:8px 12px;border:1px solid #ddd">${dayName(w.date)} ${dmy(w.date)}</td>
-        <td style="padding:8px 12px;border:1px solid #ddd"><strong>${to12(w.blockStart)} – ${to12(w.blockEnd)}</strong></td>
-        <td style="padding:8px 12px;border:1px solid #ddd">${to12(w.startTime)} – ${to12(w.endTime)} function · 30-min buffer each side</td>
-      </tr>`).join('')
-  return `
-      <p>Hi team,</p>
-      <p>We have a confirmed function booking at <strong>Hexa Space — U 402/828 Whitehorse Road, Box Hill (Level 4)</strong> that
-      runs outside staffed hours. Could you please <strong>unlock the front door and enable lift access to Level 4</strong> for the
-      following window${windows.length > 1 ? 's' : ''}:</p>
-      <table style="border-collapse:collapse;font-size:14px">
-        <tr>
-          <th style="padding:8px 12px;border:1px solid #ddd;text-align:left">Date</th>
-          <th style="padding:8px 12px;border:1px solid #ddd;text-align:left">Unlock window</th>
-          <th style="padding:8px 12px;border:1px solid #ddd;text-align:left">Event time</th>
-        </tr>
-        ${rowsHtml}
-      </table>
-      <p style="margin-top:14px">
-        Event: <strong>${b.eventName || 'Private function'}</strong> · ref ${b.ref}${b.guests ? ` · ~${b.guests} guests` : ''}<br/>
-        Hexa Space contact: info@hexaspace.com.au
-      </p>
-      <p>Please confirm once scheduled — happy to provide anything further you need.</p>
-      <p>Kind regards,<br/>Hexa Space Pty Ltd<br/>402/830 Whitehorse Road, Box Hill VIC 3128</p>`
-}
-
+// The function-specific wording around the shared table.
 async function emailGroup(b, windows) {
-  const first = windows[0]
-  const r = await sendResendEmail({
-    from: 'Hexa Space <info@hexaspace.com.au>',
-    to: TO, cc: CC,
-    replyTo: 'info@hexaspace.com.au',
-    subject: `After-hours access request — front door & lift, ${dayName(first.date)} ${dmy(first.date)} ${to12(first.blockStart)}–${to12(first.blockEnd)}${windows.length > 1 ? ` (+${windows.length - 1} more)` : ''}`,
-    html: emailHtml(b, windows),
+  await sendAccessRequestEmail({
+    windows: windows.map((w) => ({
+      ...w,
+      note: `${to12(w.startTime)} – ${to12(w.endTime)} function · 30-min buffer each side`,
+    })),
+    what: 'a confirmed function booking',
+    detailsHtml: `Event: <strong>${b.eventName || 'Private function'}</strong> · ref ${b.ref}${b.guests ? ` · ~${b.guests} guests` : ''}<br/>
+        Hexa Space contact: info@hexaspace.com.au`,
   })
-  if (!r.ok) throw new Error('Email send failed.')
 }
 
 // Returns { status, ... }, persisting the booking whenever anything changed.

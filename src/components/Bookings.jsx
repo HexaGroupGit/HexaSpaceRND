@@ -1,8 +1,23 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Plus, X, Trash2 } from 'lucide-react'
+import { Plus, X, Trash2, Loader2, KeyRound, Check } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { bookingRate } from '../lib/dropIn.js'
+import { bufferedWindow, isWeekendDate } from '../lib/functionBooking.js'
+import { authHeaders } from '../lib/apiFetch.js'
+
+// The building's staffed hours. Outside them — any weekend, or a window that
+// starts before open / ends after close — the lift won't take anyone to Level 4
+// unless building management programs it, so someone has to ask them.
+// Mirrors roomAccessWindow() in api/bookings/access-request.js.
+const OPEN = '09:00', CLOSE = '17:00'
+function needsBuildingAccess(b) {
+  if (!b?.date || !b?.startTime || !b?.endTime || b.status === 'Cancelled') return null
+  const { blockStart, blockEnd } = bufferedWindow(b.startTime, b.endTime)
+  const weekend = isWeekendDate(b.date)
+  if (!weekend && blockStart >= OPEN && blockEnd <= CLOSE) return null
+  return { weekend, blockStart, blockEnd }
+}
 
 const STATUS_STYLE = {
   Confirmed: 'bg-green-100 text-green-800',
@@ -28,6 +43,61 @@ function to12(t) {
   const ap = h >= 12 ? 'pm' : 'am'
   h = h % 12 || 12
   return `${h}:${String(m).padStart(2, '0')} ${ap}`
+}
+
+// Asks Maxa OC + Pro Facility Management to unlock the front door and enable
+// lift access for one after-hours booking. Manual on purpose: staff press it
+// when they want it to go out.
+function UnlockButton({ booking }) {
+  const need = needsBuildingAccess(booking)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState('')
+  const [error, setError] = useState('')
+  if (!need) return null
+
+  const alreadySent = !!booking.accessRequestSentAt
+  async function send() {
+    const when = `${format(parseISO(booking.date), 'EEEE d MMM')}, ${to12(need.blockStart)} – ${to12(need.blockEnd)}`
+    const lines = [
+      'Ask building management to unlock the front door and lift for:',
+      '',
+      when,
+      '',
+      'Goes to Maxa OC and Pro Facility Management, cc the Hexa team.',
+    ]
+    if (alreadySent) lines.push('', 'A request has already been sent for this booking — this sends another.')
+    if (!confirm(lines.join('\n'))) return
+    setBusy(true); setError(''); setResult('')
+    try {
+      const r = await fetch('/api/bookings/access-request', {
+        method: 'POST', headers: await authHeaders(), body: JSON.stringify({ id: booking.id }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || 'Could not send the request.')
+      setResult(j.needed === false ? (j.note || 'Not needed.') : 'Unlock requested ✓')
+    } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="inline-flex flex-col items-end gap-1">
+      <button onClick={send} disabled={busy}
+        title={need.weekend ? 'Weekend booking — the lift needs unlocking' : 'Runs outside staffed hours — the lift needs unlocking'}
+        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold border disabled:opacity-40 ${
+          alreadySent
+            ? 'border-border text-muted-foreground hover:bg-muted/50'
+            : 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'}`}>
+        {busy ? <Loader2 size={12} className="animate-spin" /> : alreadySent ? <Check size={12} /> : <KeyRound size={12} />}
+        {busy ? 'Sending…' : alreadySent ? 'Resend unlock' : 'Request lift unlock'}
+      </button>
+      {alreadySent && !result && !error && (
+        <span className="text-[10px] text-muted-foreground">
+          Sent {format(parseISO(booking.accessRequestSentAt.split('T')[0]), 'd MMM')}
+        </span>
+      )}
+      {result && <span className="text-[10px] text-green-600 max-w-[190px] text-right">{result}</span>}
+      {error && <span className="text-[10px] text-red-600 max-w-[190px] text-right">{error}</span>}
+    </div>
+  )
 }
 
 export default function Bookings() {
@@ -120,7 +190,10 @@ export default function Bookings() {
                 <td className="px-4 py-3"><div className="text-foreground">{b.room?.unitNumber || '—'}</div><div className="text-xs text-muted-foreground">Hexa Space</div></td>
                 <td className="px-4 py-3 text-foreground">{b.cost ? `A$${b.cost.toLocaleString('en-AU')}` : 'Free'}</td>
                 <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => { if (confirm('Delete this booking?')) deleteBooking(b.id) }} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>
+                  <div className="flex items-center justify-end gap-2">
+                    <UnlockButton booking={b} />
+                    <button onClick={() => { if (confirm('Delete this booking?')) deleteBooking(b.id) }} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>
+                  </div>
                 </td>
               </tr>
             ))}
