@@ -56,6 +56,88 @@ function bookingStatus(b) {
   return null
 }
 
+
+// Pay the whole booking now instead of the deposit cycle.
+//
+// The deposit route is two payments and a wait: 50% + $300 now, the balance 14
+// days before the event, and the date isn't held until the first lands. For a
+// client who just wants it done, this takes the lot on the card and confirms on
+// the spot. The server prices and charges (api/function-bookings/pay-and-confirm);
+// this only asks.
+function PayInFullPanel({ booking, onConfirmed }) {
+  const [state, setState] = useState('idle') // idle | loading | ready | busy | done
+  const [info, setInfo] = useState(null)
+  const [error, setError] = useState('')
+
+  async function look() {
+    setState('loading'); setError('')
+    try {
+      const r = await fetch('/api/function-bookings/pay-and-confirm', {
+        method: 'POST', headers: await authHeaders(),
+        body: JSON.stringify({ id: booking.id, preview: true }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d.error ?? 'We could not price this booking.')
+      setInfo(d); setState('ready')
+    } catch (e) { setError(e.message); setState('idle') }
+  }
+
+  async function pay() {
+    setState('busy'); setError('')
+    try {
+      const r = await fetch('/api/function-bookings/pay-and-confirm', {
+        method: 'POST', headers: await authHeaders(),
+        body: JSON.stringify({ id: booking.id }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d.error ?? 'The payment could not be taken.')
+      setState('done')
+      onConfirmed?.(d.booking)
+    } catch (e) { setError(e.message); setState('ready') }
+  }
+
+  if (state === 'done') return null
+
+  return (
+    <div className="mt-5 border-t border-ink/10 pt-5">
+      {state === 'idle' && (
+        <>
+          <button type="button" onClick={look} className="hx-prose text-[12px] underline">
+            Rather pay the whole thing now and be done? →
+          </button>
+          {error && <p className="hx-prose text-[12px] text-red-600 mt-2">{error}</p>}
+        </>
+      )}
+
+      {state === 'loading' && <p className="hx-prose text-[12px]">Checking…</p>}
+
+      {(state === 'ready' || state === 'busy') && info && (
+        <>
+          <Eyebrow>Pay in full</Eyebrow>
+          {info.payable ? (
+            <>
+              <p className="hx-prose text-[13px] mt-2">
+                Charge <strong>{money(info.amount)}</strong> to your {info.card} now — venue hire, GST and the
+                refundable {money(info.breakdown?.securityDeposit)} security deposit. Your date is secured
+                immediately and there's no balance to pay later.
+              </p>
+              <button type="button" onClick={pay} disabled={state === 'busy'} className="hx-btn inline-block mt-4 disabled:opacity-50">
+                {state === 'busy' ? 'Taking payment…' : `Pay ${money(info.amount)} & confirm`}
+              </button>
+            </>
+          ) : (
+            <p className="hx-prose text-[13px] mt-2">
+              {info.reason || 'This booking cannot be paid in full right now.'}{' '}
+              <Link to="/account" className="underline">Add a card</Link> and it will show here.
+            </p>
+          )}
+          {error && <p className="hx-prose text-[12px] text-red-600 mt-2">{error}</p>}
+        </>
+      )}
+    </div>
+  )
+}
+
 function Row({ label, value, strong, muted }) {
   return (
     <div className={`flex items-baseline justify-between py-1 ${strong ? 'text-ink font-medium' : muted ? 'text-portal-muted' : 'text-ink'}`}>
@@ -240,11 +322,14 @@ export default function PortalFunction({ spaces, member, company }) {
             </div>
           )}
           {status === 'deposit' && (
-            <div className="mt-5 border-t border-ink/10 pt-5">
-              <Row label="Deposit due now" value={money(q.dueNow)} strong />
-              <Row label="Balance — 14 days before event" value={money(q.balanceDue)} muted />
-              <Link to="/billing" className="hx-btn inline-block mt-5">Pay deposit in Billing</Link>
-            </div>
+            <>
+              <div className="mt-5 border-t border-ink/10 pt-5">
+                <Row label="Deposit due now" value={money(q.dueNow)} strong />
+                <Row label="Balance — 14 days before event" value={money(q.balanceDue)} muted />
+                <Link to="/billing" className="hx-btn inline-block mt-5">Pay deposit in Billing</Link>
+              </div>
+              <PayInFullPanel booking={b} onConfirmed={(rec) => rec && setExisting(rec)} />
+            </>
           )}
           {status === 'confirmed' && (
             <button type="button" onClick={() => setExisting(null)} className="hx-prose text-[12px] underline mt-6 block">Plan another event →</button>

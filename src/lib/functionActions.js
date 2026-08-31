@@ -11,6 +11,7 @@
 import { supabase } from './supabase.js'
 import { authHeaders } from './apiFetch.js'
 import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money, bookingSessions, sessionsLabel } from './functionBooking.js'
+import { buildFullInvoice, buildSessionHolds, invoiceBaseFor } from './functionConfirm.js'
 import { PORTAL_URL } from './sendEmail.js'
 
 const today = () => new Date().toISOString().split('T')[0]
@@ -191,27 +192,8 @@ async function voidInvoiceRow({ store, invoice }) {
   else await supabase.from('invoices').upsert({ id: invoice.id, data: { ...invoice, status: 'voided' }, updated_at: nowIso() })
 }
 
-// The single invoice a courtesy hold is billed on: the whole venue hire (GST)
-// plus the refundable security deposit (no GST) — no 50/50 split, because no
-// deposit was taken. Due by the same 14-days-before deadline the terms set for
-// payment in full.
-function fullInvoice({ booking: b, quote: q, base, id }) {
-  return {
-    ...base, id, invoiceType: 'function_full', dueDate: balanceDueDate(b.eventDate) || today(), vatEnabled: true,
-    lineItems: [
-      { description: `Function booking, payable in full · ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.taxable, qty: 1, discountPct: 0 },
-      { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit, qty: 1, discountPct: 0, vatExempt: true },
-    ],
-  }
-}
-
-function invoiceBaseFor(b) {
-  return {
-    tenantId: b.tenantId || b.companyId || null, source: 'function', status: 'pending', sentStatus: 'not_sent',
-    functionRef: b.ref, clientName: b.organisation || b.companyInfo?.businessName || b.name || 'Function client',
-    clientEmail: b.email, issueDate: today(),
-  }
-}
+// The full invoice + calendar-hold shapes live in functionConfirm.js so the
+// pay-in-full endpoint raises exactly what a courtesy hold does.
 
 // Re-issue a courtesy hold's full invoice at an adjusted price. There's no
 // deposit split to rebuild, so this never goes near submit.js — void the
@@ -222,7 +204,7 @@ export async function reissueHeldInvoice({ store, booking }) {
     i.invoiceType === 'function_full' && !['paid', 'voided'].includes(i.status))
   if (open) await voidInvoiceRow({ store, invoice: open })
   const id = newInvoiceId()
-  store.addInvoice(fullInvoice({ booking, quote: q, base: invoiceBaseFor(booking), id }))
+  store.addInvoice(buildFullInvoice({ booking, quote: q, base: invoiceBaseFor(booking), id }))
   return persistFn({ ...booking, quote: q, fullInvoiceId: id })
 }
 
@@ -266,7 +248,7 @@ async function secureVenue({ store, booking, findFunctionSpace, depositPaid }) {
       const split = live.filter((i) => ['function_deposit', 'function_balance'].includes(i.invoiceType) && !['paid', 'voided'].includes(i.status))
       for (const inv of split) await voidInvoiceRow({ store, invoice: inv })
       fullInvoiceId = newInvoiceId()
-      store.addInvoice(fullInvoice({ booking: b, quote: q, base, id: fullInvoiceId }))
+      store.addInvoice(buildFullInvoice({ booking: b, quote: q, base, id: fullInvoiceId }))
     }
   } else if (fullInvoiceId || has('function_full')) {
     // Already on a full invoice — leave it alone when the money lands later and
@@ -291,18 +273,10 @@ async function secureVenue({ store, booking, findFunctionSpace, depositPaid }) {
   // Place a calendar hold for EVERY session (venue secured) with ±30-min buffer.
   let calendarBookingIds = b.calendarBookingIds ?? (b.calendarBookingId ? [b.calendarBookingId] : [])
   const fn = findFunctionSpace ? findFunctionSpace(store.spaces) : null
-  const sessions = bookingSessions(b)
-  if (fn && sessions.length && calendarBookingIds.length === 0) {
-    calendarBookingIds = sessions.map((s, i) => {
-      const { blockStart, blockEnd } = bufferedWindow(s.startTime, s.endTime)
-      const item = store.addBooking({
-        type: 'function', resourceId: fn.id, date: s.date, startTime: blockStart, endTime: blockEnd,
-        title: `${b.eventName || 'Function'}${sessions.length > 1 ? ` — session ${i + 1}/${sessions.length}` : ''} (incl. buffer)`,
-        eventType: b.eventType, guests: Number(b.guests) || null,
-        status: 'Confirmed', approval: 'approved', source: 'Function Bookings', functionRef: b.ref, repeat: 'none', createdBy: 'Admin',
-      })
-      return item?.id
-    }).filter(Boolean)
+  if (fn && calendarBookingIds.length === 0) {
+    calendarBookingIds = buildSessionHolds({ booking: b, functionSpaceId: fn.id })
+      .map((hold) => store.addBooking(hold)?.id)
+      .filter(Boolean)
   }
   const updated = await persistFn({
     ...b, stage: 'confirmed', confirmedAt: b.confirmedAt || nowIso(), quote: q, tenantId, companyId: tenantId,

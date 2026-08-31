@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { format } from 'date-fns'
 import {
   Plus, X, Send, Copy, Check, Pencil, Trash2, CheckCircle2,
-  CalendarDays, CalendarCheck, Users, ChevronRight, RefreshCw, DollarSign, UserPlus,
+  CalendarDays, CalendarCheck, Users, ChevronRight, RefreshCw, DollarSign, UserPlus, CreditCard,
 } from 'lucide-react'
 import {
   ADDONS, STAGES, money, computeQuote, bufferedWindow,
@@ -12,6 +12,8 @@ import {
 } from '../lib/functionBooking.js'
 import { findFunctionSpace } from '../portal/functionSpace.js'
 import { billingContactFor } from '../lib/credits.js'
+import FunctionPayInFullDialog from './FunctionPayInFullDialog.jsx'
+import { canPayInFull } from '../lib/functionConfirm.js'
 import { approveFunctionBooking, confirmDepositPaid, holdWithoutDeposit, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit, reissueHeldInvoice, requestBuildingAccess } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
@@ -516,6 +518,17 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
               <p className="text-[11px] text-muted-foreground">Blocking puts the sessions on the calendar before the money lands. Nothing is waived — the 50% deposit invoice is voided and replaced by one invoice for the full {money(q.fullDue)} (hire + GST + security), due 14 days before the event.</p>
             </>
           )}
+          {/* Skip the deposit cycle entirely: charge the card for everything now
+              and secure the venue in the same action. Only offered while the
+              deposit cycle hasn't taken any money — see canPayInFull. */}
+          {canPayInFull(b) && (
+            <>
+              <button onClick={() => actions.payInFull(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40">
+                <CreditCard size={14} /> Take payment in full now — {money(q.fullDue)}
+              </button>
+              <p className="text-[11px] text-muted-foreground">Charges the card on file for hire + GST + the refundable security deposit, voids the deposit/balance invoices and confirms the booking. Nothing left to chase.</p>
+            </>
+          )}
           {b.stage === 'confirmed' && (
             <>
               {b.depositPaid ? (
@@ -643,6 +656,7 @@ export default function FunctionBookings() {
   const [filter, setFilter] = useState('active')
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [payInFull, setPayInFull] = useState(null) // booking awaiting the pay-in-full dialog
 
   useEffect(() => { load() }, [])
   async function load() {
@@ -683,6 +697,8 @@ export default function FunctionBookings() {
     approve: (b) => run(() => approveFunctionBooking({ store, booking: b, settings })),
     amend: (b) => run(() => askAmendDate({ booking: b, settings })),
     markPaid: (b) => run(() => confirmDepositPaid({ store, booking: b, findFunctionSpace })),
+    // Opens the dialog; the charge itself is server-side (pay-and-confirm).
+    payInFull: (b) => setPayInFull(b),
     // Block the dates ahead of payment — same calendar holds and invoices as a
     // paid confirm, the deposit simply stays outstanding.
     async holdDates(b) {
@@ -805,6 +821,20 @@ export default function FunctionBookings() {
           calClash={seriesCalendarClashes(calendarBookings, findFunctionSpace(spaces)?.id, selected, spaces)} />
       )}
       {showForm && <BookingForm booking={editData} onSave={handleFormSave} onClose={() => { setShowForm(false); setEditData(null) }} />}
+
+      {/* Charging happens server-side, so the fresh booking comes back on the
+          response — apply it rather than re-deriving the stage here. */}
+      {payInFull && (
+        <FunctionPayInFullDialog
+          booking={payInFull}
+          onClose={() => setPayInFull(null)}
+          onDone={(d) => {
+            setPayInFull(null)
+            if (d?.booking) apply(d.booking)
+            if (d?.message) window.alert(d.message)
+          }}
+        />
+      )}
     </div>
   )
 }
