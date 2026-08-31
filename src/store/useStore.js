@@ -1496,7 +1496,12 @@ export function useStore() {
     return item
   }, [])
 
-  const updateBooking = useCallback((id, updates) => {
+  // `silent` suppresses the amended/cancelled email below. Used when the server
+  // has already written the booking AND emailed the client itself — a refunded
+  // cancellation (api/bookings/refund.js) sends its own "cancelled and refunded"
+  // message, and a second bare "your booking is cancelled" on top of it reads as
+  // a mistake to the client.
+  const updateBooking = useCallback((id, updates, { silent = false } = {}) => {
     setBookings((prev) => {
       const before = prev.find((b) => b.id === id)
       const next = prev.map((b) => (b.id === id ? { ...b, ...updates } : b))
@@ -1509,7 +1514,7 @@ export function useStore() {
       // time/date change (e.g. extended) → 'amended' email; cancellation →
       // 'cancelled'. Both go to the member, cc info@ (endpoint skips
       // non-bookable room types itself).
-      if (before && updated?.memberId && updated.type !== 'function') {
+      if (!silent && before && updated?.memberId && updated.type !== 'function') {
         const cancelled = updates.status === 'Cancelled' && before.status !== 'Cancelled'
         const timeChanged = ['date', 'startTime', 'endTime'].some(
           (k) => updates[k] != null && String(updates[k]) !== String(before[k] ?? ''))

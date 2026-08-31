@@ -8,6 +8,7 @@ import { bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } fro
 import { blockingResourceIds } from '../lib/roomConflicts.js'
 import { to12h, durationLabel, addMinutes } from '../lib/tourInvite.js'
 import { UnlockButton } from './Bookings.jsx'
+import CancelBookingDialog from './CancelBookingDialog.jsx'
 
 const HOUR_H = 52
 const CREDIT_VALUE = 40 // $40 per credit
@@ -37,6 +38,7 @@ export default function Calendar() {
   const [day, setDay] = useState(new Date())
   const [resType, setResType] = useState('meeting')
   const [modal, setModal] = useState(null) // { mode:'new'|'edit', ...booking/slot }
+  const [cancelling, setCancelling] = useState(null) // booking awaiting the cancel/refund dialog
 
   const dayStr = format(day, 'yyyy-MM-dd')
   const rooms = spaces.filter((s) => s.type === resType)
@@ -156,10 +158,29 @@ export default function Calendar() {
     }
     setModal(null)
   }
+  // Cancelling goes through the dialog so a card-paid booking can send the money
+  // back in the same click — see CancelBookingDialog.
   function handleCancel() {
-    reconcile(modal, { ...modal, status: 'Cancelled' })
-    updateBooking(modal.id, { status: 'Cancelled', creditsUsed: 0, paidBy: 'cancelled', feeAmount: 0, feeId: null })
+    setCancelling(modal)
+  }
+
+  // The dialog has finished. Two shapes come back:
+  //   refunded  — the server already cancelled the booking, raised the credit
+  //               note and emailed the client. Mirror its row into local state
+  //               silently; a second cancellation email would confuse them.
+  //   not       — ordinary cancel: reconcile credits/fees locally as before.
+  function finishCancel(result) {
+    const b = cancelling
+    setCancelling(null)
     setModal(null)
+    if (!b) return
+    if (result.refunded) {
+      updateBooking(b.id, result.booking ?? { status: 'Cancelled' }, { silent: true })
+      if (result.message) window.alert(result.message)
+      return
+    }
+    reconcile(b, { ...b, status: 'Cancelled' })
+    updateBooking(b.id, { status: 'Cancelled', creditsUsed: 0, paidBy: 'cancelled', feeAmount: 0, feeId: null })
   }
   function handleDelete() {
     reconcile(modal, null) // refund only
@@ -299,6 +320,15 @@ export default function Calendar() {
           onSave={handleSave}
           onCancelBooking={handleCancel}
           onDelete={handleDelete}
+        />
+      )}
+
+      {cancelling && (
+        <CancelBookingDialog
+          booking={cancelling}
+          roomName={spaces.find((s) => s.id === cancelling.resourceId)?.unitNumber}
+          onClose={() => setCancelling(null)}
+          onDone={finishCancel}
         />
       )}
     </div>

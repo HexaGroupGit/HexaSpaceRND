@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Plus, X, Trash2, Loader2, KeyRound, Check } from 'lucide-react'
+import { Plus, X, Trash2, Loader2, KeyRound, Check, Ban } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { bookingRate } from '../lib/dropIn.js'
 import { bufferedWindow, isWeekendDate } from '../lib/functionBooking.js'
 import { authHeaders } from '../lib/apiFetch.js'
+import CancelBookingDialog from './CancelBookingDialog.jsx'
 
 // The building's staffed hours. Outside them — any weekend, or a window that
 // starts before open / ends after close — the lift won't take anyone to Level 4
@@ -104,13 +105,14 @@ export function UnlockButton({ booking }) {
 }
 
 export default function Bookings() {
-  const { bookings = [], spaces = [], members = [], tenants = [], leases = [], addBooking, deleteBooking } = useOutletContext()
+  const { bookings = [], spaces = [], members = [], tenants = [], leases = [], addBooking, updateBooking, deleteBooking } = useOutletContext()
   const [search, setSearch] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [companyFilter, setCompanyFilter] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY)
+  const [cancelling, setCancelling] = useState(null) // booking awaiting the cancel/refund dialog
 
   const resource = (id) => spaces.find((s) => s.id === id)
   const member = (id) => members.find((m) => m.id === id)
@@ -142,6 +144,26 @@ export default function Bookings() {
     const m = members.find((x) => x.id === form.memberId)
     addBooking({ ...form, companyId: m?.companyId || form.companyId, createdBy: 'Admin' })
     setShowForm(false)
+  }
+
+  // Cancelling from the list uses the same dialog as the calendar, so a
+  // card-paid booking can be refunded here too. Where the server refunded it,
+  // it has already written the row and emailed the client — mirror it silently
+  // rather than sending a second cancellation email over the top.
+  //
+  // NOTE this list has no credit reconciliation of its own (the calendar owns
+  // that), so a non-refund cancel here only sets the status. Credit-paid
+  // bookings are cancelled from the calendar, which returns the credits.
+  function finishCancel(result) {
+    const b = cancelling
+    setCancelling(null)
+    if (!b) return
+    if (result.refunded) {
+      updateBooking?.(b.id, result.booking ?? { status: 'Cancelled' }, { silent: true })
+      if (result.message) window.alert(result.message)
+      return
+    }
+    updateBooking?.(b.id, { status: 'Cancelled' })
   }
 
   return (
@@ -195,6 +217,10 @@ export default function Bookings() {
                 <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-2">
                     <UnlockButton booking={b} />
+                    {b.status !== 'Cancelled' && (
+                      <button onClick={() => setCancelling(b)} title="Cancel this booking (and refund it, if it was paid by card)"
+                        className="p-1 rounded hover:bg-amber-50 text-muted-foreground hover:text-amber-600"><Ban size={14} /></button>
+                    )}
                     <button onClick={() => { if (confirm('Delete this booking?')) deleteBooking(b.id) }} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>
                   </div>
                 </td>
@@ -205,6 +231,15 @@ export default function Bookings() {
       </div>
 
       {showForm && <BookingModal form={form} setForm={setForm} rooms={rooms} members={members} tenants={tenants} onClose={() => setShowForm(false)} onSubmit={submit} />}
+
+      {cancelling && (
+        <CancelBookingDialog
+          booking={cancelling}
+          roomName={resource(cancelling.resourceId)?.unitNumber}
+          onClose={() => setCancelling(null)}
+          onDone={finishCancel}
+        />
+      )}
     </div>
   )
 }

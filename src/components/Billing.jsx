@@ -4,6 +4,7 @@ import { format, parseISO, startOfMonth, isBefore, addMonths, differenceInDays }
 import { Plus, Search, X, Check, Download, Send, Ban, BellRing, RotateCcw } from 'lucide-react'
 import { authHeaders } from '../lib/apiFetch.js'
 import InvoiceDetail from './InvoiceDetail.jsx'
+import CancelBookingDialog from './CancelBookingDialog.jsx'
 import InvoiceForm from './InvoiceForm.jsx'
 import { sendEmail, invoiceEmailHtml, makePayToken, invoicePayLink, brandShell, bKicker, bH1, bP, bSmall, bBtn, BRAND } from '../lib/sendEmail.js'
 import { billingContactFor } from '../lib/credits.js'
@@ -39,6 +40,7 @@ export default function Billing() {
     invoices, addInvoice, updateInvoice, voidInvoice, deleteInvoice, addPaymentToInvoice, deletePaymentFromInvoice, addCommentToInvoice, approveBondRefund,
     discounts, addDiscount, updateDiscount, deleteDiscount,
     tenants, leases, spaces, settings, currentUserRole, members = [],
+    bookings = [], updateBooking,
   } = useOutletContext()
 
   // Bond-refund credit notes awaiting an admin's approval before the tenant is notified.
@@ -47,6 +49,19 @@ export default function Billing() {
   // promises the deposit back within 60 days — chip them red at 45.
   const refundsAwaitingPayout = invoices.filter((i) => i.invoiceType === 'bond_refund' && i.approvalStatus === 'approved' && i.status !== 'paid' && !i.refundedAt)
   const refundOverdue = (inv) => inv.approvedAt && differenceInDays(new Date(), parseISO(inv.approvedAt)) > 45
+
+  // Cancelled bookings whose card payment never went back. The refund normally
+  // rides on the cancel (CancelBookingDialog), so anything landing here is a
+  // booking cancelled some other way — from the list before this existed, by a
+  // status edit, or by a refund that failed at the Stripe step. It is the money
+  // safety net: without it a cancelled-but-paid booking is invisible, which is
+  // how NeoMahi's two September rooms sat refunded-in-principle for three weeks.
+  const [refundBooking, setRefundBooking] = useState(null)
+  const unrefundedCancellations = bookings.filter((b) => {
+    if (b.status !== 'Cancelled' || b.refundedAt || b.stripeRefundId) return false
+    if (!(b.stripePaymentIntentId || b.paymentIntentId)) return false
+    return Number(b.paidAmount ?? b.amountPaid ?? 0) > 0
+  })
 
   // One button for both rails. The server decides which applies from how the
   // original deposit was paid: a card payment is refunded through Stripe there
@@ -504,6 +519,38 @@ export default function Billing() {
       {/* ── Invoices ── */}
       {subTab === 'invoices' && (
         <>
+          {/* Cancelled bookings still holding the client's money */}
+          {unrefundedCancellations.length > 0 && (
+            <div className="mb-4 border border-red-200 bg-red-50 rounded-md p-4">
+              <h3 className="text-sm font-semibold text-red-900 mb-2">
+                Cancelled bookings not yet refunded ({unrefundedCancellations.length})
+              </h3>
+              <p className="text-xs text-red-800/80 mb-2">These bookings were cancelled but the card payment is still with us.</p>
+              <div className="space-y-2">
+                {unrefundedCancellations.map((b) => {
+                  const room = spaces.find((s) => s.id === b.resourceId)
+                  const amount = Number(b.paidAmount ?? b.amountPaid ?? 0)
+                  return (
+                    <div key={b.id} className="flex items-center justify-between bg-card border border-red-200 rounded px-3 py-2">
+                      <div className="text-sm text-foreground">
+                        <span className="font-medium">{room?.unitNumber ?? b.resourceName ?? 'Room'}</span> ·{' '}
+                        {b.date ? format(parseISO(b.date), 'dd/MM/yyyy') : '—'} ·{' '}
+                        <span className="font-semibold">${amount.toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD</span>
+                        <span className="text-muted-foreground"> · {b.companyName || tenants.find((t) => t.id === b.companyId)?.businessName || '—'}{b.reference ? ` · ${b.reference}` : ''}</span>
+                      </div>
+                      <button
+                        onClick={() => setRefundBooking(b)}
+                        className="flex items-center gap-1.5 text-xs bg-primary text-primary-foreground rounded px-3 py-1.5 font-medium hover:bg-primary/90"
+                      >
+                        <RotateCcw size={13} /> Refund
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Bond refunds pending approval */}
           {pendingBondRefunds.length > 0 && (
             <div className="mb-4 border border-amber-200 bg-amber-50 rounded-md p-4">
@@ -992,6 +1039,25 @@ export default function Billing() {
           taxRatePct={settings?.billingRules?.taxRate ?? 10}
           onSave={(data) => { addInvoice(data); setShowForm(false) }}
           onClose={() => setShowForm(false)}
+        />
+      )}
+
+      {/* Refunding a booking that was cancelled without its money going back.
+          Same dialog as the calendar's cancel — it just opens in refund-only
+          mode because the booking is already Cancelled. */}
+      {refundBooking && (
+        <CancelBookingDialog
+          booking={refundBooking}
+          roomName={spaces.find((sp) => sp.id === refundBooking.resourceId)?.unitNumber}
+          onClose={() => setRefundBooking(null)}
+          onDone={(result) => {
+            const b = refundBooking
+            setRefundBooking(null)
+            if (result.refunded && b) {
+              updateBooking?.(b.id, result.booking ?? {}, { silent: true })
+              if (result.message) window.alert(result.message)
+            }
+          }}
         />
       )}
     </div>
