@@ -11,6 +11,7 @@ import Training from './components/Training.jsx'
 import Billing from './components/Billing.jsx'
 import Settings from './components/Settings.jsx'
 import Maintenance from './components/Maintenance.jsx'
+import ServiceContacts from './components/ServiceContacts.jsx'
 import Reports from './components/Reports.jsx'
 import EventsHub from './components/EventsHub.jsx'
 import Marketing from './components/Marketing.jsx'
@@ -73,6 +74,7 @@ export default function AdminApp({ onLogout }) {
           <Route path="templates" element={<Templates />} />
           <Route path="training" element={<Training />} />
           <Route path="maintenance" element={<Maintenance />} />
+          <Route path="contacts" element={<ServiceContacts />} />
           <Route path="reports" element={<Reports />} />
           <Route path="crm" element={<Crm />} />
           <Route path="marketing" element={<Marketing />} />
