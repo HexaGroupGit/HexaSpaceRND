@@ -236,6 +236,55 @@ export function combineTenantInvoices(built = [], tenants = []) {
   return out
 }
 
+// Fold each company's unbilled fees (meeting-room overages, PaperCut print
+// charges, one-offs) onto its FIRST invoice of a bill run — one fee line per
+// fee, once, on whichever bill the member is getting anyway.
+//
+// This sweep used to live only inside the retired client-side bill run in
+// useStore.js, so retiring that (Sept 2026) silently orphaned the fee queue:
+// api/papercut/sync.js and the booking flows park charges in `fees` expecting
+// "the bill run" to collect them. Both surviving engines call this now.
+//
+// Call it AFTER combineTenantInvoices so the fees land once on the combined
+// bill, not once per contract. A member with no invoice this run (rent-free
+// month, prepaid, already billed) keeps their fees queued for the next run —
+// the same wait-for-a-bill behaviour the old sweep had.
+//
+// Returns the invoices with fee lines attached. The caller must mark the swept
+// fees Invoiced only for invoices it actually SAVED — use sweptFeeIdsOf on each
+// persisted invoice, never a list planned up front.
+export function attachUnbilledFees(built, fees) {
+  const billable = (fees ?? []).filter((f) =>
+    f.companyId && Number(f.price) > 0 && !['Paid', 'Waived', 'Invoiced'].includes(f.status))
+  const byTenant = {}
+  for (const f of billable) (byTenant[f.companyId] ??= []).push(f)
+
+  const invoices = built.map((inv) => {
+    const tf = byTenant[inv.tenantId]
+    if (!tf?.length) return inv
+    delete byTenant[inv.tenantId]   // first invoice of the run takes them all
+    return {
+      ...inv,
+      lineItems: [
+        ...(inv.lineItems ?? []),
+        ...tf.map((f) => ({
+          id: `li_fee_${f.id}`,
+          description: `${f.name}${f.date && f.type !== 'Booking Fee' ? ` (${f.date})` : ''}`,
+          revenueAccount: 'Meeting Room & Booking Fees',
+          unitPrice: Number(f.price) || 0, qty: 1, discountPct: 0,
+        })),
+      ],
+    }
+  })
+  return invoices
+}
+
+// The fee ids swept onto one invoice — read back off its lines so callers mark
+// Invoiced exactly what was persisted, never what was merely planned.
+export const sweptFeeIdsOf = (invoice) => (invoice.lineItems ?? [])
+  .filter((li) => String(li.id).startsWith('li_fee_'))
+  .map((li) => String(li.id).slice('li_fee_'.length))
+
 // Net subtotal of an invoice's line items after line-level discounts.
 export function lineItemsSubtotal(lineItems = []) {
   return Math.round(lineItems.reduce((s, li) =>

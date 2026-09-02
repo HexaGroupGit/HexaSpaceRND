@@ -18,7 +18,7 @@ import { createClient } from '@supabase/supabase-js'
 import { randomBytes } from 'crypto'
 import { sendResendEmail, billingEmailFor } from './_email.js'
 import { brandFrame, bKicker, bH1, bH2, bSmall, bBtn, bPanel, bTable, SANS, INK, MUTE } from './_brand.js'
-import { buildMonthlyInvoiceForLease, combineTenantInvoices, lineItemsSubtotal } from '../src/lib/billingEngine.js'
+import { buildMonthlyInvoiceForLease, combineTenantInvoices, attachUnbilledFees, sweptFeeIdsOf, lineItemsSubtotal } from '../src/lib/billingEngine.js'
 import { selectAllRows } from './_db.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
@@ -95,13 +95,14 @@ export default async function handler(req, res) {
   })
 
   // Load everything in parallel (paginated — see api/_db.js; never bare selects)
-  const [lRows, tRows, iRows, sRes, spRows, mRows] = await Promise.all([
+  const [lRows, tRows, iRows, sRes, spRows, mRows, fRows] = await Promise.all([
     selectAllRows(supabase, 'leases'),
     selectAllRows(supabase, 'tenants'),
     selectAllRows(supabase, 'invoices'),
     supabase.from('settings').select('data').eq('id', 'global').single(),
     selectAllRows(supabase, 'spaces'),
     selectAllRows(supabase, 'members'),
+    selectAllRows(supabase, 'fees'),
   ])
 
   const leases   = lRows.map(r => r.data).filter(l => l.status === 'active')
@@ -110,6 +111,7 @@ export default async function handler(req, res) {
   const invoices = iRows.map(r => r.data)
   const settings = sRes.data?.data ?? {}
   const spaces   = spRows.map(r => r.data)
+  const feesAll  = fRows.map(r => r.data)
 
   const now = new Date()
   const { periodStart, periodEnd } = monthBounds(now)
@@ -156,7 +158,11 @@ export default async function handler(req, res) {
     priced.push(built)
   }
 
-  for (const built of combineTenantInvoices(priced, tenants)) {
+  // Sweep each company's unbilled fees (room overages, PaperCut print charges)
+  // onto its bill — after combining, so a fee lands once per member, not once
+  // per contract. This sweep lived only in the retired client-side bill run;
+  // without it here the fee queue grows forever (see attachUnbilledFees).
+  for (const built of attachUnbilledFees(combineTenantInvoices(priced, tenants), feesAll)) {
     const tenant = tenants.find(t => t.id === built.tenantId)
     if (!tenant) { errors.push({ leaseId: built.leaseId, reason: 'No tenant found' }); continue }
 
@@ -186,6 +192,18 @@ export default async function handler(req, res) {
       }))
     }
     if (saveErr) { errors.push({ tenant: tenant.businessName, reason: saveErr.message }); continue }
+
+    // The invoice is saved — NOW mark its swept fees Invoiced, reading the fee
+    // ids back off the persisted lines so a failed save can never strand a fee
+    // in Invoiced with no invoice carrying it.
+    for (const feeId of sweptFeeIdsOf(invoice)) {
+      const fee = feesAll.find(f => f.id === feeId)
+      if (!fee) continue
+      const { error: feeErr } = await supabase.from('fees')
+        .update({ data: { ...fee, status: 'Invoiced', invoicedAt: issueDate }, updated_at: new Date().toISOString() })
+        .eq('id', feeId)
+      if (feeErr) errors.push({ tenant: tenant.businessName, reason: 'fee ' + feeId + ': ' + feeErr.message })
+    }
 
     // Send invoice email — company email, else the billing person's.
     const invoiceEmailTo = billingEmailFor(tenant, membersAll)

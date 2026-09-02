@@ -9,7 +9,7 @@ import InvoiceForm from './InvoiceForm.jsx'
 import { sendEmail, invoiceEmailHtml, makePayToken, invoicePayLink, brandShell, bKicker, bH1, bP, bSmall, bBtn, BRAND } from '../lib/sendEmail.js'
 import { billingContactFor } from '../lib/credits.js'
 import { invoiceLease, invoiceSpace, locationLabel } from '../lib/billing.js'
-import { buildMonthlyInvoiceForLease, combineTenantInvoices } from '../lib/billingEngine.js'
+import { buildMonthlyInvoiceForLease, combineTenantInvoices, attachUnbilledFees, sweptFeeIdsOf } from '../lib/billingEngine.js'
 import { jsPDF } from 'jspdf'
 
 const STATUS_STYLE = {
@@ -41,6 +41,7 @@ export default function Billing() {
     discounts, addDiscount, updateDiscount, deleteDiscount,
     tenants, leases, spaces, settings, currentUserRole, members = [],
     bookings = [], updateBooking,
+    fees = [], updateFee,
   } = useOutletContext()
 
   // Bond-refund credit notes awaiting an admin's approval before the tenant is notified.
@@ -170,18 +171,25 @@ export default function Billing() {
     }
     // Fold contracts onto one bill: parking always rides on the member's rent
     // invoice, and companies set to "one combined invoice" get every contract
-    // on a single bill, one line each.
-    const newInvoices = combineTenantInvoices(built, tenants)
+    // on a single bill, one line each. Then sweep each company's unbilled fees
+    // (room overages, PaperCut print charges) onto its bill — this sweep only
+    // existed in the retired client-side auto run, so without it here the fee
+    // queue never drains (see attachUnbilledFees in billingEngine.js).
+    const newInvoices = attachUnbilledFees(combineTenantInvoices(built, tenants), fees)
     const generated = newInvoices.length
+    const sweptIds = newInvoices.flatMap(sweptFeeIdsOf)
 
     if (generated === 0) {
       alert('All active leases are already billed for this month.')
       return
     }
 
-    if (window.confirm(`Bill Run: generate ${generated} invoice${generated !== 1 ? 's' : ''} for ${format(currentMonthStart, 'MMMM yyyy')}?`)) {
+    const feeNote = sweptIds.length ? ` (${sweptIds.length} unbilled fee${sweptIds.length !== 1 ? 's' : ''} folded in)` : ''
+    if (window.confirm(`Bill Run: generate ${generated} invoice${generated !== 1 ? 's' : ''} for ${format(currentMonthStart, 'MMMM yyyy')}${feeNote}?`)) {
       newInvoices.forEach((inv) => addInvoice(inv))
-      alert(`${generated} invoice${generated !== 1 ? 's' : ''} generated.`)
+      const today = format(new Date(), 'yyyy-MM-dd')
+      sweptIds.forEach((id) => updateFee(id, { status: 'Invoiced', invoicedAt: today }))
+      alert(`${generated} invoice${generated !== 1 ? 's' : ''} generated${feeNote}.`)
     }
   }
 
