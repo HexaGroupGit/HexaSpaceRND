@@ -9,7 +9,7 @@ import { buildPaymentSchedule } from './paymentSchedule.js'
 //
 // Returns { invoice, reason }. invoice is null when there is nothing to bill;
 // reason is one of: 'no-dates' | 'not-started' | 'ended' | 'already-billed' |
-// 'prepaid' | 'rent-free' | 'zero-amount'. The caller assigns id + number
+// 'prepaid' | 'annual-billing' | 'rent-free' | 'zero-amount'. The caller assigns id + number
 // (numbering schemes differ per engine) and may override source/sentStatus.
 export function buildMonthlyInvoiceForLease(lease, monthStart, { invoices = [], spaces = [], settings = {}, source = 'bill-run' } = {}) {
   if (!lease?.startDate) return { invoice: null, reason: 'no-dates' }
@@ -35,14 +35,26 @@ export function buildMonthlyInvoiceForLease(lease, monthStart, { invoices = [], 
   if (start > mEnd) return { invoice: null, reason: 'not-started' }
   if (end < mStart) return { invoice: null, reason: 'ended' }
 
-  // Dedup on the month KEY, not an exact periodStart match — a prorated
-  // invoice's periodStart lands mid-month and must still block a re-bill.
+  // Dedup on the invoice's own `billingPeriod` stamp — an exact 'yyyy-MM' set
+  // once, from the same monthStart this call was given.
+  //
+  // This used to slice the month out of the stored periodStart instead, and
+  // that is what double-billed every member for September 2026: a bill run
+  // formatted its period dates through toISOString() from Melbourne (UTC+10),
+  // so a September invoice was stamped periodStart 2026-08-31, this test read
+  // "2026-08" and answered "not billed yet". A prefix match on a stored,
+  // timezone-sensitive date fails SILENTLY — it reports not-billed rather than
+  // erroring — so a one-day drift anywhere upstream becomes a duplicate bill.
+  // An explicit key cannot drift: a date bug can still produce a wrong date,
+  // but it can no longer produce a duplicate.
+  //
+  // Invoices raised before this field existed fall back to the old prefix test.
   // A combined invoice (see combineTenantInvoices) covers several contracts, so
   // check its leaseIds too or every contract but the first would re-bill.
   const already = invoices.some((i) =>
     invoiceCoversLease(i, lease.id) && i.status !== 'voided' &&
     !['deposit', 'bond_refund'].includes(i.invoiceType) &&
-    String(i.periodStart || '').startsWith(key)
+    (i.billingPeriod ? i.billingPeriod === key : String(i.periodStart || '').startsWith(key))
   )
   if (already) return { invoice: null, reason: 'already-billed' }
 
@@ -50,6 +62,13 @@ export function buildMonthlyInvoiceForLease(lease, monthStart, { invoices = [], 
   if (lease.paidInFull && lease.paidUntil && String(lease.paidUntil).slice(0, 7) >= key) {
     return { invoice: null, reason: 'prepaid' }
   }
+
+  // Billed a year at a time, not month by month (J&H Legal's car bays). The
+  // prepaid skip above only covers months paidUntil actually reaches, so
+  // without this the first month AFTER a paid-up year would start issuing
+  // monthly invoices at 1/12th the annual rate. The annual invoice is raised
+  // by hand when the contract renews.
+  if (lease.billingFrequency === 'annual') return { invoice: null, reason: 'annual-billing' }
 
   const schedule = buildPaymentSchedule(lease, settings)
   const row = schedule?.rows.find((r) => r.key === key)
@@ -120,6 +139,9 @@ export function buildMonthlyInvoiceForLease(lease, monthStart, { invoices = [], 
     invoice: {
       tenantId: lease.tenantId,
       leaseId: lease.id,
+      // The month this invoice bills, as an exact key. Never re-derive it from
+      // periodStart — that is the drift the dedup above exists to survive.
+      billingPeriod: key,
       status: 'pending',
       sentStatus: 'not_sent',
       source,

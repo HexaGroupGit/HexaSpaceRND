@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase.js'
 import { authHeaders } from '../lib/apiFetch.js'
 import { logAudit } from '../lib/audit.js'
 import { publishListing } from '../lib/sanity.js'
-import { descPrefix, unitNameFor } from '../lib/billing.js'
 import {
   sendEmail, DEFAULT_ESIGN_EMAIL_SUBJECT, DEFAULT_ESIGN_EMAIL_HTML, DEFAULT_SIGNED_EMAIL_SUBJECT, DEFAULT_SIGNED_EMAIL_HTML,
   DEFAULT_LEAD_DESK_SUBJECT, DEFAULT_LEAD_DESK_HTML, DEFAULT_LEAD_OFFICE_SUBJECT, DEFAULT_LEAD_OFFICE_HTML,
@@ -132,7 +131,6 @@ const STORAGE_KEYS = {
   leases: 'hexaspace_leases',
   templates: 'hexaspace_templates',
   invoices: 'hexaspace_invoices',
-  lastBillRun: 'hexaspace_last_bill_run',
   discounts: 'hexaspace_discounts',
   settings: 'hexaspace_settings',
 }
@@ -918,7 +916,6 @@ export function useStore() {
         const loadedBookings      = bkData?.length ? extractRows(bkData) : []
         const loadedSops          = sopData?.length ? extractRows(sopData) : []
         const loadedSettings    = settData?.[0]?.data ?? DEFAULT_SETTINGS
-        const lastBillRun     = metaData?.find((m) => m.key === 'last_bill_run')?.value ?? null
 
         // Seed sample data only on the very first ever load
         if (!isSeeded) {
@@ -995,176 +992,23 @@ export function useStore() {
         settingsRef.current = loadedSettings
         configureFunctionPricing(loadedSettings.functionSpace)
 
-        // ── Auto bill run ──────────────────────────────────────────────
-        const today = new Date()
-        const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-
-        if (lastBillRun !== currentMonthKey && loadedSettings.invoicing?.autoGenerate !== false) {
-          const s = loadedSettings
-          const invTemplate = s.invoicing?.invoiceNumberTemplate ?? 'INV-{{number}}'
-          const dueDateDays = s.invoicing?.dueDateDays ?? 14
-          const prorateEnabled = s.invoicing?.proration !== false
-          const startDay = Math.min(28, Math.max(1, s.billingRules?.billingPeriodStartDay ?? 1))
-          const monthStart = new Date(today.getFullYear(), today.getMonth(), startDay)
-          const periodMonthEnd = startDay === 1
-            ? new Date(today.getFullYear(), today.getMonth() + 1, 0)
-            : new Date(today.getFullYear(), today.getMonth() + 1, startDay - 1 || 1)
-          const daysInPeriod = Math.floor((periodMonthEnd - monthStart) / 86400000) + 1
-
-          const activeLeases = loadedLeases.filter((l) => {
-            if (l.status !== 'active') return false
-            const start = new Date(l.startDate)
-            const end = new Date(l.endDate)
-            return start <= periodMonthEnd && end >= monthStart
-          })
-
-          const newInvoices = []
-          // Unbilled fees (booking overages, one-offs) to fold into the month-end
-          // bill — grouped by company, added once to that company's first invoice.
-          const isBillableFee = (f) => f.companyId && Number(f.price) > 0 && !['Paid', 'Waived', 'Invoiced'].includes(f.status)
-          const unbilledFeesByTenant = {}
-          for (const f of loadedFees) {
-            if (!isBillableFee(f)) continue
-            ;(unbilledFeesByTenant[f.companyId] ??= []).push(f)
-          }
-          const feeBilledTenants = new Set()
-          const billedFeeIds = new Set()
-
-          for (const lease of activeLeases) {
-            const alreadyBilled = loadedInvoices.some(
-              (inv) => invoiceCoversLease(inv, lease.id) && inv.status !== 'voided' && inv.periodStart?.startsWith(currentMonthKey)
-            )
-            if (alreadyBilled) continue
-
-            // Prepaid members (e.g. annual, paid in full) are skipped until their
-            // paid period ends — no monthly invoice while paidUntil still covers it.
-            if (lease.paidInFull && lease.paidUntil && new Date(lease.paidUntil) >= monthStart) continue
-
-            const leaseStart = new Date(lease.startDate)
-            const leaseEnd = new Date(lease.endDate)
-            const space = loadedSpaces.find((sp) => sp.id === lease.spaceId)
-            const periodStart = leaseStart > monthStart ? leaseStart : monthStart
-            const periodEnd = leaseEnd < periodMonthEnd ? leaseEnd : periodMonthEnd
-            const daysOccupied = Math.floor((periodEnd - periodStart) / 86400000) + 1
-            const isProrated = prorateEnabled && daysOccupied < daysInPeriod
-            const amount = isProrated
-              ? Math.round((lease.monthlyRent * daysOccupied / daysInPeriod) * 100) / 100
-              : lease.monthlyRent
-
-            const fmt = (d) => d.toISOString().split('T')[0]
-            const periodLabel = `${periodStart.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })} – ${periodEnd.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}${isProrated ? ' (prorated)' : ''}`
-            // e.g. "Level 2 Suite 14 · ..." or "Virtual Office Suite 403 · ..."
-            const prefix = descPrefix(lease, space)
-            const unit = unitNameFor(lease, space)
-            const desc = unit
-              ? `${prefix ? prefix + ' ' : ''}${unit} · ${periodLabel}`
-              : `${lease.contractNumber ?? lease.id ?? 'Membership'} · ${periodLabel}`
-
-            const allNums = [...loadedInvoices, ...newInvoices]
-              .map((i) => parseInt(i.number?.replace(/\D/g, '') || '0', 10))
-              .filter((n) => !isNaN(n))
-            const nextNum = allNums.length > 0 ? Math.max(...allNums) + 1 : 1
-            const dueDate = new Date(monthStart.getTime())
-            dueDate.setDate(dueDate.getDate() + dueDateDays)
-
-            // Fold this company's unbilled fees onto its first invoice of the run.
-            const feeLines = []
-            if (!feeBilledTenants.has(lease.tenantId)) {
-              const tf = unbilledFeesByTenant[lease.tenantId] ?? []
-              if (tf.length) {
-                feeBilledTenants.add(lease.tenantId)
-                tf.forEach((f) => {
-                  feeLines.push({
-                    id: `li_fee_${f.id}`,
-                    description: `${f.name}${f.date && f.type !== 'Booking Fee' ? ` (${f.date})` : ''}`,
-                    revenueAccount: 'Meeting Room & Booking Fees',
-                    unitPrice: Number(f.price) || 0, qty: 1, discountPct: 0,
-                  })
-                  billedFeeIds.add(f.id)
-                })
-              }
-            }
-
-            newInvoices.push({
-              id: `inv${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              number: invTemplate.replace('{{number}}', String(nextNum).padStart(4, '0')),
-              tenantId: lease.tenantId, leaseId: lease.id,
-              status: 'pending', sentStatus: 'not_sent', source: 'bill-run',
-              issueDate: fmt(monthStart), dueDate: fmt(dueDate),
-              periodStart: fmt(periodStart), periodEnd: fmt(periodEnd),
-              reference: '', paymentMethod: '', discountPct: 0,
-              vatEnabled: true, xeroSync: false, isProrated,
-              lineItems: [
-                { id: `li${Date.now()}`, description: desc, revenueAccount: 'Membership Fees', unitPrice: amount, qty: 1, discountPct: 0 },
-                ...feeLines,
-              ],
-              payments: [], comments: [], creditNoteForId: null,
-              createdAt: fmt(today),
-            })
-          }
-
-          // Mark the folded-in fees as Invoiced so they're not billed again.
-          if (billedFeeIds.size > 0) {
-            const todayStr = today.toISOString().split('T')[0]
-            loadedFees.forEach((f) => {
-              if (billedFeeIds.has(f.id)) { f.status = 'Invoiced'; f.invoicedAt = todayStr; syncRow('fees', f.id, f) }
-            })
-            setFees([...loadedFees])
-          }
-
-          // ── Deposit invoices for signed contracts ─────────────────────
-          const signedStatuses = ['manually_signed', 'e_signed']
-          const allLeasesList = loadedLeases ?? []
-          for (const lease of allLeasesList) {
-            if (!signedStatuses.includes(lease.signatureStatus)) continue
-            const depositAmount = lease.items?.[0]?.deposit ?? lease.bondAmount ?? 0
-            if (!depositAmount || depositAmount <= 0) continue
-            const alreadyHasDeposit = [...loadedInvoices, ...newInvoices].some(
-              (inv) => inv.leaseId === lease.id && inv.invoiceType === 'deposit' && inv.status !== 'voided'
-            )
-            if (alreadyHasDeposit) continue
-            const fmt = (d) => d.toISOString().split('T')[0]
-            const space = loadedSpaces.find((sp) => sp.id === lease.spaceId)
-            const allNums = [...loadedInvoices, ...newInvoices]
-              .map((i) => parseInt(i.number?.replace(/\D/g, '') || '0', 10))
-              .filter((n) => !isNaN(n))
-            const nextNum = allNums.length > 0 ? Math.max(...allNums) + 1 : 1
-            const dueDate = new Date(today.getTime())
-            dueDate.setDate(dueDate.getDate() + dueDateDays)
-            newInvoices.push({
-              id: `inv${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              number: invTemplate.replace('{{number}}', String(nextNum).padStart(4, '0')),
-              tenantId: lease.tenantId, leaseId: lease.id,
-              status: 'pending', sentStatus: 'not_sent', source: 'bill-run',
-              invoiceType: 'deposit',
-              issueDate: fmt(today), dueDate: fmt(dueDate),
-              periodStart: null, periodEnd: null,
-              reference: '', paymentMethod: '', discountPct: 0,
-              vatEnabled: true, xeroSync: false, isProrated: false,
-              lineItems: [{
-                id: `li${Date.now()}`,
-                description: `Security Deposit — ${space?.unitNumber ?? lease.spaceId}`,
-                revenueAccount: 'Security Deposit',
-                unitPrice: depositAmount,
-                qty: 1,
-                discountPct: 0,
-              }],
-              payments: [], comments: [], creditNoteForId: null,
-              createdAt: fmt(today),
-            })
-          }
-
-          if (newInvoices.length > 0) {
-            setInvoices([...loadedInvoices, ...newInvoices])
-            await seedTable('invoices', [...loadedInvoices, ...newInvoices])
-          } else {
-            setInvoices(loadedInvoices)
-          }
-
-          await supabase.from('meta').upsert({ key: 'last_bill_run', value: currentMonthKey })
-        } else {
-          setInvoices(loadedInvoices)
-        }
+        // Monthly billing is the server's job — api/auto-billing.js runs on the
+        // 1st through the shared engine in src/lib/billingEngine.js, which honours
+        // pricing steps and contracted rent-free months and emails each member
+        // their invoice.
+        //
+        // A second, browser-triggered bill run used to live here, firing from this
+        // load effect the first time an admin opened the app in a new month. It
+        // double-billed the entire member base for September 2026. It stamped its
+        // period dates with toISOString() on Dates built in LOCAL time, so from
+        // Melbourne (UTC+10) every invoice landed a day early — periodStart
+        // 2026-08-31 on a September bill — and the cron's "already billed this
+        // month?" test, which matches a yyyy-MM prefix on periodStart, therefore
+        // never saw them. It also priced off lease.monthlyRent instead of the
+        // payment schedule, so it ignored stepped rents and rent-free months.
+        // Deposits and the opening month are raised by raiseSigningInvoices at
+        // signing, so nothing else depended on it.
+        setInvoices(loadedInvoices)
 
         // ── Mark overdue invoices ─────────────────────────────────────────
         const todayStr = new Date().toISOString().split('T')[0]

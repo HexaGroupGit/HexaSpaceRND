@@ -643,8 +643,62 @@ export default async function handler(req, res) {
       }
     } catch (e) { out.errors.push(`directory sync: ${e.message}`) }
 
+    // ── Invariant: one live invoice per contract per billing month ──────────
+    // Read-only alarm, not a repair. September 2026 was billed twice for the
+    // whole member base and nothing noticed for two days — the duplicates were
+    // never sent, so no member complained, and it surfaced only when someone
+    // queried an unrelated charge. The system had no opinion about its own most
+    // basic billing rule, so the first detector was a customer.
+    //
+    // Grouped on periodEnd's month, deliberately NOT periodStart: periodStart is
+    // the field a timezone bug corrupts, so a September bill stamped 2026-08-31
+    // would file itself under August and hide next to that member's real August
+    // invoice. periodEnd stays inside the month billed either way.
+    //
+    // Fixing duplicates automatically would be the wrong call — which copy to
+    // keep depends on which was sent, paid, or carries fees that exist nowhere
+    // else. Surface it and let a human decide.
+    try {
+      // Only invoices that actually CHARGE RENT count. A fee-only invoice —
+      // meeting-room usage, a one-off — legitimately shares a month with that
+      // member's rent bill, and a member whose rent is waived for the month
+      // (a contracted rent-free month, billed at a 100% discount) is not being
+      // double-billed either. Without this the check cries wolf, and a noisy
+      // alarm gets ignored, which is the same as having no alarm.
+      const chargesRent = (inv) => (inv.lineItems ?? []).some((li) =>
+        li.revenueAccount === 'Membership Fees' &&
+        Number(li.unitPrice ?? 0) * Number(li.qty ?? 1) * (1 - Number(li.discountPct ?? 0) / 100) > 0)
+
+      const dupes = new Map()
+      for (const inv of invoices) {
+        if (inv.status === 'voided') continue
+        if (['deposit', 'bond_refund', 'creditNote'].includes(inv.invoiceType)) continue
+        if (!chargesRent(inv)) continue
+        const period = inv.billingPeriod || String(inv.periodEnd ?? '').slice(0, 7)
+        if (!period) continue
+        for (const leaseId of inv.leaseIds ?? [inv.leaseId]) {
+          if (!leaseId) continue
+          const k = `${leaseId}__${period}`
+          if (!dupes.has(k)) dupes.set(k, [])
+          dupes.get(k).push(inv)
+        }
+      }
+      out.duplicateBills = [...dupes.entries()]
+        .filter(([, list]) => list.length > 1)
+        .map(([k, list]) => {
+          const [leaseId, period] = k.split('__')
+          const co = leases.find((l) => l.id === leaseId)?.companyName ?? leaseId
+          return `${co} — ${period}: ${list.map((i) => `${i.number} (${i.sentStatus === 'sent' ? 'sent' : 'not sent'})`).join(' + ')}`
+        })
+      // A contract with no id inside its JSONB nulls the leaseId on everything
+      // it bills, which blinds the check above — report those too.
+      out.leasesMissingId = leases
+        .filter((l) => l.status === 'active' && !l.id)
+        .map((l) => l.companyName ?? l.contractNumber ?? '(unnamed contract)')
+    } catch (e) { out.errors.push(`duplicate-bill check: ${e.message}`) }
+
     // ── Admin digest (only when something happened or needs attention) ──────
-    const anything = out.occupied.length + out.onboarded.length + out.expired.length + out.bondOverdue.length + out.saltoSwept.length + (out.cardReminders?.length ?? 0) + out.overdueWarned.length + out.overdueCancelled.length + out.overduePendingApproval.length + out.renewed.length + out.renewalEmailed.length + out.directorySynced.length + out.errors.length > 0
+    const anything = out.occupied.length + out.onboarded.length + out.expired.length + out.bondOverdue.length + out.saltoSwept.length + (out.cardReminders?.length ?? 0) + out.overdueWarned.length + out.overdueCancelled.length + out.overduePendingApproval.length + out.renewed.length + out.renewalEmailed.length + out.directorySynced.length + out.errors.length + (out.duplicateBills?.length ?? 0) + (out.leasesMissingId?.length ?? 0) > 0
     if (anything && resendKey && !dryRun) {
       const list = (items) => bPanel(items.map((i) => `<div style="font-family:${SANS};font-size:13px;color:${INK};padding:4px 0">${i}</div>`).join(''))
       const section = (title, items) => items.length ? bH2(title) + list(items) : ''
@@ -663,6 +717,8 @@ export default async function handler(req, res) {
         section(`🔑 ${out.saltoSwept.length} door access revocation(s) swept`, out.saltoSwept) +
         section(`💳 ${(out.cardReminders ?? []).length} card-on-file reminder(s) sent`, out.cardReminders ?? []) +
         section(`📺 ${out.directorySynced.length} directory board(s) refreshed`, out.directorySynced) +
+        section(`🚨 ${(out.duplicateBills ?? []).length} contract(s) BILLED TWICE for the same month`, out.duplicateBills ?? []) +
+        section(`⚠ ${(out.leasesMissingId ?? []).length} contract(s) missing an internal id (their invoices can't be dedup-checked)`, out.leasesMissingId ?? []) +
         section(`✗ ${out.errors.length} error(s)`, out.errors) +
         bBtn('Open the admin portal', 'https://portal.hexaspace.com.au')
       const adminTo = [...new Set(['eric@hexaspace.com.au', 'info@hexaspace.com.au', settings?.emails?.notificationEmail].filter(Boolean).map((e) => e.toLowerCase()))]
