@@ -20,6 +20,7 @@ import { sendResendEmail, billingEmailFor } from './_email.js'
 import { brandFrame, bKicker, bH1, bH2, bSmall, bBtn, bPanel, bTable, SANS, INK, MUTE } from './_brand.js'
 import { buildMonthlyInvoiceForLease, combineTenantInvoices, attachUnbilledFees, sweptFeeIdsOf, lineItemsSubtotal } from '../src/lib/billingEngine.js'
 import { selectAllRows } from './_db.js'
+import { invoicePdfBase64 } from './_invoicePdf.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -213,11 +214,22 @@ export default async function handler(req, res) {
       const total    = subtotal + gst
       const html     = invoiceEmail(invoice, tenant, settings, subtotal, gst, total)
 
+      // Attach the branded TAX INVOICE PDF — members file these with their
+      // accounts, and an email without one generates a support thread per
+      // member (September 2026 did exactly that). Best-effort: a PDF failure
+      // must never cost anyone their invoice email.
+      let attachments
+      try {
+        const content = invoicePdfBase64({ ...invoice, clientName: tenant.businessName, clientEmail: invoiceEmailTo }, settings)
+        if (content) attachments = [{ filename: `${invoiceNum}.pdf`, content }]
+      } catch (err) { console.error('invoice pdf failed:', invoiceNum, err) }
+
       await sendResendEmail({
         from: 'Hexa Space <info@hexaspace.com.au>',
         to: [invoiceEmailTo],
         subject: `Invoice ${invoiceNum} — ${monthLabel(periodStart)}`,
         html,
+        attachments,
       }).catch(() => {})
     }
 

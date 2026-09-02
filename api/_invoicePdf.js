@@ -47,9 +47,11 @@ export function invoicePdfBase64(invoice, settings = {}) {
     doc.text(String(v || '—'), W - M, my, { align: 'right' })
     my += 16
   }
+  // Australian date format on the document itself (stored dates are ISO).
+  const auDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d ?? '')) ? d.split('-').reverse().join('/') : d
   metaLabel('Invoice #', invoice.number)
-  metaLabel('Issue date', invoice.issueDate)
-  metaLabel('Due date', invoice.dueDate)
+  metaLabel('Issue date', auDate(invoice.issueDate))
+  metaLabel('Due date', auDate(invoice.dueDate))
   if (invoice.functionRef) metaLabel('Reference', invoice.functionRef)
 
   // Bill to

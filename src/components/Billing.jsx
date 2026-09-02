@@ -10,6 +10,9 @@ import { sendEmail, invoiceEmailHtml, makePayToken, invoicePayLink, brandShell, 
 import { billingContactFor } from '../lib/credits.js'
 import { invoiceLease, invoiceSpace, locationLabel } from '../lib/billing.js'
 import { buildMonthlyInvoiceForLease, combineTenantInvoices, attachUnbilledFees, sweptFeeIdsOf } from '../lib/billingEngine.js'
+// Server-grade tax-invoice PDF, deliberately self-contained (jspdf only) so the
+// browser bundle and the auto-billing cron attach the identical document.
+import { invoicePdfBase64 } from '../../api/_invoicePdf.js'
 import { jsPDF } from 'jspdf'
 
 const STATUS_STYLE = {
@@ -260,11 +263,22 @@ export default function Billing() {
         // Mint the public pay-link token once; re-sends keep the same link.
         const payToken = inv.payToken ?? makePayToken()
         if (!inv.payToken) updateInvoice(id, { payToken })
+        // Attach the TAX INVOICE PDF — the single-invoice send has always done
+        // this, but bulk sends went out bare and members chased us for the PDF
+        // (September 2026). Same server-grade generator the auto-billing cron
+        // uses, and best-effort for the same reason: no PDF must never mean no
+        // invoice email.
+        let attachments
+        try {
+          const content = invoicePdfBase64({ ...inv, clientName: tenant.businessName, clientEmail: tenant.email }, settings)
+          if (content) attachments = [{ filename: `${inv.number}.pdf`, content }]
+        } catch { /* send without the attachment rather than not at all */ }
         await sendEmail({
           to: tenant.email,
           subject: `Invoice ${inv.number} from ${settings?.company?.name ?? 'Hexa Space'}`,
           html: invoiceEmailHtml({ invoice: inv, tenant, settings, payLink: invoicePayLink({ ...inv, payToken }) }),
           settings,
+          attachments,
           tenantId: inv.tenantId, emailType: 'invoice',
         })
         updateInvoice(id, { sentStatus: 'sent' })
