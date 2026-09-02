@@ -742,7 +742,12 @@ export default async function handler(req, res) {
         if (target?.xeroInvoiceId) {
           const t = await xeroFetch(supabase, `/Invoices/${target.xeroInvoiceId}`)
           const due = Number(t.json?.Invoices?.[0]?.AmountDue ?? 0)
-          const credit = Math.abs(Math.round(invoiceTotal(inv) * 100) / 100)
+          // Xero's AmountDue is GST-INCLUSIVE and so is the credit note we just
+          // pushed (Exclusive line + OUTPUT tax), but invoiceTotal() is the
+          // ex-GST subtotal — comparing them raw under-allocates a taxable
+          // credit by the GST and leaves the invoice short.
+          const gross = invoiceTotal(inv) * (taxRate && inv.vatEnabled !== false ? 1.1 : 1)
+          const credit = Math.abs(Math.round(gross * 100) / 100)
           const amount = Math.min(due, credit)
           if (amount > 0) {
             const a = await xeroFetch(supabase, `/CreditNotes/${xc.CreditNoteID}/Allocations`, {

@@ -59,12 +59,25 @@ function styleEditorHtml(html) {
     .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/(href\s*=\s*")\s*javascript:[^"]*(")/gi, '$1#$2')
   s = s.replace(/<a\b/gi, `<a style="color:${OLIVE};text-decoration:underline"`)
+  // Images: an email <img> MUST be constrained or a 2400px photo blows the
+  // 600px card apart in every client that ignores the stylesheet. Normalise all
+  // of them to one policy — fluid to whatever cell holds them, never wider, no
+  // baseline gap — discarding any width/height/style that came with the paste.
+  // Rewriting rather than prepending matters: two style attributes on one tag
+  // and the parser silently drops the second, so there must only ever be one.
+  // Sizing is the containing cell's job, not the image's.
+  s = s.replace(/<img\b([^>]*)>/gi, (_, attrs) => {
+    const pick = (name) => (attrs.match(new RegExp(`\\s${name}\\s*=\\s*("[^"]*"|'[^']*')`, 'i')) ?? [])[1]
+    const src = pick('src')
+    if (!src || /^\s*["']\s*(javascript|data):/i.test(src)) return ''
+    return `<img src=${src} alt=${pick('alt') ?? '""'} style="display:block;width:100%;max-width:100%;height:auto;border:0;border-radius:8px">`
+  })
   return `<div style="font-family:${SANS};font-size:15px;line-height:1.7;color:#3a3a3a">${s}</div>`
 }
 
 const looksHtml = (t) => /<(p|div|strong|em|b|i|u|a|ul|ol|li|h[1-6]|br)\b/i.test(String(t ?? ''))
 
-function buildHtml(subject, content) {
+export function buildHtml(subject, content) {
   // Editor HTML → styled; plain text (old records / AI drafts) → the Markdown path.
   const body = looksHtml(content) ? styleEditorHtml(content) : contentHtml(content)
   const inner =
