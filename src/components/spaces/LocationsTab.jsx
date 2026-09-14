@@ -6,7 +6,7 @@ import { FLOORS, floorLabel, SPACE_TABS } from './shared.jsx'
 // Locations = the floors of 830 Whitehorse Road, Box Hill.
 // A summary card per floor, plus the visual interactive floorplan.
 export default function LocationsTab({ ctx }) {
-  const { spaces, leases, tenants, updateSpace } = ctx
+  const { spaces, leases, tenants, members, updateSpace, setUpParkingBays } = ctx
   const [view, setView] = useState('floors') // 'floors' | 'plan'
 
   const typeLabel = (t) => SPACE_TABS.find((x) => x.type === t)?.label ?? t
@@ -101,7 +101,9 @@ export default function LocationsTab({ ctx }) {
           spaces={spaces}
           leases={leases}
           tenants={tenants}
+          members={members}
           updateSpace={updateSpace}
+          setUpParkingBays={setUpParkingBays}
           onNewContract={() => {}}
         />
       )}

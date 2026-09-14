@@ -13,8 +13,14 @@ export const FLOORS = [
   { id: 'l4', label: 'Level 4' },
   { id: 'l5', label: 'Level 5' },
 ]
+// Car park levels in the podium — Level 3 carries parking only.
+export const CAR_PARK_FLOORS = [
+  { id: 'l2', label: 'Level 2' },
+  { id: 'l3', label: 'Level 3' },
+  { id: 'l4', label: 'Level 4' },
+]
 export function floorLabel(id) {
-  return FLOORS.find((f) => f.id === id)?.label ?? (id ? id : 'Unassigned')
+  return [...FLOORS, ...CAR_PARK_FLOORS].find((f) => f.id === id)?.label ?? (id ? id : 'Unassigned')
 }
 
 // ── Sub-tabs (order matches the OfficeRND sidebar) ──────────────────────────
@@ -159,6 +165,13 @@ export function assignmentFor(space, members, tenants) {
   const m = members.find((x) => x.id === space.assignedMemberId)
   if (!m) return { name: '—', company: '' }
   return { name: m.name, company: tenants.find((t) => t.id === m.companyId)?.businessName ?? '' }
+}
+
+// The live contract (active or pending) holding a space, as its primary unit
+// or a bundled item — how a parking bay sold on a contract is taken.
+export function contractFor(space, leases = []) {
+  return leases.find((l) => ['active', 'pending'].includes(l.status) && !l.offboardedAt &&
+    [l.spaceId, ...(l.items ?? []).map((i) => i.spaceId)].includes(space.id)) || null
 }
 
 // Next sequential unit number for an auto-numbered resource type.

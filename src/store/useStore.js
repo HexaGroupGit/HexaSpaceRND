@@ -35,6 +35,7 @@ import { isRentFreeMonth } from '../lib/paymentSchedule.js'
 import { invoiceCoversLease } from '../lib/billingEngine.js'
 import { holdsSpace } from '../lib/spaceHold.js'
 import { allocateVirtualSuite } from '../lib/virtualSuites.js'
+import { PARKING_BAYS, PLACEHOLDER_PARKING_IDS, parkingBaySpace, missingParkingBays } from '../lib/parkingBays.js'
 
 // All spaces a lease occupies (primary + any bundled items, e.g. parking).
 function leaseSpaceIds(lease) {
@@ -510,11 +511,8 @@ const SAMPLE_SPACES = [
   { id: 'hx_studio_2',  unitNumber: 'Media Studio 2', type: 'studio',  size: '60 m²', monthlyRate: 0, rate: 100, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l5', attributes: 'Content / livestream studio.' },
   { id: 'hx_podcast_1', unitNumber: 'Podcast Room', type: 'podcast', size: '4 seats', monthlyRate: 0, rate: 80, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l5', attributes: 'Acoustically treated 4-mic podcast booth.' },
 
-  // ── Parking Slots (Level 2 / basement) ─────────────────────────────────────
-  { id: 'hx_park_1', unitNumber: 'P1', type: 'parking', monthlyRate: 0, rate: 300, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l2', attributes: '' },
-  { id: 'hx_park_2', unitNumber: 'P2', type: 'parking', monthlyRate: 0, rate: 300, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l2', attributes: '' },
-  { id: 'hx_park_3', unitNumber: 'P3', type: 'parking', monthlyRate: 0, rate: 300, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l2', attributes: '' },
-  { id: 'hx_park_4', unitNumber: 'P4', type: 'parking', monthlyRate: 0, rate: 300, status: 'vacant', location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill', floor: 'l2', attributes: '' },
+  // ── Parking Bays (numbered car park, Levels 2–4) ─────────────────────────────────────
+  ...PARKING_BAYS.map(parkingBaySpace),
 
   // ── Virtual Offices ────────────────────────────────────────────────────────
   // Numbered in the BUILDING's Level 4 series, starting at 424 where the
@@ -1403,7 +1401,8 @@ export function useStore() {
 
   // ── Spaces ────────────────────────────────────────────────────────────────
   const addSpace = useCallback((space) => {
-    const item = { ...space, id: `s${Date.now()}` }
+    // Billing tells parking lines from rent by the `_park_` in a space id.
+    const item = { ...space, id: space.type === 'parking' ? `hx_park_s${Date.now()}` : `s${Date.now()}` }
     setSpaces((prev) => [...prev, item])
     syncRow('spaces', item.id, item)
     return item
@@ -1421,6 +1420,29 @@ export function useStore() {
   const deleteSpace = useCallback((id) => {
     setSpaces((prev) => prev.filter((s) => s.id !== id))
     deleteRow('spaces', id)
+  }, [])
+
+  // Numbered car park bays (lib/parkingBays.js): create any that are missing,
+  // with the fixed `hx_park_` ids billing relies on, then retire the P1–P4
+  // placeholders nothing uses. Running it again changes nothing.
+  const setUpParkingBays = useCallback(() => {
+    const current = spacesRef.current
+    const created = missingParkingBays(current).map(parkingBaySpace)
+    const unused = current.filter((s) => PLACEHOLDER_PARKING_IDS.includes(s.id) &&
+      !['occupied', 'reserved'].includes(s.status) && !s.assignedMemberId && !s.occupantTenantId && !s.occupantName &&
+      !leasesRef.current.some((l) => ['active', 'pending'].includes(l.status) && leaseSpaceIds(l).includes(s.id)))
+    const removedIds = new Set(unused.map((s) => s.id))
+    setSpaces((prev) => [
+      ...prev.filter((s) => !removedIds.has(s.id)),
+      ...created.filter((s) => !prev.some((p) => p.id === s.id)),
+    ])
+    if (created.length) seedTable('spaces', created)
+    unused.forEach((s) => deleteRow('spaces', s.id))
+    return {
+      created: created.length,
+      removed: unused.map((s) => s.unitNumber),
+      kept: current.filter((s) => PLACEHOLDER_PARKING_IDS.includes(s.id) && !removedIds.has(s.id)).map((s) => s.unitNumber),
+    }
   }, [])
 
   // ── Leases ────────────────────────────────────────────────────────────────
@@ -2459,7 +2481,7 @@ export function useStore() {
     members, addMember, updateMember, deleteMember,
     fees, addFee, updateFee, deleteFee,
     bookings, addBooking, updateBooking, deleteBooking,
-    spaces, addSpace, updateSpace, deleteSpace,
+    spaces, addSpace, updateSpace, deleteSpace, setUpParkingBays,
     leases, addLease, updateLease, deleteLease, provisionAndOnboardLease,
     templates, addTemplate, updateTemplate, deleteTemplate,
     sops, addSop, updateSop, deleteSop,

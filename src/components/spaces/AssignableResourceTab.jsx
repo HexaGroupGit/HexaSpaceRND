@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2, UserPlus, UserMinus } from 'lucide-react'
 import {
-  FLOORS, floorLabel, StatusPill, money, Field, Modal, ic,
-  memberOptions, assignmentFor, nextUnitNumber,
+  FLOORS, CAR_PARK_FLOORS, floorLabel, StatusPill, money, Field, Modal, ic,
+  memberOptions, assignmentFor, contractFor, nextUnitNumber,
 } from './shared.jsx'
 import { nextVirtualSuite } from '../../lib/virtualSuites.js'
+import { missingParkingBays, parkingSetupSummary } from '../../lib/parkingBays.js'
 
 // Generic manager for assignable, auto-numbered resources:
 // Media Studios, Podcast Room, Parking Slots, Dedicated Desks, Virtual Offices.
@@ -15,16 +16,23 @@ export default function AssignableResourceTab({ ctx, config }) {
     rateLabel = 'Monthly Rate', ratePer = '/mo',
     note, autoAssignOnAdd = false,
   } = config
-  const { spaces, members, tenants, leases = [], addSpace, updateSpace, deleteSpace } = ctx
+  const { spaces, members, tenants, leases = [], addSpace, updateSpace, deleteSpace, setUpParkingBays } = ctx
 
   const [editId, setEditId] = useState(undefined) // undefined=closed, null=new
   const [form, setForm] = useState({})
   const [assignFor, setAssignFor] = useState(null)
   const [assignMember, setAssignMember] = useState('')
+  const [setupNote, setSetupNote] = useState('')
 
+  const isParking = type === 'parking'
   const items = spaces.filter((s) => s.type === type)
-  const assigned = items.filter((s) => s.assignedMemberId).length
+  // Car park bays read best in bay-number order: 201, 202 … 432.
+  if (isParking) items.sort((a, b) => String(a.unitNumber).localeCompare(String(b.unitNumber), undefined, { numeric: true }))
+  // A bay sold on a contract is taken even though no member is assigned to it.
+  const contractOf = (s) => (isParking ? contractFor(s, leases) : null)
+  const assigned = items.filter((s) => s.assignedMemberId || contractOf(s)).length
   const memberOpts = memberOptions(members, tenants)
+  const missingBays = isParking ? missingParkingBays(spaces) : []
 
   function blank() {
     // Virtual offices are numbered in the BUILDING's Level 4 series, so their
@@ -96,6 +104,21 @@ export default function AssignableResourceTab({ ctx, config }) {
       {note && <p className="text-xs text-muted-foreground mb-4">{note}</p>}
       {!note && <div className="mb-4" />}
 
+      {isParking && missingBays.length > 0 && setUpParkingBays && (
+        <div className="mb-4 flex items-center gap-3 text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-md px-3 py-2">
+          <span>
+            {missingBays.length} numbered car park bay{missingBays.length === 1 ? '' : 's'} from the floor plans {missingBays.length === 1 ? 'isn’t' : 'aren’t'} set up yet.
+          </span>
+          <button
+            onClick={() => setSetupNote(parkingSetupSummary(setUpParkingBays()))}
+            className="ml-auto shrink-0 text-xs font-semibold bg-amber-900 text-white px-2.5 py-1.5 rounded-md hover:bg-amber-800"
+          >
+            Set up bays
+          </button>
+        </div>
+      )}
+      {setupNote && <p className="text-xs text-green-700 mb-4">{setupNote}</p>}
+
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b border-border">
@@ -111,6 +134,7 @@ export default function AssignableResourceTab({ ctx, config }) {
             )}
             {items.map((s) => {
               const a = assignmentFor(s, members, tenants)
+              const contract = a ? null : contractOf(s)
               return (
                 <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/50">
                   <td className="px-4 py-3">
@@ -129,6 +153,11 @@ export default function AssignableResourceTab({ ctx, config }) {
                         <div className="text-foreground">{a.name}</div>
                         {a.company && <div className="text-xs text-muted-foreground">{a.company}</div>}
                       </div>
+                    ) : contract ? (
+                      <div>
+                        <div className="text-foreground">{tenants.find((t) => t.id === contract.tenantId)?.businessName ?? '—'}</div>
+                        <div className="text-xs text-muted-foreground">{contract.contractNumber ? `Contract ${contract.contractNumber}` : 'On a contract'}</div>
+                      </div>
                     ) : <span className="text-muted-foreground">Unassigned</span>}
                   </td>
                   <td className="px-4 py-3"><StatusPill status={s.status} /></td>
@@ -138,7 +167,7 @@ export default function AssignableResourceTab({ ctx, config }) {
                         <button onClick={() => unassign(s)} title="Unassign" className="flex items-center gap-1 text-xs text-foreground border border-input px-2.5 py-1.5 rounded-md hover:bg-muted/50">
                           <UserMinus size={12} /> Unassign
                         </button>
-                      ) : (
+                      ) : contract ? null : (
                         <button onClick={() => { setAssignFor(s); setAssignMember('') }} className="flex items-center gap-1 text-xs text-primary-foreground bg-primary hover:bg-primary/90 px-2.5 py-1.5 rounded-md font-medium">
                           <UserPlus size={12} /> Assign
                         </button>
@@ -161,7 +190,7 @@ export default function AssignableResourceTab({ ctx, config }) {
               <Field label="Name *"><input value={form.unitNumber} onChange={(e) => setForm({ ...form, unitNumber: e.target.value })} className={ic} /></Field>
               <Field label="Floor">
                 <select value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })} className={ic}>
-                  {FLOORS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                  {(isParking ? CAR_PARK_FLOORS : FLOORS).map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
                 </select>
               </Field>
               <Field label="Size / detail"><input value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })} placeholder="optional" className={ic} /></Field>
