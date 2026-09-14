@@ -377,7 +377,9 @@ export default async function handler(req, res) {
       const sinceISO = settings?.billingRules?.autoCancelSince || '2026-07-01'
       const isUnpaidDue = (inv) =>
         inv.invoiceType !== 'bond_refund' && inv.voided !== true &&
-        !['paid', 'void', 'cancelled', 'draft'].includes(String(inv.status)) &&
+        // 'voided' is the status the portal and the Xero pull actually write —
+        // without it every voided invoice counted as an unpaid debt here.
+        !['paid', 'void', 'voided', 'cancelled', 'draft'].includes(String(inv.status)) &&
         inv.dueDate && inv.dueDate < todayISO && inv.dueDate >= sinceISO
 
       const fromName = settings?.emails?.fromName || 'Hexa Space'

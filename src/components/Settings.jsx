@@ -1555,7 +1555,31 @@ function XeroConnectionTab({ settings, updateSettings }) {
                 <div className="font-medium text-foreground">
                   Checked {result.checked} — marked {result.paidMarked.length} paid
                   {result.partial?.length ? `, ${result.partial.length} partially paid (left pending)` : ''}
-                  {result.voidedInXero?.length ? `, ${result.voidedInXero.length} voided in Xero (review manually)` : ''}.
+                  {result.voidedFromXero?.length ? `, ${result.voidedFromXero.length} voided to match Xero` : ''}
+                  {result.voidedInXero?.length ? `, ${result.voidedInXero.length} voided in Xero but paid here (review manually)` : ''}.
+                </div>
+              )}
+              {result.voidedFromXero?.length > 0 && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Voided to match Xero: {result.voidedFromXero.map((v) => `${v.number} ($${Number(v.amount).toFixed(2)})`).join(', ')}
+                </div>
+              )}
+              {result.voidedInXero?.length > 0 && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Voided in Xero but paid here: {result.voidedInXero.map((v) => v.paidHere != null ? `${v.number} ($${Number(v.paidHere).toFixed(2)} recorded here)` : v.number).join(', ')}
+                </div>
+              )}
+              {result.refundsMarked?.length > 0 && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Refunds recorded from Xero: {result.refundsMarked.map((c) => `${c.number} ($${Number(c.amount).toFixed(2)})`).join(', ')}
+                </div>
+              )}
+              {(result.creditNotesPartlyRefunded?.length > 0 || result.creditNotesVoidedInXero?.length > 0) && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Credit notes to review: {[
+                    ...(result.creditNotesPartlyRefunded ?? []).map((c) => `${c.number} (partly refunded in Xero, left open)`),
+                    ...(result.creditNotesVoidedInXero ?? []).map((c) => `${c.number} (voided in Xero)`),
+                  ].join(', ')}
                 </div>
               )}
               {result.skipped?.length > 0 && (

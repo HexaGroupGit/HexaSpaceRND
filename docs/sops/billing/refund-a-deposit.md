@@ -7,10 +7,11 @@ route: /billing
 relatedCode:
   - api/refunds/deposit.js
   - api/refund-bank-details.js
+  - api/xero/_creditNotes.js
   - src/components/Billing.jsx
   - src/store/useStore.js
 relatedSops: [issue-a-credit-note, terminate-a-contract, nightly-reconcile]
-version: 1
+version: 2
 reviewDue: 2027-02-01
 ---
 
@@ -40,6 +41,7 @@ You don't create the refund — the offboarding cascade does, when the contract 
    - **Paid by bank transfer, details on file** → you get the account details to transfer to. Make the transfer, then click **Mark refunded** and enter the bank reference.
    - **Paid by bank transfer, no details** → you're offered to email the client a secure link to enter them. Confirm, and they appear here once submitted.
 3. For a manual transfer, click **Mark refunded** and record the reference.
+4. Once the credit note is in Xero, Accounts can record the refund against it there instead. The next hourly Xero pull marks it refunded here, so there is no need to click **Mark refunded** as well.
 
 ## What happens automatically
 
@@ -47,6 +49,7 @@ You don't create the refund — the offboarding cascade does, when the contract 
 - **Approve & notify** emails the client that the refund is approved, naming the credit note and amount.
 - A card refund stamps the credit note paid and records a negative payment — it drops out of the queue by itself.
 - The credit note pushes to Xero on the next sync.
+- A refund recorded against the credit note in Xero marks it refunded here on the next hourly pull, with Xero's refund date and reference.
 - **The 60-day promise is tracked.** An approved refund with no payout recorded after **45 days** is flagged red as **Refund overdue** on the Billing page and listed in the daily reconcile digest.
 - The bank-details link is token-gated and collects the account without it ever passing through email.
 

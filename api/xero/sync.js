@@ -11,6 +11,7 @@ import { getSupabase, loadConnection, stampConnection, xeroFetch, parseXeroDate 
 import { selectAllRows } from '../_db.js'
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH1, bP, bSmall } from '../_brand.js'
+import { readXeroCreditNote, withXeroRefund } from './_creditNotes.js'
 
 // ── account mapping (mirrors src/components/spaces/shared.jsx) ──────────────
 const DEFAULT_XERO_ACCOUNTS = {
@@ -138,7 +139,8 @@ export default async function handler(req, res) {
     const settings = settRow?.data ?? {}
     const syncEnabled = settings.xero?.syncEnabled === true
     // Pull (payment status flowing BACK from Xero) can be enabled on its own,
-    // ahead of the push go-live — it only ever marks platform invoices paid.
+    // ahead of the push go-live — it only ever marks platform invoices paid
+    // and credit notes refunded.
     const pullEnabled = syncEnabled || settings.xero?.pullEnabled === true
     const syncFrom = settings.xero?.syncFrom || '2026-09-01'
 
@@ -161,11 +163,12 @@ export default async function handler(req, res) {
     ])
 
     // ── PULL: mark platform invoices paid when they're paid in Xero ─────────
+    // (and credit notes refunded when the refund is recorded there)
     if (action === 'pull') {
       // Overdue counts too — an unpaid invoice flips to 'overdue' after its
       // due date, and those are exactly the ones that get paid late.
       const candidates = invoices.filter((i) => i.xeroInvoiceId && ['pending', 'overdue'].includes(i.status))
-      const paidMarked = [], partial = [], voidedInXero = [], receipts = [], linkedByNumber = []
+      const paidMarked = [], partial = [], voidedInXero = [], voidedFromXero = [], receipts = [], linkedByNumber = []
       // invoice.id → its OWN twin's ContactID, recorded from the fetch below.
       // Never map tenant → contact: one tenant's invoices can be linked to
       // different Xero contacts (e.g. INV-2956 moved You Hao → Top 1 Care),
@@ -229,7 +232,28 @@ export default async function handler(req, res) {
             }
             paidMarked.push({ number: inv.number, amount: shared ? ownTotal : xi.AmountPaid })
           } else if (xi.Status === 'VOIDED' || xi.Status === 'DELETED') {
-            voidedInXero.push({ number: inv.number }) // reported, never auto-voided here
+            // Voided in Xero (or a draft deleted there): void it here too, so a
+            // cancelled invoice stops being chased and counted as owed. Xero only
+            // voids an invoice with nothing paid against it, so money recorded on
+            // THIS side means the two systems disagree about a real payment —
+            // that one is reported for a human, never voided.
+            const paidHere = Math.round((inv.payments ?? []).reduce((s, p) => s + Number(p.amount || 0), 0) * 100) / 100
+            if (paidHere > 0) {
+              voidedInXero.push({ number: inv.number, paidHere })
+            } else {
+              const total = Math.round(invoiceTotal(inv) * (inv.vatEnabled !== false ? 1.1 : 1) * 100) / 100
+              if (!dryRun) {
+                const nowIso = new Date().toISOString()
+                inv.status = 'voided'
+                inv.voidedAt = nowIso
+                inv.voidReason = `${xi.Status === 'DELETED' ? 'Deleted' : 'Voided'} in Xero`
+                inv.voidedVia = 'xero-pull'
+                // Already gone in Xero, so the push's void step has nothing to do.
+                inv.xeroVoidedAt = nowIso
+                await saveRow(supabase, 'invoices', inv.id, inv)
+              }
+              voidedFromXero.push({ number: inv.number, amount: total })
+            }
           } else if (Number(xi.AmountPaid) > 0) {
             partial.push({ number: inv.number, paid: xi.AmountPaid, due: xi.AmountDue })
             partialTwins.add(inv.id)
@@ -252,7 +276,7 @@ export default async function handler(req, res) {
       const settledByBalance = [], contactOwesMore = []
       const ownTotal = (i) => Math.round(invoiceTotal(i) * (i.vatEnabled !== false ? 1.1 : 1) * 100) / 100
       const justPaid = new Set(paidMarked.map((p) => p.number))
-      const voidedNums = new Set(voidedInXero.map((v) => v.number))
+      const voidedNums = new Set([...voidedInXero, ...voidedFromXero].map((v) => v.number))
 
       const byContact = new Map()
       for (const inv of invoices) {
@@ -309,6 +333,46 @@ export default async function handler(req, res) {
         }
       }
 
+      // ── Credit notes: refunds paid out in Xero ───────────────────────────
+      // Everything above reads Xero INVOICES. A credit note the push sent to
+      // Xero is linked by xeroCreditNoteId and lives under /CreditNotes, so
+      // without this a refund paid out in Xero never reached the portal and the
+      // credit note sat unpaid here. Only a refund PAYMENT counts as money going
+      // back (see _creditNotes.js). Xero's /CreditNotes list takes no IDs
+      // filter, so each open linked credit note is read on its own. No receipt
+      // email: a refund is money going out, not a payment received.
+      const refundsMarked = [], creditNotesPartlyRefunded = [], creditNotesAppliedOnly = [], creditNotesVoidedInXero = [], creditNoteErrors = []
+      let creditNotesDeferred = 0
+      const openCredits = invoices.filter((i) =>
+        i.xeroCreditNoteId && !i.refundedAt && !i.xeroCreditAppliedAt && ['pending', 'overdue'].includes(i.status))
+      for (let n = 0; n < openCredits.length; n++) {
+        const credit = openCredits[n]
+        const r = await xeroFetch(supabase, `/CreditNotes/${credit.xeroCreditNoteId}`)
+        // Rate-limited: stop and let the next hourly pull read the rest.
+        if (r.status === 429) { creditNotesDeferred = openCredits.length - n; break }
+        if (!r.ok) {
+          creditNoteErrors.push({ number: credit.number, error: `Xero credit note read failed (HTTP ${r.status})` })
+          continue
+        }
+        const xc = r.json?.CreditNotes?.[0]
+        const read = readXeroCreditNote(xc)
+        if (read.state === 'refunded') {
+          if (!dryRun) await saveRow(supabase, 'invoices', credit.id, withXeroRefund(credit, xc, read))
+          refundsMarked.push({ number: credit.number, amount: read.refunded, date: read.date })
+        } else if (read.state === 'appliedOnly') {
+          // Used up against other invoices in Xero: no money went back, so it
+          // is not a refund. Stamp it so it isn't re-read every hour.
+          if (!dryRun) await saveRow(supabase, 'invoices', credit.id, { ...credit, xeroCreditAppliedAt: new Date().toISOString() })
+          creditNotesAppliedOnly.push({ number: credit.number, applied: read.applied })
+        } else if (read.state === 'partlyRefunded') {
+          creditNotesPartlyRefunded.push({ number: credit.number, refunded: read.refunded, remaining: read.remaining })
+        } else if (read.state === 'voided') {
+          creditNotesVoidedInXero.push({ number: credit.number }) // reported, never auto-voided here
+        } else if (read.state === 'missing') {
+          creditNoteErrors.push({ number: credit.number, error: 'Xero returned no credit note for the stored link' })
+        }
+      }
+
       // Payment receipt to each tenant's billing contact (goes through the
       // central email guard — safe mode redirects until deliberately lifted).
       const fromName = settings?.emails?.fromName || settings?.company?.name || 'Hexa Space'
@@ -330,17 +394,21 @@ export default async function handler(req, res) {
         }).catch(() => {})
       }
 
-      // Ops alert (eric@ + info@): always when the balance sync settled
-      // something (auditable action), and when the owes-more set CHANGES —
-      // never re-sent every 6h for a known standing mismatch.
+      // Ops alert (eric@ + info@): always when the pull changed something
+      // auditable (balance settlements, invoices voided to match Xero), and
+      // when the owes-more set CHANGES — never re-sent every 6h for a known
+      // standing mismatch.
       const owesMoreFingerprint = JSON.stringify(
         contactOwesMore.map((o) => `${o.contact}:${o.xeroOutstanding}:${o.platformOutstanding}`).sort()
       )
       const owesMoreChanged = owesMoreFingerprint !== (conn.lastOwesMoreAlert ?? '[]')
-      if (!dryRun && (settledByBalance.length || (owesMoreChanged && contactOwesMore.length))) {
+      if (!dryRun && (settledByBalance.length || voidedFromXero.length || (owesMoreChanged && contactOwesMore.length))) {
         const inner =
           bKicker('Xero balance sync') +
-          bH1('Contact balances need a look') +
+          bH1(settledByBalance.length || contactOwesMore.length ? 'Contact balances need a look' : 'Invoices voided to match Xero') +
+          (voidedFromXero.length
+            ? bP(`<strong>Voided on the portal to match Xero</strong> (voided or deleted in Xero, nothing paid here):<br/>${voidedFromXero.map((v) => `${v.number} — $${v.amount.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`).join('<br/>')}`)
+            : '') +
           (settledByBalance.length
             ? bP(`<strong>Auto-settled on the portal</strong> (paid in Xero at contact level, against a different invoice):<br/>${settledByBalance.map((s) => `${s.number} — ${s.contact} — $${s.amount.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`).join('<br/>')}`)
             : '') +
@@ -352,7 +420,7 @@ export default async function handler(req, res) {
           await sendResendEmail({
             from: `${fromName} <${fromEmail}>`,
             to,
-            subject: `Xero balance sync — ${settledByBalance.length} settled, ${contactOwesMore.length} under-reported`,
+            subject: `Xero balance sync — ${settledByBalance.length} settled, ${voidedFromXero.length} voided, ${contactOwesMore.length} under-reported`,
             html: brandFrame(inner, { footerLabel: 'Accounts' }),
           }).catch(() => {})
         }
@@ -362,7 +430,11 @@ export default async function handler(req, res) {
       // the refresh token during this run — writing the stale conn back would
       // re-install the consumed token and kill the connection (forced reconnect).
       if (!dryRun) await stampConnection(supabase, { lastPull: new Date().toISOString(), lastOwesMoreAlert: owesMoreFingerprint })
-      return res.status(200).json({ action, dryRun, checked: candidates.length, paidMarked, receipted: receipts.length, partial, voidedInXero, linkedByNumber, settledByBalance, contactOwesMore })
+      return res.status(200).json({
+        action, dryRun, checked: candidates.length, paidMarked, receipted: receipts.length, partial, voidedInXero, voidedFromXero, linkedByNumber, settledByBalance, contactOwesMore,
+        creditNotesChecked: openCredits.length, refundsMarked, creditNotesPartlyRefunded, creditNotesAppliedOnly, creditNotesVoidedInXero, creditNotesDeferred,
+        errors: creditNoteErrors,
+      })
     }
 
     // ── PUSH: send unsynced invoices to Xero ─────────────────────────────────

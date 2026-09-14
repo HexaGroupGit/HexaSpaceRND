@@ -8,8 +8,9 @@ relatedCode:
   - src/components/InvoiceDetail.jsx
   - src/components/Billing.jsx
   - api/xero/sync.js
+  - api/xero/_creditNotes.js
 relatedSops: [create-a-one-off-invoice, refund-a-deposit]
-version: 1
+version: 2
 reviewDue: 2027-02-01
 ---
 
@@ -50,6 +51,7 @@ An invoice was wrong and the client has it. If it was wrong and they have *not* 
 - It is created **pending** and **not sent** — it is a document, not a refund. Money moving is separate.
 - Voiding leaves the invoice visible under the **Voided** filter with an amount due of zero. It is excluded from statements, from the overdue ladder and from the deposit-held figure.
 - Credit notes push to Xero as credit notes on the hourly sync, subject to the same window rules as invoices.
+- A refund recorded against the credit note in Xero marks it paid here on the next hourly pull. A credit note only applied to another invoice in Xero stays open here, because no money went back.
 - A **bond refund** is a special kind of credit note with its own approval and payout flow — do not hand-build one. See [Refund a deposit](refund-a-deposit.md).
 
 ## Common mistakes

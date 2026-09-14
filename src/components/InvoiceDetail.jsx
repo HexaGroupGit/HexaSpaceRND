@@ -62,6 +62,9 @@ export default function InvoiceDetail({
   // Anything that pays money OUT: a bond refund, a function security deposit
   // coming back, or a credit note raised by hand against an invoice.
   const isCreditNote = totals.total < 0 || !!invoice.creditNoteForId || invoice.invoiceType === 'bond_refund'
+  // The push links a credit note by xeroCreditNoteId, never xeroInvoiceId —
+  // reading only the invoice link showed every pushed credit note as "Not synced".
+  const xeroLinked = !!(invoice.xeroInvoiceId || invoice.xeroCreditNoteId)
   const requestedAt = invoice.refundBankRequestedAt || bankSentAt
   const today = new Date()
   const daysLeft = invoice.dueDate ? differenceInDays(parseISO(invoice.dueDate), today) : null
@@ -480,11 +483,12 @@ export default function InvoiceDetail({
               </button>
             )}
             <span
-              title={invoice.xeroInvoiceId ? 'Linked to Xero — payment status pulls back automatically' : 'Not in Xero yet — syncs when the Xero push runs'}
-              className={`flex items-center gap-1.5 text-xs border border-input rounded px-3 py-1.5 ${invoice.xeroInvoiceId ? 'text-blue-700' : 'text-muted-foreground'}`}
+              title={invoice.xeroCreditNoteId ? 'Linked to Xero as a credit note — a refund recorded there pulls back automatically'
+                : invoice.xeroInvoiceId ? 'Linked to Xero — payment status pulls back automatically' : 'Not in Xero yet — syncs when the Xero push runs'}
+              className={`flex items-center gap-1.5 text-xs border border-input rounded px-3 py-1.5 ${xeroLinked ? 'text-blue-700' : 'text-muted-foreground'}`}
             >
-              {invoice.xeroInvoiceId ? <ToggleRight size={14} className="text-blue-600" /> : <ToggleLeft size={14} />}
-              {invoice.xeroInvoiceId ? 'Synced to Xero' : 'Not synced'}
+              {xeroLinked ? <ToggleRight size={14} className="text-blue-600" /> : <ToggleLeft size={14} />}
+              {xeroLinked ? 'Synced to Xero' : 'Not synced'}
             </span>
             {invoice.status === 'overdue' && (
               <button onClick={handleSendReminder}
@@ -573,8 +577,17 @@ export default function InvoiceDetail({
                   <div key={label} className="flex items-start gap-2">
                     <span className="text-xs text-muted-foreground w-28 shrink-0">{label}</span>
                     {label === 'STATUS' ? (
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded capitalize ${STATUS_STYLE[invoice.status] ?? ''}`}>
-                        {invoice.status}
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded capitalize ${STATUS_STYLE[invoice.status] ?? ''}`}>
+                          {invoice.status}
+                        </span>
+                        {/* Server-side voids (the Xero pull, a function booking paid in
+                            full) write no audit-log entry, so say why and when here. */}
+                        {invoice.status === 'voided' && (invoice.voidReason || invoice.voidedAt) && (
+                          <span className="text-xs text-muted-foreground">
+                            {invoice.voidReason || 'Voided'}{invoice.voidedAt ? ` on ${format(parseISO(invoice.voidedAt), 'dd MMM yyyy')}` : ''}
+                          </span>
+                        )}
                       </span>
                     ) : (
                       <span className="text-xs text-foreground break-words">{value}</span>
@@ -615,18 +628,20 @@ export default function InvoiceDetail({
               </div>
             )}
 
-            {/* Xero sync status — read-only: xeroInvoiceId/xeroSync are stamped
+            {/* Xero sync status — read-only: xeroInvoiceId/xeroCreditNoteId/xeroSync are stamped
                 by the Xero push (or the migration linker), never toggled by hand */}
             <div className="bg-card border border-border rounded-xl shadow-sm p-4 text-sm">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold text-foreground">Xero</span>
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${invoice.xeroInvoiceId ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
-                  {invoice.xeroInvoiceId ? 'Synced' : 'Not synced'}
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${xeroLinked ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
+                  {xeroLinked ? 'Synced' : 'Not synced'}
                 </span>
               </div>
-              {invoice.xeroInvoiceId ? (
+              {xeroLinked ? (
                 <p className="text-xs text-muted-foreground">
-                  Linked to Xero{invoice.xeroSyncedAt ? ` on ${format(parseISO(invoice.xeroSyncedAt), 'dd MMM yyyy')}` : ''} — payment status flows back automatically via the 6-hourly pull.
+                  Linked to Xero{invoice.xeroCreditNoteId ? ' as a credit note' : ''}{invoice.xeroSyncedAt ? ` on ${format(parseISO(invoice.xeroSyncedAt), 'dd MMM yyyy')}` : ''} — {invoice.xeroCreditNoteId
+                    ? 'a refund recorded against it in Xero marks it refunded here on the hourly pull.'
+                    : 'payment status flows back automatically via the hourly pull.'}
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
