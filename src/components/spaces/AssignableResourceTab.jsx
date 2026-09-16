@@ -5,7 +5,10 @@ import {
   memberOptions, assignmentFor, contractFor, nextUnitNumber,
 } from './shared.jsx'
 import { nextVirtualSuite } from '../../lib/virtualSuites.js'
-import { missingParkingBays, parkingSetupSummary } from '../../lib/parkingBays.js'
+import {
+  PARKING_RATE, PARKING_INCLUDED_LABEL, missingParkingBays, retiredParkingSpaces,
+  parkingSetupPrompt, parkingSetupSummary, normalisePlate,
+} from '../../lib/parkingBays.js'
 
 // Generic manager for assignable, auto-numbered resources:
 // Media Studios, Podcast Room, Parking Slots, Dedicated Desks, Virtual Offices.
@@ -32,7 +35,9 @@ export default function AssignableResourceTab({ ctx, config }) {
   const contractOf = (s) => (isParking ? contractFor(s, leases) : null)
   const assigned = items.filter((s) => s.assignedMemberId || contractOf(s)).length
   const memberOpts = memberOptions(members, tenants)
-  const missingBays = isParking ? missingParkingBays(spaces) : []
+  const setupPrompt = isParking
+    ? parkingSetupPrompt(missingParkingBays(spaces).length, retiredParkingSpaces(spaces, leases).length)
+    : ''
 
   function blank() {
     // Virtual offices are numbered in the BUILDING's Level 4 series, so their
@@ -41,7 +46,7 @@ export default function AssignableResourceTab({ ctx, config }) {
     const { unitNumber } = type === 'virtual'
       ? nextVirtualSuite({ spaces, leases })
       : nextUnitNumber(spaces, type, prefix, start)
-    return { unitNumber, floor: 'l4', size: '', rate: '', attributes: '' }
+    return { unitNumber, floor: 'l4', size: '', rate: '', attributes: '', numberPlate: '', included: false }
   }
   function openNew() {
     if (autoAssignOnAdd) {
@@ -54,13 +59,26 @@ export default function AssignableResourceTab({ ctx, config }) {
   }
   function openEdit(s) {
     setEditId(s.id)
-    setForm({ unitNumber: s.unitNumber ?? '', floor: s.floor ?? 'l4', size: s.size ?? '', rate: s.rate ?? s.monthlyRate ?? '', attributes: s.attributes ?? '' })
+    setForm({
+      unitNumber: s.unitNumber ?? '', floor: s.floor ?? 'l4', size: s.size ?? '', rate: s.rate ?? s.monthlyRate ?? '',
+      attributes: s.attributes ?? '', numberPlate: s.numberPlate ?? '', included: !!s.includedInContract,
+    })
+  }
+
+  // Price fields as stored. A car bay included in the member's licence has no
+  // price; parking also records the number plate using the bay.
+  function priceFields(f) {
+    const rate = f.included ? 0 : f.rate !== '' ? Number(f.rate) : 0
+    return {
+      monthlyRate: rate, rate,
+      ...(isParking ? { numberPlate: normalisePlate(f.numberPlate) || undefined, includedInContract: f.included || undefined } : {}),
+    }
   }
 
   function create(f) {
     const data = {
       type, unitNumber: f.unitNumber, floor: f.floor, size: f.size || undefined,
-      monthlyRate: f.rate !== '' ? Number(f.rate) : 0, rate: f.rate !== '' ? Number(f.rate) : 0,
+      ...priceFields(f),
       attributes: f.attributes || undefined, status: 'vacant',
       location: 'whitehorse', address: '830 Whitehorse Rd, Box Hill',
     }
@@ -70,7 +88,7 @@ export default function AssignableResourceTab({ ctx, config }) {
     if (!form.unitNumber) return
     const data = {
       unitNumber: form.unitNumber, floor: form.floor, size: form.size || undefined,
-      monthlyRate: form.rate !== '' ? Number(form.rate) : 0, rate: form.rate !== '' ? Number(form.rate) : 0,
+      ...priceFields(form),
       attributes: form.attributes || undefined,
     }
     if (editId) updateSpace(editId, data)
@@ -104,16 +122,14 @@ export default function AssignableResourceTab({ ctx, config }) {
       {note && <p className="text-xs text-muted-foreground mb-4">{note}</p>}
       {!note && <div className="mb-4" />}
 
-      {isParking && missingBays.length > 0 && setUpParkingBays && (
+      {setupPrompt && setUpParkingBays && (
         <div className="mb-4 flex items-center gap-3 text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-md px-3 py-2">
-          <span>
-            {missingBays.length} numbered car park bay{missingBays.length === 1 ? '' : 's'} from the floor plans {missingBays.length === 1 ? 'isn’t' : 'aren’t'} set up yet.
-          </span>
+          <span>{setupPrompt} — update Spaces to match the car park plans.</span>
           <button
             onClick={() => setSetupNote(parkingSetupSummary(setUpParkingBays()))}
             className="ml-auto shrink-0 text-xs font-semibold bg-amber-900 text-white px-2.5 py-1.5 rounded-md hover:bg-amber-800"
           >
-            Set up bays
+            Update bays
           </button>
         </div>
       )}
@@ -123,14 +139,14 @@ export default function AssignableResourceTab({ ctx, config }) {
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b border-border">
             <tr>
-              {[noun, 'Floor', rateLabel && rateLabel, 'Assigned to', 'Status', ''].filter((h) => h !== '' && h != null).map((h, i) => (
+              {[noun, 'Floor', rateLabel, isParking && 'Number plate', 'Assigned to', 'Status'].filter(Boolean).map((h, i) => (
                 <th key={i} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {items.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground text-sm">No {noun.toLowerCase()}s yet.</td></tr>
+              <tr><td colSpan={isParking ? 7 : 6} className="px-4 py-12 text-center text-muted-foreground text-sm">No {noun.toLowerCase()}s yet.</td></tr>
             )}
             {items.map((s) => {
               const a = assignmentFor(s, members, tenants)
@@ -144,7 +160,16 @@ export default function AssignableResourceTab({ ctx, config }) {
                   <td className="px-4 py-3 text-muted-foreground">{floorLabel(s.floor)}</td>
                   {rateLabel && (
                     <td className="px-4 py-3 font-medium text-foreground">
-                      {(s.rate ?? s.monthlyRate) ? `${money(s.rate ?? s.monthlyRate)}${ratePer}` : 'Free'}
+                      {s.includedInContract
+                        ? <span className="font-normal text-muted-foreground">{PARKING_INCLUDED_LABEL}</span>
+                        : (s.rate ?? s.monthlyRate) ? `${money(s.rate ?? s.monthlyRate)}${ratePer}` : 'Free'}
+                    </td>
+                  )}
+                  {isParking && (
+                    <td className="px-4 py-3">
+                      {s.numberPlate
+                        ? <span className="font-mono text-xs tracking-wider text-foreground border border-border bg-muted/50 rounded px-1.5 py-0.5">{s.numberPlate}</span>
+                        : <span className="text-muted-foreground">—</span>}
                     </td>
                   )}
                   <td className="px-4 py-3">
@@ -194,8 +219,29 @@ export default function AssignableResourceTab({ ctx, config }) {
                 </select>
               </Field>
               <Field label="Size / detail"><input value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })} placeholder="optional" className={ic} /></Field>
-              {rateLabel && <Field label={`${rateLabel} (AUD)`}><input type="number" min="0" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} className={ic} /></Field>}
+              {rateLabel && !(isParking && form.included) && (
+                <Field label={`${rateLabel} (AUD)`}><input type="number" min="0" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} className={ic} /></Field>
+              )}
+              {isParking && (
+                <Field label="Number plate">
+                  <input value={form.numberPlate} onChange={(e) => setForm({ ...form, numberPlate: e.target.value.toUpperCase() })} placeholder="e.g. ABC123" className={`${ic} uppercase tracking-wider`} />
+                </Field>
+              )}
             </div>
+            {isParking && (
+              <label className="flex items-start gap-2.5 text-sm text-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={!!form.included}
+                  onChange={(e) => setForm({ ...form, included: e.target.checked, rate: !e.target.checked && !Number(form.rate) ? PARKING_RATE : form.rate })}
+                />
+                <span>
+                  Included in licence — no separate charge
+                  <span className="block text-xs text-muted-foreground mt-0.5">For a bay that comes with the member’s licence agreement. Removes the monthly price.</span>
+                </span>
+              </label>
+            )}
             <Field label="Notes"><textarea rows={2} value={form.attributes} onChange={(e) => setForm({ ...form, attributes: e.target.value })} className={`${ic} resize-none`} /></Field>
             <div className="flex justify-end gap-3 pt-1">
               <button onClick={() => setEditId(undefined)} className="px-4 py-2 text-sm text-foreground border border-input rounded-md hover:bg-muted/50">Cancel</button>

@@ -2,7 +2,10 @@ import { useState, useRef, Fragment } from 'react'
 import { format, parseISO, isValid, differenceInDays } from 'date-fns'
 import { X, MapPin, Crosshair, ZoomIn, ZoomOut, Maximize2, Presentation, Car } from 'lucide-react'
 import { moveOutDate, memberOptions, assignmentFor, contractFor, floorLabel, money } from './spaces/shared.jsx'
-import { PARKING_PLANS, PARKING_BAYS, spaceForBay, missingParkingBays, parkingSetupSummary } from '../lib/parkingBays.js'
+import {
+  PARKING_PLANS, PARKING_BAYS, PARKING_RATE, PARKING_INCLUDED_LABEL, spaceForBay, missingParkingBays,
+  retiredParkingSpaces, parkingSetupPrompt, parkingSetupSummary, normalisePlate,
+} from '../lib/parkingBays.js'
 
 // Image-based interactive floorplan: your real plan as the backdrop, with each
 // space pinned on it as a status-coloured marker. Positions persist on the space
@@ -144,7 +147,7 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
   }
 
   const planBays = isParking ? PARKING_BAYS.filter((b) => b.floor === plan.floor).map(bayRow) : []
-  const missingCount = isParking ? missingParkingBays(spaces).length : 0
+  const setupPrompt = isParking ? parkingSetupPrompt(missingParkingBays(spaces).length, retiredParkingSpaces(spaces, leases).length) : ''
   const picked = bayPick.map((n) => planBays.find((r) => r.bay.number === n)).filter(Boolean)
   // Bays a member can take: set up, and not already sold on a contract.
   const allocatable = picked.filter((r) => r.space && !r.contract)
@@ -192,6 +195,18 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
     if (setUpParkingBays) setSetupNote(parkingSetupSummary(setUpParkingBays()))
   }
 
+  function savePlate(space, value) {
+    const plate = normalisePlate(value)
+    if (plate !== (space.numberPlate || '')) updateSpace(space.id, { numberPlate: plate || undefined })
+  }
+
+  // A bay that comes with the member's licence has no price of its own;
+  // unticking puts it back on the standard rate.
+  function setIncluded(space, on) {
+    const rate = on ? 0 : PARKING_RATE
+    updateSpace(space.id, { includedInContract: on || undefined, monthlyRate: rate, rate })
+  }
+
   return (
     <div className="flex gap-5 items-start">
       <div className="flex-1 min-w-0">
@@ -237,13 +252,13 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
           </div>
         )}
 
-        {isParking && missingCount > 0 && (
+        {setupPrompt && (
           <div className="mb-3 flex items-center gap-2 text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-md px-3 py-2">
             <Car size={15} className="shrink-0" />
-            <span>{missingCount} numbered car park bay{missingCount === 1 ? '' : 's'} {missingCount === 1 ? 'isn’t' : 'aren’t'} in Spaces yet — set them up to allocate them.</span>
+            <span>{setupPrompt} — update Spaces to match the car park plans.</span>
             {setUpParkingBays && (
               <button onClick={runSetup} className="ml-auto shrink-0 text-xs font-semibold bg-amber-900 text-white px-2.5 py-1.5 rounded-md hover:bg-amber-800">
-                Set up bays
+                Update bays
               </button>
             )}
           </div>
@@ -303,7 +318,7 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
                       key={r.bay.number}
                       type="button"
                       onClick={(e) => clickBay(e, r.bay.number)}
-                      title={`Bay ${r.bay.number} · ${r.bay.ref} · Lot ${r.bay.lot} — ${holder ? holder.name : BAY_LABEL[r.state]}`}
+                      title={`Bay ${r.bay.number} · ${r.bay.ref} · Lot ${r.bay.lot} — ${holder ? holder.name : BAY_LABEL[r.state]}${r.space?.numberPlate ? ` · ${r.space.numberPlate}` : ''}`}
                       className={`absolute flex items-center justify-center border rounded-[3px] font-bold leading-none tabular-nums shadow-sm transition-colors ${BAY_STYLE[r.state]} ${
                         bayPick.includes(r.bay.number) ? 'ring-2 ring-blue-500 ring-offset-1 z-10' : ''
                       }`}
@@ -394,17 +409,40 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
                       ? <><span className="text-foreground">{holder.name}</span>{holder.company && <span className="text-muted-foreground"> · {holder.company}</span>}</>
                       : <span className="text-muted-foreground">{BAY_LABEL[r.state]}</span>}
                   </span>
+                  {picked.length > 1 && r.space?.numberPlate && (
+                    <span className="shrink-0 font-mono text-[10px] tracking-wider text-muted-foreground">{r.space.numberPlate}</span>
+                  )}
                 </div>
               )
             })}
           </div>
 
-          {picked.length === 1 && picked[0].space && (
-            <div className="flex items-center justify-between text-xs border-t border-border pt-3 mb-3">
-              <span className="text-muted-foreground">Monthly</span>
-              <span className="font-semibold text-foreground">{money(picked[0].space.monthlyRate ?? picked[0].space.rate)}</span>
-            </div>
-          )}
+          {picked.length === 1 && picked[0].space && (() => {
+            const sp = picked[0].space
+            return (
+              <div className="space-y-2.5 text-xs border-t border-border pt-3 mb-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Monthly</span>
+                  <span className="font-semibold text-foreground">{sp.includedInContract ? PARKING_INCLUDED_LABEL : money(sp.monthlyRate ?? sp.rate)}</span>
+                </div>
+                <label className="flex items-center gap-2 text-foreground cursor-pointer">
+                  <input type="checkbox" checked={!!sp.includedInContract} onChange={(e) => setIncluded(sp, e.target.checked)} />
+                  Included in licence — no separate charge
+                </label>
+                <label className="block">
+                  <span className="block text-muted-foreground mb-1">Number plate</span>
+                  <input
+                    key={sp.id}
+                    defaultValue={sp.numberPlate || ''}
+                    placeholder="e.g. ABC123"
+                    onBlur={(e) => savePlate(sp, e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                    className="w-full border border-input rounded-md px-2 py-1.5 text-sm uppercase tracking-wider bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  />
+                </label>
+              </div>
+            )
+          })()}
 
           {allocatable.length > 0 && (
             <div className="space-y-2 border-t border-border pt-3">
@@ -437,7 +475,7 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
           )}
           {notSetUp > 0 && (
             <p className="text-xs text-amber-700 mt-3">
-              {picked.length === 1 ? 'This bay isn’t' : `${notSetUp} of these bays aren’t`} set up yet — use “Set up bays” above.
+              {picked.length === 1 ? 'This bay isn’t' : `${notSetUp} of these bays aren’t`} set up yet — use “Update bays” above.
             </p>
           )}
           {picked.length === 1 && <p className="text-[11px] text-muted-foreground mt-3">Shift-click more bays to allocate several at once.</p>}

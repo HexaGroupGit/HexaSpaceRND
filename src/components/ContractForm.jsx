@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { Plus, Trash2, Minus, ChevronDown, X, AlertCircle } from 'lucide-react'
 import { discountedPrice, discountPct } from '../lib/leasePricing.js'
 import { holdsSpace } from '../lib/spaceHold.js'
+import { SPACE_TABS, floorLabel } from './spaces/shared.jsx'
+import { PARKING_INCLUDED_LABEL } from '../lib/parkingBays.js'
 
 const FORM_SECTIONS = [
   { id: 'company', label: 'Company Information' },
@@ -20,10 +22,38 @@ const DOCUMENT_TYPES = [
 ]
 // Which space types each document type may book. Anything not listed (e.g.
 // Service Agreement) is unrestricted.
+// Car bays can ride on any of them.
 const DOC_TYPE_SPACES = {
-  'License Agreement': ['office'], // private offices
-  'Virtual Office Membership Agreement': ['virtual'],
-  'Membership Agreement Month-to-month': ['desk'], // flexible or dedicated desk
+  'License Agreement': ['office', 'parking'], // private offices
+  'Virtual Office Membership Agreement': ['virtual', 'parking'],
+  'Membership Agreement Month-to-month': ['desk', 'parking'], // flexible or dedicated desk
+}
+
+// Item picker label. Car bays read "Bay 412 — Level 4 · L4.12 · Lot S34 · $200/mo"
+// so they can't be mistaken for suites.
+function spaceOptionLabel(s) {
+  if (s.type !== 'parking') return `${s.unitNumber} — ${s.size}`
+  const price = s.includedInContract
+    ? PARKING_INCLUDED_LABEL
+    : `$${Number(s.monthlyRate ?? s.rate ?? 0).toLocaleString('en-AU')}/mo`
+  return `Bay ${s.unitNumber} — ${[floorLabel(s.floor), s.size, price].filter(Boolean).join(' · ')}`
+}
+
+// Picker options, grouped by kind when a document type allows more than one —
+// a licence can carry a suite and its car bays. Bays list in number order.
+function spaceOptions(list) {
+  const option = (s) => <option key={s.id} value={s.id}>{spaceOptionLabel(s)}</option>
+  const types = [...new Set(list.map((s) => s.type))]
+  if (types.length < 2) return list.map(option)
+  return types.map((t) => {
+    const ofType = list.filter((s) => s.type === t)
+    if (t === 'parking') ofType.sort((a, b) => String(a.unitNumber).localeCompare(String(b.unitNumber), undefined, { numeric: true }))
+    return (
+      <optgroup key={t} label={SPACE_TABS.find((x) => x.type === t)?.label ?? t}>
+        {ofType.map(option)}
+      </optgroup>
+    )
+  })
 }
 const SIGNATURE_STATUSES = [
   { value: 'not_signed',        label: 'Not Signed' },
@@ -237,9 +267,13 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
       // Month-to-month terms: no bond; virtual offices default to $150/mo
       // when the space record carries no rate.
       const mtm = f.contractType === 'Month-to-month'
-      const defaultPrice = space
-        ? (space.type === 'virtual' ? (Number(space.monthlyRate) || 150) : space.monthlyRate)
-        : null
+      // A car bay included in the licence is priced at nil.
+      const defaultPrice = !space ? null
+        : space.type === 'virtual' ? (Number(space.monthlyRate) || 150)
+        : space.includedInContract ? 0
+        : space.monthlyRate
+      // Car bays carry no bond of their own.
+      const deposit = mtm || space?.type === 'parking' ? 0 : Number(space?.monthlyRate || 0) * 2
       return {
       ...f,
       items: f.items.map((item, i) =>
@@ -248,7 +282,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
           : {
               ...item,
               spaceId,
-              deposit: space ? (mtm ? 0 : space.monthlyRate * 2) : item.deposit,
+              deposit: space ? deposit : item.deposit,
               steps: item.steps.map((step, si) =>
                 si === 0 ? { ...step, listPrice: space ? defaultPrice : step.listPrice } : step
               ),
@@ -625,9 +659,9 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
               {form.items.map((item, itemIdx) => {
                 const itemSpace = spaces.find((s) => s.id === item.spaceId)
                 const allowedTypes = DOC_TYPE_SPACES[form.documentType] || null
-                const typeLabel = itemSpace
-                  ? itemSpace.type.charAt(0).toUpperCase() + itemSpace.type.slice(1)
-                  : 'Space'
+                const typeLabel = !itemSpace ? 'Space'
+                  : itemSpace.type === 'parking' ? 'Parking bay'
+                  : itemSpace.type.charAt(0).toUpperCase() + itemSpace.type.slice(1)
 
                 return (
                   <div
@@ -646,7 +680,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                           className="border border-input rounded px-3 py-1.5 text-sm bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 min-w-[200px]"
                         >
                           <option value="">Select Resource</option>
-                          {spaces
+                          {spaceOptions(spaces
                             .filter((s) => {
                               if (s.id === item.spaceId) return true // keep current selection
                               // Restrict to the space types this document type may book.
@@ -664,12 +698,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                                 return !leases.some((l) => l.spaceId === s.id && holdsSpace(l))
                               }
                               return s.status === 'vacant'
-                            })
-                            .map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.unitNumber} — {s.size}
-                              </option>
-                            ))}
+                            }))}
                         </select>
                       </div>
 

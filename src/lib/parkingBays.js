@@ -44,6 +44,8 @@ export const PARKING_BAYS = [
   { number: '415', ref: 'L4.15', lot: 'S35', floor: 'l4', box: [67.69, 38.42, 2.76, 7.85] },
   { number: '416', ref: 'L4.16', lot: 'S92', floor: 'l4', box: [71.48, 38.42, 2.76, 7.85] },
   { number: '417', ref: 'L4.17', lot: 'S92', floor: 'l4', box: [74.29, 38.42, 2.76, 7.85] },
+  { number: '418', ref: 'L4.18', lot: 'S36', floor: 'l4', box: [74.29, 62.36, 2.86, 7.15] },
+  { number: '419', ref: 'L4.19', lot: 'S36', floor: 'l4', box: [71.38, 62.36, 2.86, 7.15] },
   { number: '420', ref: 'L4.20', lot: 'S35', floor: 'l4', box: [67.69, 62.36, 2.87, 7.15] },
   { number: '421', ref: 'L4.21', lot: 'S35', floor: 'l4', box: [64.77, 62.36, 2.87, 7.15] },
   { number: '422', ref: 'L4.22', lot: 'S35', floor: 'l4', box: [61.09, 62.36, 2.87, 7.15] },
@@ -56,18 +58,21 @@ export const PARKING_BAYS = [
   { number: '429', ref: 'L4.29', lot: 'S92', floor: 'l4', box: [38.37, 62.36, 2.86, 7.15] },
   { number: '430', ref: 'L4.30', lot: 'S92', floor: 'l4', box: [34.67, 62.36, 2.87, 7.15] },
   { number: '431', ref: 'L4.31', lot: 'S92', floor: 'l4', box: [31.76, 62.36, 2.87, 7.15] },
-  { number: '432', ref: 'L4.32', lot: 'S92', floor: 'l4', box: [28.07, 62.36, 2.87, 7.15] },
 ]
 
 // Monthly rate a newly set-up bay starts at; change any bay in Spaces → Parking.
 export const PARKING_RATE = 200
 
+// Shown instead of a price for a bay that comes with the member's licence.
+export const PARKING_INCLUDED_LABEL = 'Included in licence'
+
 // Billing tells parking lines from rent by the `_park_` in a space id, so every
 // bay keeps this id shape.
 export const parkingSpaceId = (number) => `hx_park_${number}`
 
-// P1–P4 from the original seed, retired once the numbered bays are set up.
-export const PLACEHOLDER_PARKING_IDS = ['hx_park_1', 'hx_park_2', 'hx_park_3', 'hx_park_4']
+// Spaces the numbered layout replaced: the P1–P4 placeholders, and bays that
+// turned out not to be ours. Set-up removes them unless one is still in use.
+export const RETIRED_PARKING_IDS = ['hx_park_1', 'hx_park_2', 'hx_park_3', 'hx_park_4', 'hx_park_432']
 
 // The Spaces record a bay starts life as.
 export function parkingBaySpace(bay) {
@@ -89,11 +94,35 @@ export function missingParkingBays(spaces = []) {
   return PARKING_BAYS.filter((bay) => !spaceForBay(bay, spaces))
 }
 
+// Held by anyone: allocated to a member, tagged with an occupant, or on a live contract.
+export function isParkingSpaceInUse(space, leases = []) {
+  if (['occupied', 'reserved'].includes(space.status)) return true
+  if (space.assignedMemberId || space.occupantTenantId || space.occupantName) return true
+  return leases.some((l) => ['active', 'pending'].includes(l.status) &&
+    [l.spaceId, ...(l.items ?? []).map((i) => i.spaceId)].includes(space.id))
+}
+
+// Retired spaces nothing uses any more — the ones set-up may remove.
+export function retiredParkingSpaces(spaces = [], leases = []) {
+  return spaces.filter((s) => RETIRED_PARKING_IDS.includes(s.id) && !isParkingSpaceInUse(s, leases))
+}
+
+// Plate as recorded: upper case, single spaces.
+export const normalisePlate = (value) => String(value ?? '').toUpperCase().replace(/\s+/g, ' ').trim()
+
+// What the set-up banner asks for, or '' when Spaces already matches the plans.
+export function parkingSetupPrompt(missing = 0, retired = 0) {
+  return [
+    missing ? `${missing} numbered car park bay${missing === 1 ? ' isn’t' : 's aren’t'} in Spaces yet` : '',
+    retired ? `${retired} old bay${retired === 1 ? '' : 's'} to remove` : '',
+  ].filter(Boolean).join(' · ')
+}
+
 // One-line result of the store's setUpParkingBays(), for a confirmation banner.
 export function parkingSetupSummary({ created = 0, removed = [], kept = [] } = {}) {
   return [
-    created ? `Added ${created} car park bay${created === 1 ? '' : 's'} at $${PARKING_RATE}/mo.` : 'Every car park bay was already set up.',
-    removed.length ? `Removed placeholder${removed.length === 1 ? '' : 's'} ${removed.join(', ')}.` : '',
+    created ? `Added ${created} car park bay${created === 1 ? '' : 's'} at $${PARKING_RATE}/mo.` : '',
+    removed.length ? `Removed ${removed.join(', ')} — no longer in the car park layout.` : '',
     kept.length ? `Kept ${kept.join(', ')} — still assigned or on a contract.` : '',
-  ].filter(Boolean).join(' ')
+  ].filter(Boolean).join(' ') || 'Car park bays are already up to date.'
 }

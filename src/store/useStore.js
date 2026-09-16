@@ -35,7 +35,7 @@ import { isRentFreeMonth } from '../lib/paymentSchedule.js'
 import { invoiceCoversLease } from '../lib/billingEngine.js'
 import { holdsSpace } from '../lib/spaceHold.js'
 import { allocateVirtualSuite } from '../lib/virtualSuites.js'
-import { PARKING_BAYS, PLACEHOLDER_PARKING_IDS, parkingBaySpace, missingParkingBays } from '../lib/parkingBays.js'
+import { PARKING_BAYS, RETIRED_PARKING_IDS, parkingBaySpace, missingParkingBays, retiredParkingSpaces } from '../lib/parkingBays.js'
 
 // All spaces a lease occupies (primary + any bundled items, e.g. parking).
 function leaseSpaceIds(lease) {
@@ -1423,14 +1423,13 @@ export function useStore() {
   }, [])
 
   // Numbered car park bays (lib/parkingBays.js): create any that are missing,
-  // with the fixed `hx_park_` ids billing relies on, then retire the P1–P4
-  // placeholders nothing uses. Running it again changes nothing.
+  // with the fixed `hx_park_` ids billing relies on, then retire the spaces the
+  // layout replaced (P1–P4, bays that aren't ours) that nothing uses. Running it
+  // again changes nothing.
   const setUpParkingBays = useCallback(() => {
     const current = spacesRef.current
     const created = missingParkingBays(current).map(parkingBaySpace)
-    const unused = current.filter((s) => PLACEHOLDER_PARKING_IDS.includes(s.id) &&
-      !['occupied', 'reserved'].includes(s.status) && !s.assignedMemberId && !s.occupantTenantId && !s.occupantName &&
-      !leasesRef.current.some((l) => ['active', 'pending'].includes(l.status) && leaseSpaceIds(l).includes(s.id)))
+    const unused = retiredParkingSpaces(current, leasesRef.current)
     const removedIds = new Set(unused.map((s) => s.id))
     setSpaces((prev) => [
       ...prev.filter((s) => !removedIds.has(s.id)),
@@ -1441,7 +1440,7 @@ export function useStore() {
     return {
       created: created.length,
       removed: unused.map((s) => s.unitNumber),
-      kept: current.filter((s) => PLACEHOLDER_PARKING_IDS.includes(s.id) && !removedIds.has(s.id)).map((s) => s.unitNumber),
+      kept: current.filter((s) => RETIRED_PARKING_IDS.includes(s.id) && !removedIds.has(s.id)).map((s) => s.unitNumber),
     }
   }, [])
 
