@@ -14,7 +14,7 @@ import { findFunctionSpace } from '../portal/functionSpace.js'
 import { billingContactFor } from '../lib/credits.js'
 import FunctionPayInFullDialog from './FunctionPayInFullDialog.jsx'
 import { canPayInFull } from '../lib/functionConfirm.js'
-import { approveFunctionBooking, confirmDepositPaid, holdWithoutDeposit, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit, reissueHeldInvoice, requestBuildingAccess, setPayInFull, canChangePaymentPlan } from '../lib/functionActions.js'
+import { approveFunctionBooking, confirmDepositPaid, holdWithoutDeposit, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit, reissueHeldInvoice, requestBuildingAccess, updatePaymentPlan, canChangePaymentPlan } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 const nowIso = () => new Date().toISOString()
@@ -461,7 +461,7 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
           <QuoteBreakdown booking={b} />
           {canChangePaymentPlan(b) && (
             <div className="mt-3">
-              <PayInFullCheckbox checked={b.payInFull} disabled={busy} onChange={(v) => actions.setPayInFull(b, v)}
+              <PayInFullCheckbox checked={b.payInFull} disabled={busy} onChange={(v) => actions.togglePayInFull(b, v)}
                 note={b.stage === 'awaiting_deposit' ? 'Changing this voids the invoice already sent and emails the client the new one.' : null} />
             </div>
           )}
@@ -703,7 +703,7 @@ export default function FunctionBookings() {
   const [filter, setFilter] = useState('active')
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [payInFull, setPayInFull] = useState(null) // booking awaiting the pay-in-full dialog
+  const [chargeInFull, setChargeInFull] = useState(null) // booking awaiting the card pay-in-full dialog
 
   useEffect(() => { load() }, [])
   async function load() {
@@ -750,7 +750,7 @@ export default function FunctionBookings() {
     amend: (b) => run(() => askAmendDate({ booking: b, settings })),
     markPaid: (b) => run(() => confirmDepositPaid({ store, booking: b, findFunctionSpace })),
     // Opens the dialog; the charge itself is server-side (pay-and-confirm).
-    payInFull: (b) => setPayInFull(b),
+    payInFull: (b) => setChargeInFull(b),
     // Block the dates ahead of payment — same calendar holds and invoices as a
     // paid confirm, the deposit simply stays outstanding.
     async holdDates(b) {
@@ -761,12 +761,12 @@ export default function FunctionBookings() {
       if (!confirm(`Block ${sessionsLabel(b)} without payment?\n\nThe sessions go on the calendar now and the client is emailed. Nothing is waived — ${billing}`)) return
       await run(() => holdWithoutDeposit({ store, booking: b, findFunctionSpace }))
     },
-    async setPayInFull(b, payInFull) {
+    async togglePayInFull(b, payInFull) {
       if (b.stage === 'awaiting_deposit' && !confirm(payInFull
         ? `Switch ${b.ref} to pay in full?\n\nThe 50% deposit invoice is voided and the client is emailed one invoice for the full amount.`
         : `Switch ${b.ref} back to a 50% deposit?\n\nThe full invoice is voided and the client is emailed a deposit invoice instead.`)) return
       setBusy(true)
-      try { apply(await setPayInFull({ store, booking: b, payInFull })) }
+      try { apply(await updatePaymentPlan({ store, booking: b, payInFull })) }
       catch (e) { alert(e.message) }
       finally { setBusy(false) }
     },
@@ -888,12 +888,12 @@ export default function FunctionBookings() {
 
       {/* Charging happens server-side, so the fresh booking comes back on the
           response — apply it rather than re-deriving the stage here. */}
-      {payInFull && (
+      {chargeInFull && (
         <FunctionPayInFullDialog
-          booking={payInFull}
-          onClose={() => setPayInFull(null)}
+          booking={chargeInFull}
+          onClose={() => setChargeInFull(null)}
           onDone={(d) => {
-            setPayInFull(null)
+            setChargeInFull(null)
             if (d?.booking) apply(d.booking)
             if (d?.message) window.alert(d.message)
           }}

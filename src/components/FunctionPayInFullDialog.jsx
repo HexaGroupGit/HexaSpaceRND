@@ -86,7 +86,7 @@ export default function FunctionPayInFullDialog({ booking, onClose, onDone }) {
             <div className="bg-muted/50 border border-border rounded-md px-3 py-2 text-xs text-muted-foreground flex gap-2">
               <CreditCard size={14} className="shrink-0 mt-0.5" />
               <span>
-                Charged to {preview.card} on file. The 50% deposit and balance invoices are voided and replaced by
+                Charged to {preview.card} on file. Any unpaid invoices for this booking are voided and replaced by
                 one paid invoice, the sessions go on the calendar, and nothing is left to chase.
                 {preview.clientEmail ? ` ${preview.clientEmail} gets the confirmation.` : ' No client email on file — tell them by hand.'}
               </span>

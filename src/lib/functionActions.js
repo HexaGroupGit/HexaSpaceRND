@@ -186,7 +186,7 @@ export function canChangePaymentPlan(b) {
 
 // Flip the plan. If the opening invoice is already out, it's voided and the
 // right one raised and emailed in its place (reissueDeposit → submit.js).
-export async function setPayInFull({ store, booking, payInFull }) {
+export async function updatePaymentPlan({ store, booking, payInFull }) {
   if (!canChangePaymentPlan(booking)) throw new Error('Payment has started or the venue is secured — the payment plan can no longer change.')
   const b = { ...booking, payInFull: !!payInFull }
   if (b.quote) b.quote = withPaymentPlan(b.quote, b.payInFull)
