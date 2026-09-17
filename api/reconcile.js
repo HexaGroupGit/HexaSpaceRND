@@ -278,9 +278,13 @@ export default async function handler(req, res) {
           // countersign welcome carried the invite, doesn't need another
           // set-password email.
           if (!primary?.portalAccess && !lease.portalWelcomeSentAt) {
-            const inv = await invitePortalUser({ email })
+            // A returning member: lift the old offboarding ban and restore their record.
+            const inv = await invitePortalUser({ email, restore: { companyId: lease.tenantId } })
             if (!inv.ok) out.errors.push(`portal invite ${label}: ${inv.error}`)
-            else if (primary) await saveRow('members', primary.id, { ...primary, portalAccess: true })
+            else if (primary) {
+              const restoredPatch = inv.restored?.find((x) => x.id === primary.id)?.patch ?? {}
+              await saveRow('members', primary.id, { ...primary, ...restoredPatch, portalAccess: true })
+            }
           }
         }
         if (alreadyWelcomed) out.onboardedSuppressed.push(`${label} (welcome already sent — onboarded stamp restored)`)

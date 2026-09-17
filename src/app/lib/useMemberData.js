@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase.js'
 import { unreadDmCount } from './memberMessages.js'
 import { configureFunctionPricing } from '../../lib/functionBooking.js'
 import { canViewBilling } from '../../lib/billingAccess.js'
+import { pickMemberRecord } from '../../lib/memberAccess.js'
 
 // Loads the member's world for the mobile app. Mirrors PortalApp.jsx fetchData
 // (which stays untouched — the app is a separate experience): same tables, same
@@ -32,7 +33,9 @@ export function useMemberData(email) {
         results.map((r) => (r.data ?? []).map((row) => row.data))
 
       const lc = email.toLowerCase()
-      const member = members.find((m) => m.email?.toLowerCase() === lc) ?? null
+      // Prefer the record that still has access — an old removed/offboarded
+      // one for the same email would otherwise show "membership has ended".
+      const member = pickMemberRecord(members.filter((m) => m.email?.toLowerCase() === lc))
       const company =
         (member && companies.find((c) => c.id === member.companyId)) ??
         companies.find((c) => c.email?.toLowerCase() === lc) ??

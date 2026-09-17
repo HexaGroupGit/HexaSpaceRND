@@ -13,6 +13,7 @@ import { authHeaders } from './apiFetch.js'
 import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money, bookingSessions, sessionsLabel, withPaymentPlan, dueNowLabel } from './functionBooking.js'
 import { buildFullInvoice, buildSessionHolds, invoiceBaseFor } from './functionConfirm.js'
 import { PORTAL_URL } from './sendEmail.js'
+import { sendPortalInvite } from './portalInvite.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 const nowIso = () => new Date().toISOString()
@@ -105,18 +106,18 @@ export async function sendBookingInvite({ store, booking, settings }) {
     }).id
   }
   const memberMatch = email ? (store.members || []).find((m) => (m.email || '').toLowerCase() === email) : null
-  await fetch('/api/auth/invite', {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({
-      email: booking.email, redirectTo: `${portalBaseUrl(settings)}/function-space`,
-      subject: 'Complete your Hexa Space function booking',
-      heading: 'Your function booking is approved',
-      intro: `Great news — your date is available! Here are your booking details. Set up your portal access to review everything, sign, and pay ${booking.payInFull ? 'for your booking in full' : 'your deposit'} to secure the venue.`,
-      extraHtml: functionQuoteSummaryHtml(booking),
-      ctaLabel: 'Set up access & continue',
-      footerLabel: 'Function Space Hire',
-    }),
-  }).catch(() => {})
+  // A past member booking a function: the invite also restores their access,
+  // or they'd sign in to "Your membership has ended".
+  await sendPortalInvite({
+    email: booking.email, companyId: tenantId, updateMember: store.updateMember,
+    redirectTo: `${portalBaseUrl(settings)}/function-space`,
+    subject: 'Complete your Hexa Space function booking',
+    heading: 'Your function booking is approved',
+    intro: `Great news — your date is available! Here are your booking details. Set up your portal access to review everything, sign, and pay ${booking.payInFull ? 'for your booking in full' : 'your deposit'} to secure the venue.`,
+    extraHtml: functionQuoteSummaryHtml(booking),
+    ctaLabel: 'Set up access & continue',
+    footerLabel: 'Function Space Hire',
+  }).catch((e) => console.error('function booking invite failed:', e))
   return persistFn({ ...booking, companyId: tenantId, memberId: booking.memberId || memberMatch?.id || null, stage: 'invited', inviteSentAt: nowIso() })
 }
 

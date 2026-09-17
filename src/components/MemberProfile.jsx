@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authHeaders } from '../lib/apiFetch.js'
+import { sendPortalInvite } from '../lib/portalInvite.js'
 import { ArrowLeft, Pencil, Check, KeyRound, Printer } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { displayStatus, accessRoles, memberHasActiveMembership } from './Members.jsx'
@@ -48,7 +49,7 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
   const [inviting, setInviting] = useState(false)
   const [feeModal, setFeeModal] = useState(false)
   const [commentText, setCommentText] = useState('')
-  // 'active' (signed in) | 'invited' | 'not_invited' | null (loading/unknown)
+  // 'active' (signed in) | 'invited' | 'not_invited' | 'revoked' | null (loading/unknown)
   const [portalStatus, setPortalStatus] = useState(null)
 
   useEffect(() => {
@@ -68,13 +69,12 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
     if (!member.email) { alert('This member has no email address.'); return }
     setInviting(true)
     try {
-      const r = await fetch('/api/auth/invite', {
-        method: 'POST', headers: await authHeaders(),
-        body: JSON.stringify({ email: member.email }),
+      await sendPortalInvite({ email: member.email, companyId: member.companyId, updateMember })
+      updateMember(member.id, {
+        portalAccess: true, portalInviteFailed: false,
+        ...(member.status === 'Former' ? { status: 'Auto' } : {}),
       })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(d.error ?? 'Invite failed')
-      updateMember(member.id, { portalAccess: true, portalInviteFailed: false })
+      setPortalStatus('invited')
       alert(`Portal invite sent to ${member.email}. The set-password link expires in 24 hours.`)
     } catch (e) {
       updateMember(member.id, { portalInviteFailed: true })
@@ -192,7 +192,9 @@ export default function MemberProfile({ member, ctx, onBack, onEdit }) {
                 disabled={inviting}
                 className="mt-2 w-full text-xs border border-input rounded px-3 py-1.5 text-foreground hover:bg-muted/50 disabled:opacity-50"
               >
-                {inviting ? 'Sending…' : portalStatus === 'invited' ? 'Resend portal invite' : 'Send portal invite'}
+                {inviting ? 'Sending…'
+                  : portalStatus === 'revoked' ? 'Restore access & send invite'
+                  : portalStatus === 'invited' ? 'Resend portal invite' : 'Send portal invite'}
               </button>
             )}
           </div>

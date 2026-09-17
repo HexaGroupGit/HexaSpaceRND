@@ -15,8 +15,12 @@ export default async function handler(req, res) {
   // redirectTo is pinned server-side (never accept a caller-supplied redirect).
   // extraHtml is an admin-composed content block (e.g. the function booking's
   // session list + quote) rendered between the intro and the CTA button.
-  const { email, subject, heading, intro, extraHtml, ctaLabel, footerLabel } = req.body ?? {}
-  const r = await invitePortalUser({ email, subject, heading, intro, extraHtml, ctaLabel, footerLabel })
+  //
+  // Every call here is an admin deliberately giving someone access, so it also
+  // undoes an earlier offboarding: the login ban is lifted, and with companyId
+  // that company's member record is switched back on (see _invite.js).
+  const { email, companyId, subject, heading, intro, extraHtml, ctaLabel, footerLabel } = req.body ?? {}
+  const r = await invitePortalUser({ email, subject, heading, intro, extraHtml, ctaLabel, footerLabel, restore: { companyId: companyId || null } })
   if (!r.ok) return res.status(r.status ?? 500).json({ error: r.error })
-  return res.status(200).json({ success: true, email: r.email })
+  return res.status(200).json({ success: true, email: r.email, restored: r.restored ?? [] })
 }

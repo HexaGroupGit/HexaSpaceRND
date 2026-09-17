@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { canViewBilling } from '../lib/billingAccess.js'
+import { isLiveMember, pickMemberRecord } from '../lib/memberAccess.js'
 import { IS_RECOVERY_FLOW, recoveryHandled, SetPasswordScreen } from '../lib/authRecovery.jsx'
 import PortalLogin from './PortalLogin.jsx'
 import PortalLayout from './PortalLayout.jsx'
@@ -106,13 +107,19 @@ export default function PortalApp() {
         .filter((c) => myCompanyIds.has(c.id))
         .sort((a, b) => (a.businessName || '').localeCompare(b.businessName || ''))
 
-      // Active company: explicit switch → last choice → first.
+      // Active company: explicit switch → last choice → first one they still
+      // have access to → first. An ended company shouldn't be the landing page
+      // for someone who has since been invited to another.
+      const rowsFor = (c) => myMembers.filter((m) => m.companyId === c.id)
+      const usable = (c) => { const rows = rowsFor(c); return !rows.length || rows.some(isLiveMember) }
       const wanted = targetId || localStorage.getItem(ACTIVE_CO_KEY)
-      const company = myCompanies.find((c) => c.id === wanted) ?? myCompanies[0] ?? null
+      const company = myCompanies.find((c) => c.id === wanted) ?? myCompanies.find(usable) ?? myCompanies[0] ?? null
       if (company) localStorage.setItem(ACTIVE_CO_KEY, company.id)
       // The member row for the ACTIVE company (a person can hold a different row
       // per company); null when they're the primary contact with no member row.
-      const member = (company && myMembers.find((m) => m.companyId === company.id)) ?? null
+      // Re-added after a removal → two rows for one company: take the live one,
+      // or the old one's portalAccess:false shows "membership has ended".
+      const member = (company && pickMemberRecord(rowsFor(company))) ?? null
 
       const cid = company?.id
       const myEmail = (company?.email || member?.email || lc || '').toLowerCase()

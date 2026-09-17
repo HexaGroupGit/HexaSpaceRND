@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { authHeaders } from '../lib/apiFetch.js'
+import { sendPortalInvite } from '../lib/portalInvite.js'
 import { format, parseISO } from 'date-fns'
 import { ArrowLeft, Pencil, Building2, Mail, Phone, Hash, Plus, FileDown, Send, MessageSquare, Users, CreditCard, Receipt, Trash2, User, UserPlus, Settings as SettingsIcon, FileText, Ban, TrendingUp } from 'lucide-react'
 import TerminateModal, { TERMINATION_REASONS, applyTermination } from './TerminateModal.jsx'
@@ -52,17 +53,18 @@ function fmtAud(n) {
 
 // Per-company portal invite: checks the member-portal status for the company's
 // email, then sends an invite (or reports it's already invited/active).
-function PortalInviteButton({ email }) {
+function PortalInviteButton({ email, companyId, updateMember }) {
   const [state, setState] = useState('idle') // idle | working | invited | active | error
   if (!email) return null
   async function invite() {
     setState('working')
     try {
-      const st = await fetch(`/api/portal/status?email=${encodeURIComponent(email)}`).then((r) => r.json()).catch(() => ({}))
+      const st = await fetch(`/api/portal/status?email=${encodeURIComponent(email)}`, { headers: await authHeaders() }).then((r) => r.json()).catch(() => ({}))
       if (st.status === 'active') { setState('active'); return }
       if (st.status === 'invited') { setState('invited'); return }
-      const res = await fetch('/api/auth/invite', { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ email }) })
-      setState(res.ok ? 'invited' : 'error')
+      // not_invited, or revoked (offboarded) → send, which also restores access.
+      await sendPortalInvite({ email, companyId, updateMember })
+      setState('invited')
     } catch { setState('error') }
   }
   const label = state === 'working' ? 'Inviting…'
@@ -276,7 +278,7 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
             <span className="text-sm font-semibold text-foreground">{tenant.businessName}</span>
           </div>
           <div className="flex items-center gap-2">
-            <PortalInviteButton email={tenant.email} />
+            <PortalInviteButton email={tenant.email} companyId={tenant.id} updateMember={updateMember} />
             <button onClick={generateStatement} className="flex items-center gap-1.5 text-xs border border-input rounded px-3 py-1.5 hover:bg-muted/50 text-muted-foreground">
               <FileDown size={13} /> Statement PDF
             </button>
@@ -756,7 +758,7 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
             </Section>
 
             {/* ── Portal Access ── */}
-            <PortalAccessSection email={tenant.email} />
+            <PortalAccessSection email={tenant.email} companyId={tenant.id} updateMember={updateMember} />
 
             {/* ── Documents ── */}
             <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
@@ -1111,7 +1113,8 @@ function PortalSidebarStatus({ email }) {
 
   useEffect(() => {
     if (!email) return
-    fetch(`/api/portal/status?email=${encodeURIComponent(email)}`)
+    authHeaders()
+      .then((headers) => fetch(`/api/portal/status?email=${encodeURIComponent(email)}`, { headers }))
       .then(r => r.json())
       .then(d => setStatus(d.status))
       .catch(() => setStatus(null))
@@ -1124,7 +1127,12 @@ function PortalSidebarStatus({ email }) {
       <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
         <MessageSquare size={10} /> Portal Access
       </div>
-      {status === 'active' ? (
+      {status === 'revoked' ? (
+        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-red-100 text-red-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+          Access Ended
+        </span>
+      ) : status === 'active' ? (
         <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
           <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
           Active Member
@@ -1139,32 +1147,25 @@ function PortalSidebarStatus({ email }) {
   )
 }
 
-function PortalAccessSection({ email }) {
-  const [portalStatus, setPortalStatus] = useState(null) // null | 'not_invited' | 'invited' | 'active'
+function PortalAccessSection({ email, companyId, updateMember }) {
+  const [portalStatus, setPortalStatus] = useState(null) // null | 'not_invited' | 'invited' | 'active' | 'revoked'
   const [inviteStatus, setInviteStatus] = useState('idle') // idle | sending | sent | error
 
   useEffect(() => {
     if (!email) return
-    fetch(`/api/portal/status?email=${encodeURIComponent(email)}`)
+    authHeaders()
+      .then((headers) => fetch(`/api/portal/status?email=${encodeURIComponent(email)}`, { headers }))
       .then(r => r.json())
-      .then(d => setPortalStatus(d.status))
+      .then(d => setPortalStatus(d.status ?? 'not_invited'))
       .catch(() => setPortalStatus('not_invited'))
   }, [email])
 
   async function sendInvite() {
     setInviteStatus('sending')
     try {
-      const res = await fetch('/api/auth/invite', {
-        method: 'POST',
-        headers: await authHeaders(),
-        body: JSON.stringify({ email }),
-      })
-      if (res.ok) {
-        setInviteStatus('sent')
-        setPortalStatus('invited')
-      } else {
-        setInviteStatus('error')
-      }
+      await sendPortalInvite({ email, companyId, updateMember })
+      setInviteStatus('sent')
+      setPortalStatus('invited')
     } catch {
       setInviteStatus('error')
     }
@@ -1175,6 +1176,7 @@ function PortalAccessSection({ email }) {
     active:       <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">Active Member</span>,
     invited:      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-700">Invited — Pending</span>,
     not_invited:  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-muted text-muted-foreground">Not Invited</span>,
+    revoked:      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-red-100 text-red-700">Access Ended</span>,
   }
 
   return (
@@ -1198,6 +1200,9 @@ function PortalAccessSection({ email }) {
           {portalStatus === 'not_invited' && (
             <p className="text-xs text-muted-foreground mt-1.5">This member has not been invited yet.</p>
           )}
+          {portalStatus === 'revoked' && (
+            <p className="text-xs text-muted-foreground mt-1.5">Portal access was switched off when they left. Re-inviting restores it.</p>
+          )}
         </div>
 
         {/* Only show invite/resend if not yet active */}
@@ -1211,6 +1216,7 @@ function PortalAccessSection({ email }) {
              : inviteStatus === 'error' ? 'Failed — retry'
              : inviteStatus === 'sending' ? 'Sending…'
              : portalStatus === 'invited' ? 'Resend Invite'
+             : portalStatus === 'revoked' ? 'Restore & Invite'
              : 'Invite to Portal'}
           </button>
         )}

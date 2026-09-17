@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { authHeaders } from '../lib/apiFetch.js'
+import { sendPortalInvite } from '../lib/portalInvite.js'
 import { logAudit } from '../lib/audit.js'
 import { publishListing } from '../lib/sanity.js'
 import {
@@ -127,16 +128,9 @@ async function onboardLease({ lease, tenant, space, members, settings, templates
     // chip and can resend from the member profile.
     if (primary?.portalAccess || lease.portalWelcomeSentAt) return
     try {
-      const r = await fetch('/api/auth/invite', {
-        method: 'POST', headers: await authHeaders(),
-        body: JSON.stringify({ email }),
-      })
-      if (primary) {
-        updateMember(primary.id, r.ok
-          ? { portalAccess: true, portalInviteFailed: false }
-          : { portalInviteFailed: true })
-      }
-      if (!r.ok) console.error('Portal invite failed:', await r.text().catch(() => r.status))
+      // A returning member: this also lifts the old ban and restores the record.
+      await sendPortalInvite({ email, companyId: tenant?.id, updateMember })
+      if (primary) updateMember(primary.id, { portalAccess: true, portalInviteFailed: false })
     } catch (e) {
       if (primary) updateMember(primary.id, { portalInviteFailed: true })
       console.error('Portal invite failed:', e)

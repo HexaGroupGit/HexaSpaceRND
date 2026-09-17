@@ -233,12 +233,9 @@ export default function ContractDetail({
     if (companyMembers.some((m) => m.portalAccess)) return
     const email = primaryContact?.email || tenant?.email
     if (!email) return
-    const { authHeaders } = await import('../lib/apiFetch.js')
-    const r = await fetch('/api/auth/invite', {
-      method: 'POST', headers: await authHeaders(),
-      body: JSON.stringify({ email, ...portalWelcomeInvitePayload({ tenant, space, settings }) }),
-    })
-    if (!r.ok) throw new Error(await r.text().catch(() => `HTTP ${r.status}`))
+    const { sendPortalInvite } = await import('../lib/portalInvite.js')
+    // A returning company: the invite also switches their member record back on.
+    await sendPortalInvite({ email, companyId: tenant?.id, ...portalWelcomeInvitePayload({ tenant, space, settings }) })
     onUpdateLease?.(lease.id, { portalWelcomeSentAt: new Date().toISOString() })
     logAudit('email', 'lease', lease.id, contractNum, `Portal welcome + signup link sent to ${email}`)
   }

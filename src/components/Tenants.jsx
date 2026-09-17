@@ -325,7 +325,7 @@ function BulkPortalInviteButton({ tenants }) {
     if (!window.confirm(`Check all ${withEmail.length} companies and invite any not yet on the portal?`)) return
     setRunning(true); setResult(null)
     const statuses = await Promise.all(withEmail.map(async (t) => {
-      try { const res = await fetch(`/api/portal/status?email=${encodeURIComponent(t.email)}`); const data = await res.json(); return { tenant: t, status: data.status } }
+      try { const res = await fetch(`/api/portal/status?email=${encodeURIComponent(t.email)}`, { headers: await authHeaders() }); const data = await res.json(); return { tenant: t, status: data.status ?? 'error' } }
       catch { return { tenant: t, status: 'error' } }
     }))
     const toInvite = statuses.filter((s) => s.status === 'not_invited')
