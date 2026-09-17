@@ -209,7 +209,7 @@ export function computeQuote(input = {}) {
   // blocked before any payment) is billed as a single invoice.
   const fullDue = round(total + securityDeposit)            // display
 
-  return {
+  return withPaymentPlan({
     sessions, sessionCount,
     isWeekend: first.isWeekend, rate: first.rate, hours,
     rental, depositHalf, balanceHalf,
@@ -221,7 +221,30 @@ export function computeQuote(input = {}) {
     customRate: customRate != null,
     taxable, gst, total,
     securityDeposit, depositIncGst, dueNow, balanceDue, fullDue,
-  }
+  }, input.payInFull)
+}
+
+// Pay in full (booking.payInFull, the admin checkbox): ONE invoice for the lot
+// — hire + GST + security — instead of the 50% deposit now and the balance 14
+// days out. The line amounts (taxable, securityDeposit) don't change; only what
+// is due now and what is left afterwards do. Also applied to a stored quote
+// when the choice changes after it was locked in.
+export function withPaymentPlan(q, payInFull) {
+  if (!q) return q
+  const total = Number(q.total) || 0
+  const security = Number(q.securityDeposit) || 0
+  const fullDue = q.fullDue ?? round(total + security)
+  if (payInFull) return { ...q, payInFull: true, fullDue, dueNow: fullDue, balanceDue: 0 }
+  const depositIncGst = q.depositIncGst ?? round((Number(q.depositHalf) || 0) * (1 + GST_RATE))
+  return { ...q, payInFull: false, fullDue, dueNow: round(depositIncGst + security), balanceDue: round(total - depositIncGst) }
+}
+
+// "Payable now — …" label for whichever plan the quote is on.
+export function dueNowLabel(q) {
+  const security = money(q?.securityDeposit ?? 300)
+  return q?.payInFull
+    ? `Payable now — in full, incl. ${security} security`
+    : `Payable now — 50% deposit + ${security} security`
 }
 
 // Balance invoice due date = BALANCE_DUE_DAYS before the event (YYYY-MM-DD).

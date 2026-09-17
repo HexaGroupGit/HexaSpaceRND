@@ -104,15 +104,24 @@ function sessionRows(b) {
   return rows
 }
 
-function summaryRows(b) {
+// Pay in full (booking.payInFull): one invoice for the lot, nothing left after.
+// Mirrors withPaymentPlan in src/lib/functionBooking.js — this file stays import-free.
+function planQuote(b) {
   const q = b.quote || {}
+  if (!b.payInFull) return q
+  const fullDue = q.fullDue ?? ((Number(q.total) || 0) + (Number(q.securityDeposit ?? 300) || 0))
+  return { ...q, payInFull: true, fullDue, dueNow: fullDue, balanceDue: 0 }
+}
+
+function summaryRows(b) {
+  const q = planQuote(b)
   return `<table style="width:100%;border-collapse:collapse;margin:4px 0 24px">
     ${sumRow('Event', b.eventName || '—')}
     ${sessionRows(b)}
     ${sumRow('Guests', b.guests || '—')}
     ${q.discount > 0 ? sumRow('Discount' + (q.discountPct ? ` (${q.discountPct}%)` : '') + (q.discountReason ? ` - ${q.discountReason}` : ''), `-${money(q.discount)}`) : ''}
     ${sumRow('Total (inc GST)', money(q.total), true)}
-    ${sumRow('Payable now', `${money(q.dueNow)} <span style="color:${MUTE}">(50% deposit + $300 security)</span>`)}
+    ${sumRow('Payable now', `${money(q.dueNow)} <span style="color:${MUTE}">(${q.payInFull ? `in full, incl. ${money(q.securityDeposit ?? 300)} security` : '50% deposit + $300 security'})</span>`)}
   </table>`
 }
 
@@ -145,7 +154,7 @@ export default async function handler(req, res) {
     // if present, else the built-in branded fallback below.
     const { data: tmplRows } = await supabase.from('templates').select('data')
     const templates = (tmplRows ?? []).map((r) => r.data)
-    const q = b.quote || {}
+    const q = planQuote(b)
     const vars = {
       company: settings?.company?.name || 'Hexa Space',
       name: b.name || 'there', organisation: b.organisation || '',
@@ -160,9 +169,20 @@ export default async function handler(req, res) {
       signLink: signUrl || '', website: settings?.company?.website || 'hexaspace.com.au',
       bookLink: functionBookLink(settings, b.requestToken),
     }
+    // Pay-in-full bookings: saved templates still carry the 50/50 wording, so
+    // swap it for the one-invoice version rather than tell the client about a
+    // deposit and a balance they'll never be asked for.
+    const planCopy = (html) => (q.payInFull
+      ? String(html)
+        .replaceAll('(50% deposit + $300 security)', `(in full, incl. ${money(q.securityDeposit ?? 300)} security)`)
+        .replaceAll('Your deposit and security invoices are on their way; the balance is due 14 days before your event.',
+          b.depositPaid ? "Your booking is paid in full, so there's nothing more to pay." : 'Your invoice covers the booking in full, so there is no balance to pay later.')
+      : html)
     const pick = (type, fallbackSubject, fallbackHtml) => {
       const tpl = findEmailTemplate(templates, type)
-      return tpl ? { subject: fillVars(tpl.subject, vars), html: fillVars(tpl.content, vars) } : { subject: fallbackSubject, html: fallbackHtml }
+      return tpl
+        ? { subject: fillVars(tpl.subject, vars), html: planCopy(fillVars(tpl.content, vars)) }
+        : { subject: fallbackSubject, html: planCopy(fallbackHtml) }
     }
 
     if (mode === 'agreement') {

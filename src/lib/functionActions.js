@@ -10,7 +10,7 @@
 // lands (holdWithoutDeposit) — same confirmed stage, deposit still owed.
 import { supabase } from './supabase.js'
 import { authHeaders } from './apiFetch.js'
-import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money, bookingSessions, sessionsLabel } from './functionBooking.js'
+import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money, bookingSessions, sessionsLabel, withPaymentPlan, dueNowLabel } from './functionBooking.js'
 import { buildFullInvoice, buildSessionHolds, invoiceBaseFor } from './functionConfirm.js'
 import { PORTAL_URL } from './sendEmail.js'
 
@@ -42,7 +42,7 @@ function hasDetails(b) {
 // time, the per-session pricing, the full quote and the deposit/balance split
 // (not just the amount due). Inline styles only (email-safe).
 function functionQuoteSummaryHtml(b) {
-  const q = quoteFor(b)
+  const q = withPaymentPlan(quoteFor(b), b.payInFull)
   const OLIVE = '#7F8B2F', MUTE = '#6b6b6b', HAIR = '#e3e1e6', INK = '#1a1a1a'
   const SANS = "'HexaGT','Helvetica Neue',Arial,sans-serif"
   const dmy = (d) => { const [y, m, day] = String(d || '').split('-'); return day ? `${day}/${m}/${y}` : '—' }
@@ -72,8 +72,8 @@ function functionQuoteSummaryHtml(b) {
     <div style="font-family:${SANS};font-size:11px;color:${OLIVE};text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Your booking · ${b.eventName || 'Function'}</div>
     <table style="width:100%;border-collapse:collapse">${lines}</table>
     <table style="width:100%;border-collapse:collapse;margin-top:8px">
-      ${r('Payable now — 50% deposit + $300 security', money(q.dueNow), true)}
-      ${r('Balance — due 14 days before the first session', money(q.balanceDue))}
+      ${r(dueNowLabel(q), money(q.dueNow), true)}
+      ${q.payInFull ? '' : r('Balance — due 14 days before the first session', money(q.balanceDue))}
     </table>
   </div>`
 }
@@ -111,7 +111,7 @@ export async function sendBookingInvite({ store, booking, settings }) {
       email: booking.email, redirectTo: `${portalBaseUrl(settings)}/function-space`,
       subject: 'Complete your Hexa Space function booking',
       heading: 'Your function booking is approved',
-      intro: 'Great news — your date is available! Here are your booking details. Set up your portal access to review everything, sign, and pay your deposit to secure the venue.',
+      intro: `Great news — your date is available! Here are your booking details. Set up your portal access to review everything, sign, and pay ${booking.payInFull ? 'for your booking in full' : 'your deposit'} to secure the venue.`,
       extraHtml: functionQuoteSummaryHtml(booking),
       ctaLabel: 'Set up access & continue',
       footerLabel: 'Function Space Hire',
@@ -161,16 +161,37 @@ export async function updatePricing({ booking, overrides }) {
 export async function reissueDeposit({ store, booking }) {
   if (booking.depositPaid) throw new Error('Deposit already paid — adjustments now apply to the balance invoice only.')
   const q = computeQuote({ ...booking, bookedOn: today() })
-  const cur = await persistFn({ ...booking, quote: q, depositRaisedAt: null, depositInvoiceId: null })
-  const dep = (store.invoices || []).find((i) =>
-    i.functionRef === booking.ref && i.invoiceType === 'function_deposit' && !['paid', 'voided'].includes(i.status))
-  if (dep) store.voidInvoice(dep.id)
+  const cur = await persistFn({ ...booking, quote: q, depositRaisedAt: null, depositInvoiceId: null, fullInvoiceId: null })
+  // Whichever opening invoice is out — the 50% deposit, or the full invoice of
+  // a pay-in-full booking — read fresh: submit.js may have raised it after the
+  // admin store loaded. submit.js raises the right one for the current plan.
+  const open = (await fnInvoices(booking.ref)).filter((i) =>
+    ['function_deposit', 'function_full'].includes(i.invoiceType) && !['paid', 'voided'].includes(i.status))
+  for (const inv of open) await voidInvoiceRow({ store, invoice: inv })
   await fetch('/api/function-bookings/submit', {
     method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ id: cur.id }),
   }).catch(() => {})
   const { data } = await supabase.from('function_bookings').select('data').eq('id', cur.id)
   return data?.[0]?.data || cur
+}
+
+// ── Pay in full (the admin checkbox) ─────────────────────────────────────────
+// One invoice for the lot instead of the 50/50 split. Only while no money has
+// moved and the venue isn't secured yet — after that the split is settled.
+export function canChangePaymentPlan(b) {
+  if (!b || b.depositPaid || b.paidInFullAt || b.heldWithoutDeposit) return false
+  return ['enquiry', 'quoted', 'requested', 'invited', 'pending_approval', 'signed', 'awaiting_deposit'].includes(b.stage)
+}
+
+// Flip the plan. If the opening invoice is already out, it's voided and the
+// right one raised and emailed in its place (reissueDeposit → submit.js).
+export async function setPayInFull({ store, booking, payInFull }) {
+  if (!canChangePaymentPlan(booking)) throw new Error('Payment has started or the venue is secured — the payment plan can no longer change.')
+  const b = { ...booking, payInFull: !!payInFull }
+  if (b.quote) b.quote = withPaymentPlan(b.quote, b.payInFull)
+  const saved = await persistFn(b)
+  return saved.stage === 'awaiting_deposit' ? reissueDeposit({ store, booking: saved }) : saved
 }
 
 const newInvoiceId = () => `inv${Date.now()}${Math.random().toString(36).slice(2, 6)}`
@@ -253,6 +274,16 @@ async function secureVenue({ store, booking, findFunctionSpace, depositPaid }) {
   } else if (fullInvoiceId || has('function_full')) {
     // Already on a full invoice — leave it alone when the money lands later and
     // this runs again to mark it paid.
+  } else if (b.payInFull) {
+    // Pay in full, but submit.js never raised the invoice (a manual hub booking
+    // that skipped the portal) — raise the one full invoice, no split.
+    const live = await fnInvoices(b.ref)
+    const openFull = live.find((i) => i.invoiceType === 'function_full' && i.status !== 'voided')
+    if (openFull) fullInvoiceId = openFull.id
+    else {
+      fullInvoiceId = newInvoiceId()
+      store.addInvoice({ ...buildFullInvoice({ booking: b, quote: q, base, id: fullInvoiceId }), dueDate: today() })
+    }
   } else {
     // Safety net: raise the deposit (50% + $300 security) if it was never raised
     // (e.g. a manual hub booking that skipped the portal). One invoice, two lines.

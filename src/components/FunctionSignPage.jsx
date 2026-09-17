@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import SignatureCanvas from './SignatureCanvas.jsx'
-import { TERMS, TERMS_INTRO, ADDONS, money, computeQuote } from '../lib/functionBooking.js'
+import { TERMS, TERMS_INTRO, ADDONS, money, computeQuote, withPaymentPlan, dueNowLabel } from '../lib/functionBooking.js'
 
 function Screen({ icon, title, subtitle }) {
   return (
@@ -68,7 +68,7 @@ export default function FunctionSignPage({ token }) {
     load()
   }, [token])
 
-  const q = b?.quote || (b ? computeQuote(b) : null)
+  const q = b ? withPaymentPlan(b.quote || computeQuote(b), b.payInFull) : null
 
   async function handleSign() {
     if (!agreed) { alert('Please confirm you have read and agree to the Terms & Conditions.'); return }
@@ -155,9 +155,14 @@ export default function FunctionSignPage({ token }) {
             </div>
 
             <div className="mt-5 bg-gray-50 border border-gray-200 rounded-md p-4">
-              <Row label="Payable now — 50% deposit + $300 security" value={money(q?.dueNow)} strong />
-              <Row label={`Balance (due 14 days before ${(q?.sessionCount ?? 1) > 1 ? 'the first session' : 'event'})`} value={money(q?.balanceDue)} muted />
-              <p className="text-xs text-gray-500 mt-2">The $300 security deposit is refundable within 5 business days after your event, provided there’s no damage or excessive cleaning. The 50% venue-hire deposit is non-refundable and secures your date.</p>
+              <Row label={dueNowLabel(q)} value={money(q?.dueNow)} strong />
+              {!q?.payInFull && <Row label={`Balance (due 14 days before ${(q?.sessionCount ?? 1) > 1 ? 'the first session' : 'event'})`} value={money(q?.balanceDue)} muted />}
+              <p className="text-xs text-gray-500 mt-2">
+                The {money(q?.securityDeposit ?? 300)} security deposit is refundable within 5 business days after your event, provided there’s no damage or excessive cleaning.{' '}
+                {q?.payInFull
+                  ? 'Your booking is payable in full up front, and paying it secures your date.'
+                  : 'The 50% venue-hire deposit is non-refundable and secures your date.'}
+              </p>
             </div>
             {b?.catering && <p className="text-xs text-gray-500 mt-4">You indicated you’d like catering — our team will be in touch to quote this separately.</p>}
             <button onClick={() => setView('terms')} className="w-full mt-6 bg-black text-white py-3 rounded-md text-sm font-bold hover:bg-gray-800">Next: Terms →</button>

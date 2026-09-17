@@ -72,7 +72,7 @@ export default function PortalDashboard({ data }) {
               <div>
                 <div className="font-heading uppercase tracking-nav text-[11px] text-hexa-green">Function booking approved</div>
                 <p className="hx-prose text-ink mt-1">
-                  Your date{fnAction.eventDate ? ` (${fmt(fnAction.eventDate)})` : ''} is available. Review your details, sign, and pay your deposit{fnDueNow ? ` (${money(fnDueNow)} due now)` : ''} to secure the venue.
+                  Your date{fnAction.eventDate ? ` (${fmt(fnAction.eventDate)})` : ''} is available. Review your details, sign, and pay your {fnAction.quote?.payInFull ? 'booking in full' : 'deposit'}{fnDueNow ? ` (${money(fnDueNow)} due now)` : ''} to secure the venue.
                 </p>
               </div>
             </div>

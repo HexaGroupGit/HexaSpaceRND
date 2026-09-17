@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase.js'
 import { Page, PageHeader, Card, Eyebrow, Empty, money0 } from './ui.jsx'
 import { findFunctionSpace } from './functionSpace.js'
 import SignatureCanvas from '../components/SignatureCanvas.jsx'
-import { ADDONS, LAYOUTS, TERMS, TERMS_INTRO, computeQuote, money, bookingSessions, configureFunctionPricing } from '../lib/functionBooking.js'
+import { ADDONS, LAYOUTS, TERMS, TERMS_INTRO, computeQuote, money, bookingSessions, configureFunctionPricing, withPaymentPlan, dueNowLabel } from '../lib/functionBooking.js'
 
 // Admin-configurable pricing defaults (cleaning fee, rates…) — fetched once so
 // the quote the client sees matches what approve/invoicing will compute.
@@ -204,13 +204,14 @@ export default function PortalFunction({ spaces, member, company }) {
   // `bookedOn` is anchored to when the booking was raised, not today — otherwise
   // a client opening the page inside the late-booking window would be shown a
   // surcharge that was never part of their quote.
-  const quote = (isSeries && existing?.quote)
+  // Pay in full (set by the team) → one invoice for the lot, no 50/50 split.
+  const quote = withPaymentPlan((isSeries && existing?.quote)
     ? existing.quote
     : computeQuote({
         ...(isSeries ? { sessions: series } : { eventDate: f.date, startTime: f.startTime, endTime: f.endTime }),
         guests: f.guests, addons: f.addons, priceOverrides: existing?.priceOverrides,
         bookedOn: existing?.createdAt || today(),
-      })
+      }), existing?.payInFull)
 
   async function submit(e) {
     e.preventDefault()
@@ -276,10 +277,11 @@ export default function PortalFunction({ spaces, member, company }) {
   const status = bookingStatus(existing)
   if (status) {
     const b = existing
-    const q = b.quote || quote
+    const q = withPaymentPlan(b.quote || quote, b.payInFull)
+    const inFull = !!q.payInFull
     const first = (b.name || '').split(' ')[0]
     const refTag = <span className="text-ink font-heading tracking-nav text-[12px]">{b.ref}</span>
-    const head = status === 'confirmed' ? "You're confirmed 🎉" : status === 'deposit' ? 'Almost there — deposit due' : 'Request received'
+    const head = status === 'confirmed' ? "You're confirmed 🎉" : status === 'deposit' ? `Almost there — ${inFull ? 'payment' : 'deposit'} due` : 'Request received'
     return (
       <Page>
         <PageHeader kicker="Events · By request" title="Function Space" />
@@ -290,8 +292,8 @@ export default function PortalFunction({ spaces, member, company }) {
           <h2 className="hx-display text-3xl mt-4">{head}</h2>
           <p className="hx-prose mt-3">
             {status === 'confirmed' && <>Your date is secured{first ? `, ${first}` : ''} — we can’t wait to host <strong>{b.eventName || 'your event'}</strong>. Booking {refTag}.</>}
-            {status === 'deposit' && <>Thanks{first ? `, ${first}` : ''}! Your booking {refTag} is signed. We’ve emailed your <strong>deposit ({money(q.dueNow)})</strong> with payment details — your date is secured once it’s received.</>}
-            {status === 'review' && <>Thanks{first ? `, ${first}` : ''} — your request {refTag} has been sent to our team for approval. Once it’s approved we’ll email your deposit to secure the date.</>}
+            {status === 'deposit' && <>Thanks{first ? `, ${first}` : ''}! Your booking {refTag} is signed. We’ve emailed your <strong>{inFull ? `invoice (${money(q.dueNow)}, payable in full)` : `deposit (${money(q.dueNow)})`}</strong> with payment details — your date is secured once it’s received.</>}
+            {status === 'review' && <>Thanks{first ? `, ${first}` : ''} — your request {refTag} has been sent to our team for approval. Once it’s approved we’ll email your {inFull ? 'invoice' : 'deposit'} to secure the date.</>}
           </p>
 
           <div className="mt-7 border-t border-ink/10 pt-5 grid sm:grid-cols-2 gap-x-10 gap-y-1">
@@ -317,16 +319,18 @@ export default function PortalFunction({ spaces, member, company }) {
           {status === 'confirmed' && (
             <div className="mt-5 border-t border-ink/10 pt-5">
               <Row label="Total (inc GST)" value={money(q.total)} />
-              <Row label="Balance due — 14 days before" value={money(q.balanceDue)} strong />
+              {inFull
+                ? <Row label="Payment" value={b.depositPaid || b.paidInFullAt ? 'Paid in full' : 'Payable in full'} strong />
+                : <Row label="Balance due — 14 days before" value={money(q.balanceDue)} strong />}
               <Link to="/billing" className="hx-btn inline-block mt-5">View billing</Link>
             </div>
           )}
           {status === 'deposit' && (
             <>
               <div className="mt-5 border-t border-ink/10 pt-5">
-                <Row label="Deposit due now" value={money(q.dueNow)} strong />
-                <Row label="Balance — 14 days before event" value={money(q.balanceDue)} muted />
-                <Link to="/billing" className="hx-btn inline-block mt-5">Pay deposit in Billing</Link>
+                <Row label={inFull ? 'Due now — in full' : 'Deposit due now'} value={money(q.dueNow)} strong />
+                {!inFull && <Row label="Balance — 14 days before event" value={money(q.balanceDue)} muted />}
+                <Link to="/billing" className="hx-btn inline-block mt-5">{inFull ? 'Pay invoice in Billing' : 'Pay deposit in Billing'}</Link>
               </div>
               <PayInFullPanel booking={b} onConfirmed={(rec) => rec && setExisting(rec)} />
             </>
@@ -344,7 +348,7 @@ export default function PortalFunction({ spaces, member, company }) {
   return (
     <Page>
       <PageHeader kicker="Events · By request" title={depositScreen ? 'Complete your function booking' : 'Function Space'}>
-        {depositScreen ? 'Your date is approved — confirm your details below to secure it with a deposit.' : 'A light-filled venue for launches, dinners and conferences — request, sign and we’ll confirm.'}
+        {depositScreen ? `Your date is approved — confirm your details below to secure it with ${quote.payInFull ? 'payment in full' : 'a deposit'}.` : 'A light-filled venue for launches, dinners and conferences — request, sign and we’ll confirm.'}
       </PageHeader>
 
       <div className="bg-charcoal text-paper px-8 md:px-10 py-8 flex flex-wrap items-center gap-x-12 gap-y-4 mb-9">
@@ -456,8 +460,8 @@ export default function PortalFunction({ spaces, member, company }) {
                 <Row label="Total (inc GST)" value={money(quote.total)} strong />
               </div>
               <div className="mt-3 border-t border-ink/10 pt-3">
-                <Row label={`Deposit due now — 50% + ${money(quote.securityDeposit ?? 300)} security`} value={money(quote.dueNow)} strong />
-                <Row label="Balance (14 days before event)" value={money(quote.balanceDue)} muted />
+                <Row label={dueNowLabel(quote)} value={money(quote.dueNow)} strong />
+                {!quote.payInFull && <Row label="Balance (14 days before event)" value={money(quote.balanceDue)} muted />}
               </div>
               <p className="hx-prose text-[12px] mt-4">The {money(quote.securityDeposit ?? 300)} security deposit is refundable within 5 business days after your event if there’s no damage or excessive cleaning.</p>
             </Card>

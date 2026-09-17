@@ -8,21 +8,38 @@ import {
 } from 'lucide-react'
 import {
   ADDONS, STAGES, money, computeQuote, bufferedWindow,
-  bookingSessions, sessionsLabel, seriesDateClashes, seriesCalendarClashes,
+  bookingSessions, sessionsLabel, seriesDateClashes, seriesCalendarClashes, withPaymentPlan, dueNowLabel,
 } from '../lib/functionBooking.js'
 import { findFunctionSpace } from '../portal/functionSpace.js'
 import { billingContactFor } from '../lib/credits.js'
 import FunctionPayInFullDialog from './FunctionPayInFullDialog.jsx'
 import { canPayInFull } from '../lib/functionConfirm.js'
-import { approveFunctionBooking, confirmDepositPaid, holdWithoutDeposit, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit, reissueHeldInvoice, requestBuildingAccess } from '../lib/functionActions.js'
+import { approveFunctionBooking, confirmDepositPaid, holdWithoutDeposit, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit, reissueHeldInvoice, requestBuildingAccess, setPayInFull, canChangePaymentPlan } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 const nowIso = () => new Date().toISOString()
 const randToken = () => Array.from({ length: 24 }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join('')
 
-function StageBadge({ stage }) {
+function StageBadge({ stage, inFull }) {
   const s = STAGES[stage] ?? { label: stage, cls: 'bg-gray-100 text-gray-600' }
-  return <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${s.cls}`}>{s.label}</span>
+  const label = inFull && stage === 'awaiting_deposit' ? 'Payment Due' : s.label
+  return <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${s.cls}`}>{label}</span>
+}
+
+// The admin checkbox: one invoice for the lot instead of the 50/50 split.
+function PayInFullCheckbox({ checked, onChange, disabled, note }) {
+  return (
+    <div>
+      <label className={`flex items-start gap-2 text-sm ${disabled ? 'opacity-60' : ''}`}>
+        <input type="checkbox" className="mt-0.5" checked={!!checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+        <span>
+          <span className="font-medium text-foreground">Pay in full</span>
+          <span className="block text-xs text-muted-foreground">One invoice for the full amount (hire + GST + security), instead of a 50% deposit now and the balance 14 days before.</span>
+        </span>
+      </label>
+      {note && <p className="text-[11px] text-muted-foreground mt-1 ml-6">{note}</p>}
+    </div>
+  )
 }
 
 function fmtDate(d) {
@@ -35,7 +52,7 @@ const lab = 'block text-xs font-medium text-muted-foreground mb-1'
 
 // ── Quote breakdown (shared by form + detail) ────────────────────────────────
 function QuoteBreakdown({ booking }) {
-  const q = booking.quote || computeQuote({ ...booking, bookedOn: today() })
+  const q = withPaymentPlan(booking.quote || computeQuote({ ...booking, bookedOn: today() }), booking.payInFull)
   const addonLines = ADDONS.filter((a) => booking.addons?.[a.key])
   const line = (l, v, cls = '') => (
     <div className={`flex justify-between py-1 text-sm ${cls}`}><span>{l}</span><span className="tabular-nums">{money(v)}</span></div>
@@ -76,9 +93,11 @@ function QuoteBreakdown({ booking }) {
         {/* A courtesy hold skips the split — one invoice for the lot. */}
         {booking.heldWithoutDeposit ? (
           line(`Payable in full — hire + ${money(q.securityDeposit ?? 300)} security (14 days before event)`, q.fullDue ?? (q.total + (q.securityDeposit ?? 300)), 'font-semibold')
+        ) : q.payInFull ? (
+          line(dueNowLabel(q), q.dueNow, 'font-semibold')
         ) : (
           <>
-            {line(`Payable now — 50% deposit + ${money(q.securityDeposit ?? 300)} security`, q.dueNow, 'font-semibold')}
+            {line(dueNowLabel(q), q.dueNow, 'font-semibold')}
             {line('Balance (14 days before event)', q.balanceDue, 'text-muted-foreground')}
           </>
         )}
@@ -115,6 +134,7 @@ function PricingBox({ booking, onApply, busy }) {
     return Object.keys(out).length ? out : null
   })()
   const preview = computeQuote({ ...booking, priceOverrides: cleaned, bookedOn: today() })
+  const inFull = !!booking.payInFull
 
   // Deposit raised but unpaid → saving should re-issue the invoice at the new
   // amount. Also covers a courtesy hold (confirmed, deposit still owed).
@@ -150,14 +170,14 @@ function PricingBox({ booking, onApply, busy }) {
 
       <div className="border-t border-border pt-2 text-sm space-y-0.5">
         <div className="flex justify-between"><span className="text-muted-foreground">New total (inc GST)</span><strong className="tabular-nums">{money(preview.total)}</strong></div>
-        <div className="flex justify-between"><span className="text-muted-foreground">Deposit due now</span><span className="tabular-nums">{money(preview.dueNow)}</span></div>
-        <div className="flex justify-between"><span className="text-muted-foreground">Balance</span><span className="tabular-nums">{money(preview.balanceDue)}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">{inFull ? 'Due now (in full, incl. security)' : 'Deposit due now'}</span><span className="tabular-nums">{money(preview.dueNow)}</span></div>
+        {!inFull && <div className="flex justify-between"><span className="text-muted-foreground">Balance</span><span className="tabular-nums">{money(preview.balanceDue)}</span></div>}
       </div>
 
       <div className="flex flex-wrap gap-2">
         <button disabled={busy} onClick={() => onApply(cleaned, reissue)}
           className="flex-1 bg-primary text-primary-foreground py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
-          {busy ? 'Saving…' : reissue ? 'Save & re-issue deposit invoice' : 'Save pricing'}
+          {busy ? 'Saving…' : reissue ? `Save & re-issue ${inFull || booking.stage === 'confirmed' ? 'invoice' : 'deposit invoice'}` : 'Save pricing'}
         </button>
         {booking.priceOverrides && (
           <button disabled={busy} onClick={() => onApply(null, reissue)}
@@ -170,7 +190,7 @@ function PricingBox({ booking, onApply, busy }) {
         <p className="text-[11px] text-muted-foreground">
           {booking.stage === 'confirmed'
             ? 'The outstanding full invoice will be voided and a fresh one raised at the new amount — send it from Billing.'
-            : 'The pending deposit invoice will be voided and a fresh one raised & emailed at the new amount.'}
+            : `The pending ${inFull ? 'invoice' : 'deposit invoice'} will be voided and a fresh one raised & emailed at the new amount.`}
         </p>
       )}
       {booking.depositPaid && <p className="text-[11px] text-amber-700">Deposit already paid — changes here adjust the balance invoice when the venue is secured.</p>}
@@ -324,6 +344,19 @@ function BookingForm({ booking, onSave, onClose }) {
             {Number(f.guests) > 80 && <p className="text-xs text-amber-600">80+ guests — F&B & AV staff ($40/hr) auto-added.</p>}
             <div><label className={lab}>Additional requirements</label><textarea rows={2} className={inp} value={f.additionalRequirements} onChange={(e) => set('additionalRequirements', e.target.value)} /></div>
           </section>
+          <section className="space-y-2">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Payment</h3>
+            <PayInFullCheckbox
+              checked={f.payInFull}
+              onChange={(v) => set('payInFull', v)}
+              disabled={!!booking?.id && !canChangePaymentPlan(booking)}
+              note={booking?.id && !canChangePaymentPlan(booking)
+                ? 'Payment has started or the venue is secured, so the plan is locked.'
+                : booking?.stage === 'awaiting_deposit' && !!f.payInFull !== !!booking.payInFull
+                  ? 'The invoice already sent will be voided, and the right one raised and emailed to the client when you save.'
+                  : null}
+            />
+          </section>
           <section>
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Live Quote</h3>
             <div className="border border-border rounded-md p-3"><QuoteBreakdown booking={{ ...f, quote }} /></div>
@@ -374,7 +407,7 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
     <div className="w-full md:w-[420px] border-l border-border bg-card flex flex-col h-full shrink-0">
       <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0">
         <div>
-          <div className="flex items-center gap-2 mb-1"><span className="font-mono text-xs text-muted-foreground">{b.ref}</span><StageBadge stage={b.stage} /></div>
+          <div className="flex items-center gap-2 mb-1"><span className="font-mono text-xs text-muted-foreground">{b.ref}</span><StageBadge stage={b.stage} inFull={b.payInFull} /></div>
           <div className="text-base font-bold text-foreground">{b.eventName || 'Function booking'}</div>
           <div className="text-sm text-muted-foreground">{b.organisation || b.name}</div>
         </div>
@@ -426,6 +459,12 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
             )}
           </div>
           <QuoteBreakdown booking={b} />
+          {canChangePaymentPlan(b) && (
+            <div className="mt-3">
+              <PayInFullCheckbox checked={b.payInFull} disabled={busy} onChange={(v) => actions.setPayInFull(b, v)}
+                note={b.stage === 'awaiting_deposit' ? 'Changing this voids the invoice already sent and emails the client the new one.' : null} />
+            </div>
+          )}
           {showPricing && (
             <PricingBox booking={b} busy={busy}
               onApply={async (overrides, reissue) => { await actions.adjustPricing(b, overrides, reissue); setShowPricing(false) }} />
@@ -443,8 +482,8 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
         )}
         {b.confirmedAt && (
           <div className="bg-green-50 border border-green-100 rounded-md px-3 py-2.5 text-xs text-green-800 space-y-1">
-            <div>Confirmed {format(new Date(b.confirmedAt), 'dd MMM yyyy')} — deposit, security &amp; balance invoices raised.</div>
-            <div>Deposit paid: {b.depositPaid ? 'Yes' : 'Not yet'}</div>
+            <div>Confirmed {format(new Date(b.confirmedAt), 'dd MMM yyyy')} — {b.payInFull || b.fullInvoiceId ? 'one full invoice (hire + security) raised.' : 'deposit, security & balance invoices raised.'}</div>
+            <div>{b.payInFull ? 'Paid in full' : 'Deposit paid'}: {b.depositPaid ? 'Yes' : 'Not yet'}</div>
           </div>
         )}
         {b.refundedAt && (
@@ -507,15 +546,23 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
           )}
           {b.stage === 'awaiting_deposit' && (
             <>
-              <div className="bg-orange-50 border border-orange-100 rounded-md px-3 py-2.5 text-xs text-orange-800">Deposit &amp; security invoices raised. The venue is secured once the deposit is paid.</div>
+              <div className="bg-orange-50 border border-orange-100 rounded-md px-3 py-2.5 text-xs text-orange-800">
+                {b.payInFull
+                  ? `Full invoice raised (${money(q.fullDue)}, hire + GST + security). The venue is secured once it's paid.`
+                  : 'Deposit & security invoices raised. The venue is secured once the deposit is paid.'}
+              </div>
               <button onClick={() => actions.markPaid(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
-                <DollarSign size={14} /> {busy ? 'Securing…' : 'Mark deposit paid → secure venue'}
+                <DollarSign size={14} /> {busy ? 'Securing…' : b.payInFull ? 'Mark paid in full → secure venue' : 'Mark deposit paid → secure venue'}
               </button>
               {/* Management call: block the dates now, bill the lot in one invoice. */}
               <button onClick={() => actions.holdDates(b)} disabled={busy} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40">
                 <CalendarCheck size={14} /> {busy ? 'Blocking…' : 'Block dates without payment'}
               </button>
-              <p className="text-[11px] text-muted-foreground">Blocking puts the sessions on the calendar before the money lands. Nothing is waived — the 50% deposit invoice is voided and replaced by one invoice for the full {money(q.fullDue)} (hire + GST + security), due 14 days before the event.</p>
+              <p className="text-[11px] text-muted-foreground">
+                {b.payInFull
+                  ? <>Blocking puts the sessions on the calendar before the money lands. Nothing is waived — the full {money(q.fullDue)} invoice stays outstanding.</>
+                  : <>Blocking puts the sessions on the calendar before the money lands. Nothing is waived — the 50% deposit invoice is voided and replaced by one invoice for the full {money(q.fullDue)} (hire + GST + security), due 14 days before the event.</>}
+              </p>
             </>
           )}
           {/* Skip the deposit cycle entirely: charge the card for everything now
@@ -532,7 +579,7 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
           {b.stage === 'confirmed' && (
             <>
               {b.depositPaid ? (
-                <div className="bg-green-50 border border-green-100 rounded-md px-3 py-2.5 text-xs text-green-800">Confirmed — venue secured and on the calendar (±30-min buffer). Balance due 14 days before the event.</div>
+                <div className="bg-green-50 border border-green-100 rounded-md px-3 py-2.5 text-xs text-green-800">Confirmed — venue secured and on the calendar (±30-min buffer). {b.payInFull || b.paidInFullAt ? 'Paid in full, nothing left to collect.' : 'Balance due 14 days before the event.'}</div>
               ) : (
                 <>
                   <div className="bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5 text-xs text-amber-800">
@@ -684,7 +731,12 @@ export default function FunctionBookings() {
         createdAt: today(),
       }
     }
-    const saved = await save(record)
+    let saved = await save(record)
+    // Pay in full ticked/unticked after the opening invoice went out → swap it.
+    const before = form.id ? rows.find((r) => r.id === form.id) : null
+    if (before && !!before.payInFull !== !!record.payInFull && saved.stage === 'awaiting_deposit' && !saved.depositPaid) {
+      try { saved = apply(await reissueDeposit({ store, booking: saved })) } catch (e) { alert(e.message) }
+    }
     setShowForm(false); setEditData(null); setSelected(saved)
   }
 
@@ -703,8 +755,20 @@ export default function FunctionBookings() {
     // paid confirm, the deposit simply stays outstanding.
     async holdDates(b) {
       const q = b.quote || computeQuote({ ...b, bookedOn: today() })
-      if (!confirm(`Block ${sessionsLabel(b)} without payment?\n\nThe sessions go on the calendar now and the client is emailed. Nothing is waived — the 50% deposit invoice is voided and they're invoiced the full ${money(q.fullDue)} in one invoice, due 14 days before the event.`)) return
+      const billing = b.payInFull
+        ? `their full ${money(q.fullDue)} invoice stays outstanding.`
+        : `the 50% deposit invoice is voided and they're invoiced the full ${money(q.fullDue)} in one invoice, due 14 days before the event.`
+      if (!confirm(`Block ${sessionsLabel(b)} without payment?\n\nThe sessions go on the calendar now and the client is emailed. Nothing is waived — ${billing}`)) return
       await run(() => holdWithoutDeposit({ store, booking: b, findFunctionSpace }))
+    },
+    async setPayInFull(b, payInFull) {
+      if (b.stage === 'awaiting_deposit' && !confirm(payInFull
+        ? `Switch ${b.ref} to pay in full?\n\nThe 50% deposit invoice is voided and the client is emailed one invoice for the full amount.`
+        : `Switch ${b.ref} back to a 50% deposit?\n\nThe full invoice is voided and the client is emailed a deposit invoice instead.`)) return
+      setBusy(true)
+      try { apply(await setPayInFull({ store, booking: b, payInFull })) }
+      catch (e) { alert(e.message) }
+      finally { setBusy(false) }
     },
     complete: (b) => save({ ...b, stage: 'completed', completedAt: nowIso() }),
     async resolveDeposit(b, r) { apply(await resolveDeposit({ store, booking: b, ...r })) },
@@ -799,7 +863,7 @@ export default function FunctionBookings() {
                       <td className="px-4 py-3 text-muted-foreground">{bookingSessions(b).length > 1 ? sessionsLabel(b) : fmtDate(b.eventDate)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-foreground">{money(q.total)}</td>
                       <td className="px-4 py-3">
-                        <StageBadge stage={b.stage} />
+                        <StageBadge stage={b.stage} inFull={b.payInFull} />
                         {b.stage === 'confirmed' && !b.depositPaid && (
                           <span className="ml-1.5 inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Deposit owing</span>
                         )}

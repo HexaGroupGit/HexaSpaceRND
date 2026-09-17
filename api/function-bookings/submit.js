@@ -3,9 +3,11 @@
 // admin "approve" action for member requests that already have details). Finalises
 // their company/member, raises the deposit + $300 security invoices, emails the
 // deposit, and moves the booking to 'awaiting_deposit'. Balance + calendar happen
-// later when the deposit is marked paid.
+// later when the deposit is marked paid. A pay-in-full booking (booking.payInFull)
+// gets ONE invoice for the lot instead, and no balance invoice later.
 import { randomBytes } from 'crypto'
-import { sessionsLabel } from '../../src/lib/functionBooking.js'
+import { sessionsLabel, withPaymentPlan } from '../../src/lib/functionBooking.js'
+import { buildFullInvoice } from '../../src/lib/functionConfirm.js'
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH1, bP, bSmall, bPanel, bTable, bBtn, SANS, INK } from '../_brand.js'
 import { invoicePdfBase64 } from '../_invoicePdf.js'
@@ -58,7 +60,10 @@ export default async function handler(req, res) {
     if (b.depositRaisedAt) return res.status(200).json({ success: true, already: true })
 
     const settings = settRows?.[0]?.data ?? {}
-    const q = b.quote || {}
+    const payInFull = !!b.payInFull
+    // A stored quote may predate the pay-in-full choice — line it up so the
+    // email, the portal and the invoice all quote the same plan.
+    const q = withPaymentPlan(b.quote || {}, payInFull)
 
     // ── Finalise company + member from captured info ──
     const ci = b.companyInfo || {}
@@ -131,15 +136,26 @@ export default async function handler(req, res) {
 
     // One deposit invoice, two lines: 50% of the booking cost (GST applies) and
     // the $300 refundable security deposit (GST-exempt). Due immediately to secure.
+    // Pay in full → the same full invoice a courtesy hold raises (hire + GST +
+    // security), also due now: the dates aren't held until it's paid.
     const depId = `inv${Date.now()}${Math.random().toString(36).slice(2, 6)}`
-    const depInv = { ...base, id: depId, number: numFor(), invoiceType: 'function_deposit', dueDate: now.split('T')[0], vatEnabled: true, payToken: randomBytes(18).toString('base64url'), lineItems: [
-      { description: `50% deposit — function booking · ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf ?? 0, qty: 1, discountPct: 0 },
-      { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit ?? 300, qty: 1, discountPct: 0, vatExempt: true },
-    ] }
+    const payToken = randomBytes(18).toString('base64url')
+    const depInv = payInFull
+      ? { ...buildFullInvoice({ booking: b, quote: { ...q, securityDeposit: q.securityDeposit ?? 300 }, base, id: depId }),
+          number: numFor(), dueDate: now.split('T')[0], payToken }
+      : { ...base, id: depId, number: numFor(), invoiceType: 'function_deposit', dueDate: now.split('T')[0], vatEnabled: true, payToken, lineItems: [
+          { description: `50% deposit — function booking · ${b.eventName || 'Function'} (${sessionsLabel(b)})`, revenueAccount: 'Function Space Hire', unitPrice: q.depositHalf ?? 0, qty: 1, discountPct: 0 },
+          { description: `Refundable security deposit · ${b.eventName || 'Function'}`, revenueAccount: 'Security Deposit', unitPrice: q.securityDeposit ?? 300, qty: 1, discountPct: 0, vatExempt: true },
+        ] }
     await supabase.from('invoices').upsert([{ id: depId, data: depInv, updated_at: now }])
 
     // ── Update booking ──
-    const updated = { ...b, stage: 'awaiting_deposit', depositRaisedAt: now, tenantId, companyId: tenantId, memberId, depositInvoiceId: depId, read: false, updatedAt: now }
+    const updated = {
+      ...b, stage: 'awaiting_deposit', depositRaisedAt: now, tenantId, companyId: tenantId, memberId,
+      ...(b.quote ? { quote: q } : {}),
+      depositInvoiceId: payInFull ? null : depId, fullInvoiceId: payInFull ? depId : (b.fullInvoiceId ?? null),
+      read: false, updatedAt: now,
+    }
     await supabase.from('function_bookings').upsert({ id: b.id, data: updated, updated_at: now })
 
     // ── Email the deposit-due notice (with the tax-invoice PDF attached) ──
@@ -169,8 +185,20 @@ async function emailDeposit(settings, b, q, depInv) {
         `<div style="margin-top:6px">Reference: ${b.ref}</div>` +
         `</div>`
       ) : ''
-  const inner =
-    bKicker('Deposit due to secure your date') +
+  const inFull = !!b.payInFull
+  const inner = inFull
+    ? bKicker('Payment due to secure your date') +
+      bH1(`Thanks ${b.name || 'there'} — one step to secure your booking`) +
+      bP(`Your details are in. To secure <strong>${b.eventDate || 'your date'}</strong> we just need your payment. Your date isn't held until it's received.`) +
+      bTable([
+        ['Venue hire (inc GST)', money(q.total)],
+        ['Refundable security deposit', money(q.securityDeposit ?? 300)],
+        ['Payable in full now', money(q.fullDue ?? q.dueNow), true],
+      ]) +
+      (depInv?.payToken ? bBtn('Pay online', `https://portal.hexaspace.com.au/pay/${depInv.id}?t=${depInv.payToken}`) : '') +
+      bankBlock +
+      bSmall(`Your tax invoice is attached. It covers your booking in full, including the ${money(q.securityDeposit ?? 300)} refundable security deposit, so there's no balance to pay later. Once received, we'll confirm and lock in your booking.`)
+    : bKicker('Deposit due to secure your date') +
     bH1(`Thanks ${b.name || 'there'} — one step to secure your booking`) +
     bP(`Your details are in. To secure <strong>${b.eventDate || 'your date'}</strong> we just need your deposit. Your date isn't held until the deposit is received.`) +
     bTable([
@@ -192,5 +220,6 @@ async function emailDeposit(settings, b, q, depInv) {
     }
   } catch (err) { console.error('invoice pdf failed:', err) }
 
-  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: b.email, replyTo, subject: `Deposit due to secure your function — ${b.ref}`, html, attachments })
+  const subject = inFull ? `Payment due to secure your function — ${b.ref}` : `Deposit due to secure your function — ${b.ref}`
+  await sendResendEmail({ from: `${fromName} <${fromEmail}>`, to: b.email, replyTo, subject, html, attachments })
 }
