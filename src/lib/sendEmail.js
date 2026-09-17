@@ -3,7 +3,7 @@
 // NOTE: supabase is imported lazily (inside sendEmail) so this module stays
 // import-safe for Node scripts that reuse the branded email defaults below.
 
-export async function sendEmail({ to, subject, html, settings, attachments, tenantId, emailType }) {
+export async function sendEmail({ to, subject, html, settings, attachments, tenantId, emailType, logExtra }) {
   const emails = settings?.emails ?? {}
   const billing = settings?.billing ?? {}
   const company = settings?.company ?? {}
@@ -52,6 +52,7 @@ export async function sendEmail({ to, subject, html, settings, attachments, tena
       subject,
       sentAt: new Date().toISOString(),
       hasAttachment: !!(attachments?.length),
+      ...(logExtra ?? {}),
     },
   })).then(() => {}).catch(() => {})
 

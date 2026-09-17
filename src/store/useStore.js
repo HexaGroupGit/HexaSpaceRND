@@ -20,7 +20,7 @@ import {
   DEFAULT_FUNCTION_FINAL_SUBJECT, DEFAULT_FUNCTION_FINAL_HTML,
 } from '../lib/functionEmails.js'
 import {
-  accessGateMet, desiredSpaceStatus, shouldOnboard, requiresAccessGate, depositAmount,
+  accessGateMet, desiredSpaceStatus, shouldOnboard, welcomeIsStale, welcomeAlreadySent, requiresAccessGate, depositAmount,
   exitVirtualOfficeTerm, exitVirtualOfficeApplies, isOfficeMove,
   onboardingEmailHtml, resolveOnboardingCopy, renderOnboardingTemplate,
   DEFAULT_ONBOARDING_EMAIL_SUBJECT, DEFAULT_ONBOARDING_EMAIL_HTML,
@@ -84,23 +84,41 @@ async function onboardLease({ lease, tenant, space, members, settings, templates
 
     // 2. Onboarding email (how-to's + portal + Salto link) — subject/intro from
     //    the editable Settings → Email Templates → Onboarding template.
-    try {
-      // Prefer the editable Templates → Emails → Onboarding template if present,
-      // otherwise fall back to the built-in default email. An office MOVE skips
-      // the template outright — it's written as a welcome, and welcoming a
-      // member of two years to the building reads badly.
-      const onbTpl = isOfficeMove(lease)
-        ? null
-        : (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'onboarding' && t.content)
-      let subject, html
-      if (onbTpl) {
-        ({ subject, html } = renderOnboardingTemplate({ template: onbTpl, lease, tenant, space, settings, saltoLink }))
-      } else {
-        subject = resolveOnboardingCopy({ lease, tenant, space, settings }).subject
-        html = onboardingEmailHtml({ lease, tenant, space, settings, saltoLink })
-      }
-      await sendEmail({ to: email, subject, html, settings, tenantId: tenant?.id, emailType: 'onboarding' })
-    } catch (e) { console.error('Onboarding email failed:', e) }
+    //    Held back when the contract started long ago (see welcomeIsStale):
+    //    the gate cleared late, the member didn't just arrive.
+    //    Also held back when email_log shows it already went out: a lost
+    //    onboardedAt stamp must not mean a second welcome.
+    const { data: logRows, error: logErr } = await supabase.from('email_log').select('data').eq('data->>emailType', 'onboarding')
+    if (logErr) console.error('email_log read failed (onboarding dedupe):', logErr)
+    const alreadySent = welcomeAlreadySent((logRows ?? []).map((r) => r.data), {
+      lease, tenant, emails: (members ?? []).filter((m) => m.companyId === tenant?.id).map((m) => m.email),
+    })
+    if (alreadySent) {
+      updateLease(lease.id, { welcomeSkippedReason: 'welcome already sent (email_log)' })
+    } else if (welcomeIsStale(lease)) {
+      updateLease(lease.id, { welcomeSkippedReason: `commenced ${lease.startDate}; access gate cleared ${now.slice(0, 10)}` })
+    } else {
+      try {
+        // Prefer the editable Templates → Emails → Onboarding template if present,
+        // otherwise fall back to the built-in default email. An office MOVE skips
+        // the template outright — it's written as a welcome, and welcoming a
+        // member of two years to the building reads badly.
+        const onbTpl = isOfficeMove(lease)
+          ? null
+          : (templates ?? []).find((t) => t.category === 'email' && t.emailType === 'onboarding' && t.content)
+        let subject, html
+        if (onbTpl) {
+          ({ subject, html } = renderOnboardingTemplate({ template: onbTpl, lease, tenant, space, settings, saltoLink }))
+        } else {
+          subject = resolveOnboardingCopy({ lease, tenant, space, settings }).subject
+          html = onboardingEmailHtml({ lease, tenant, space, settings, saltoLink })
+        }
+        await sendEmail({
+          to: email, subject, html, settings, tenantId: tenant?.id, emailType: 'onboarding',
+          logExtra: { leaseId: lease.id, ...(isOfficeMove(lease) ? { move: true } : {}) },
+        })
+      } catch (e) { console.error('Onboarding email failed:', e) }
+    }
 
     // 3. Portal invite (creates the Supabase auth user + set-password email).
     // Skipped when the signup already went out — either the member has portal

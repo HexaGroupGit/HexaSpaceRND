@@ -170,6 +170,43 @@ export function shouldOnboard(lease, invoices, tenant) {
   return accessGateMet(lease, invoices, tenant) && !lease?.onboardedAt
 }
 
+// The gate can clear long after commencement: an opening invoice marked paid
+// weeks late (Xero pull, Stripe, a manual reconcile), an unpaid one voided so a
+// later paid month becomes the "first", or a card finally saved. Onboarding
+// still has to run (it stamps onboardedAt, provisions access, invites to the
+// portal), but a welcome saying "get started from 1 July" that lands in
+// September reads as a glitch to a member who has been here for months. Past
+// this many days after commencement the welcome email is held back and the
+// admins are told instead.
+export const WELCOME_STALE_DAYS = 30
+
+export function welcomeIsStale(lease, today = new Date()) {
+  if (!lease?.startDate) return false
+  const start = new Date(`${String(lease.startDate).slice(0, 10)}T00:00:00`)
+  if (Number.isNaN(start.getTime())) return false
+  return (today - start) / 86400000 > WELCOME_STALE_DAYS
+}
+
+// Has this welcome already gone out? onboardedAt is the primary guard, but it
+// lives inside the lease's data blob, and every lease save rewrites that whole
+// blob — an admin tab loaded before the cron stamped it, or a later step of the
+// same cron run holding the pre-stamp copy, silently erases it and the next
+// pass welcomes the member again. email_log is append-only, so check it too.
+// `log` is email_log rows' data. A suite move is its own email, so it only
+// matches sends for the same contract; a welcome matches any earlier welcome to
+// the company or to one of its contact addresses.
+export function welcomeAlreadySent(log, { lease, tenant, emails = [] }) {
+  const move = isOfficeMove(lease)
+  const addrs = new Set([tenant?.email, ...emails].filter(Boolean).map((e) => String(e).toLowerCase().trim()))
+  return (log ?? []).some((e) => {
+    if (e?.emailType !== 'onboarding') return false
+    if (lease?.id && e.leaseId === lease.id) return true
+    if (move || e.move) return false
+    if (tenant?.id && e.tenantId === tenant.id) return true
+    return [].concat(e.to ?? []).some((a) => addrs.has(String(a).toLowerCase().trim()))
+  })
+}
+
 // Licence agreement clause 13(b): a departing Private Office member is
 // auto-enrolled in a 3-month Virtual Office starting the day after their
 // office contract ends (or tomorrow, when the end date has already passed).

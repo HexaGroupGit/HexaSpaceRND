@@ -30,7 +30,7 @@ import { buildDirectoryBoard } from '../src/lib/directoryAuto.js'
 import { sendResendEmail, billingEmailFor } from './_email.js'
 import { brandFrame, bKicker, bH1, bH2, bP, bSmall, bPanel, bBtn, SANS, INK, MUTE } from './_brand.js'
 import {
-  requiresAccessGate, accessGateMet, shouldOnboard, requiresCardOnFile,
+  requiresAccessGate, accessGateMet, shouldOnboard, welcomeIsStale, WELCOME_STALE_DAYS, welcomeAlreadySent, requiresCardOnFile,
   renderOnboardingTemplate, resolveOnboardingCopy, onboardingEmailHtml,
 } from '../src/lib/onboarding.js'
 import { invitePortalUser } from './_invite.js'
@@ -155,7 +155,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const [leases, invoices, spaces, tenants, members, settRows, tmplRows] = await Promise.all([
+    const [leases, invoices, spaces, tenants, members, settRows, tmplRows, onbLogRows] = await Promise.all([
       loadTable(supabase, 'leases'),
       loadTable(supabase, 'invoices'),
       loadTable(supabase, 'spaces'),
@@ -163,13 +163,18 @@ export default async function handler(req, res) {
       loadTable(supabase, 'members'),
       supabase.from('settings').select('data').eq('id', 'global').single(),
       supabase.from('templates').select('data'),
+      supabase.from('email_log').select('data').eq('data->>emailType', 'onboarding'),
     ])
     const settings = settRows?.data?.data ?? {}
     const templates = (tmplRows?.data ?? []).map((r) => r.data)
+    // Every onboarding email already sent (admin app + this cron) — the
+    // backstop for a lost onboardedAt stamp. Appended to as we send below.
+    const onboardingLog = (onbLogRows?.data ?? []).map((r) => r.data)
 
     const today = new Date()
     const todayISO = today.toISOString().split('T')[0]
-    const out = { occupied: [], onboarded: [], onboardedSuppressed: [], expired: [], bondOverdue: [], errors: [] }
+    const out = { occupied: [], onboarded: [], onboardedSuppressed: [], welcomeSkipped: [], expired: [], bondOverdue: [], errors: [] }
+    if (onbLogRows?.error) out.errors.push(`email_log read (welcome dedupe): ${onbLogRows.error.message}`)
 
     // ── 1. Commencement flips (reserved → occupied only; never demote) ──────
     const flippedLeaseIds = new Set()
@@ -212,7 +217,9 @@ export default async function handler(req, res) {
         const sameOccupant = !space?.occupantTenantId || space.occupantTenantId === lease.tenantId
         if (alreadyATenant
           || (space?.status === 'occupied' && !flippedLeaseIds.has(lease.id) && sameOccupant)) {
-          await saveRow('leases', lease.id, { ...lease, onboardedAt: lease.activatedAt ?? new Date().toISOString() })
+          const stamp = { onboardedAt: lease.activatedAt ?? new Date().toISOString() }
+          await saveRow('leases', lease.id, { ...lease, ...stamp })
+          Object.assign(lease, stamp)
           out.onboardedSuppressed.push(label)
           continue
         }
@@ -220,28 +227,65 @@ export default async function handler(req, res) {
         const email = primary?.email || tenant?.email
         if (!email) continue // retries daily until a contact email exists
 
+        // Contract started long ago → the gate cleared late (payment, void,
+        // card), the member didn't just arrive. Onboard without the welcome.
+        const staleWelcome = welcomeIsStale(lease, today)
+        // Welcome already on record → the onboardedAt stamp was lost (a stale
+        // whole-lease save), not a new arrival. Re-stamp quietly.
+        const alreadyWelcomed = welcomeAlreadySent(onboardingLog, {
+          lease, tenant, emails: members.filter((m) => m.companyId === lease.tenantId).map((m) => m.email),
+        })
+        const skipReason = alreadyWelcomed ? 'welcome already sent (email_log)'
+          : staleWelcome ? `commenced ${lease.startDate}; access gate cleared ${todayISO}` : null
+
         if (!dryRun) {
-          // Stamp first so a crash can't double-send tomorrow.
-          await saveRow('leases', lease.id, { ...lease, onboardedAt: new Date().toISOString(), activatedAt: lease.activatedAt ?? new Date().toISOString() })
+          // Stamp first so a crash can't double-send tomorrow — and keep the
+          // in-memory lease in step: later steps save `{ ...lease, ... }`, and
+          // a pre-stamp copy there would erase onboardedAt again.
+          const stamp = {
+            onboardedAt: new Date().toISOString(), activatedAt: lease.activatedAt ?? new Date().toISOString(),
+            ...(skipReason ? { welcomeSkippedReason: skipReason } : {}),
+          }
+          await saveRow('leases', lease.id, { ...lease, ...stamp })
+          Object.assign(lease, stamp)
 
           // Welcome email — editable template first, built-in fallback. No Salto.
-          if (resendKey) {
+          if (resendKey && !skipReason) {
             const onbTpl = templates.find((t) => t.category === 'email' && t.emailType === 'onboarding' && t.content)
             const rendered = onbTpl
               ? renderOnboardingTemplate({ template: onbTpl, lease, tenant, space, settings, saltoLink: null })
               : { subject: resolveOnboardingCopy({ lease, tenant, space, settings }).subject, html: onboardingEmailHtml({ lease, tenant, space, settings, saltoLink: null }) }
-            await sendResendEmail({
+            const sent = await sendResendEmail({
               from: 'Hexa Space <info@hexaspace.com.au>',
               to: [email], subject: rendered.subject, html: rendered.html,
-            }).catch((e) => out.errors.push(`onboarding email ${label}: ${e.message}`))
+            }).catch((e) => { out.errors.push(`onboarding email ${label}: ${e.message}`); return null })
+            if (sent?.ok && !sent.skipped) {
+              const logId = `email_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+              const entry = {
+                id: logId, tenantId: lease.tenantId ?? null, leaseId: lease.id, emailType: 'onboarding',
+                to: email, subject: rendered.subject, sentAt: new Date().toISOString(), via: 'reconcile',
+              }
+              onboardingLog.push(entry)
+              const { error: logErr } = await supabase.from('email_log').insert({ id: logId, data: entry })
+              if (logErr) out.errors.push(`onboarding email log ${label}: ${logErr.message}`)
+            } else if (sent && !sent.ok) {
+              out.errors.push(`onboarding email ${label}: Resend ${sent.status ?? sent.error ?? 'failed'}`)
+            }
           }
 
-          // Portal invite (Supabase auth user + set-password email)
-          const inv = await invitePortalUser({ email })
-          if (!inv.ok) out.errors.push(`portal invite ${label}: ${inv.error}`)
-          else if (primary) await saveRow('members', primary.id, { ...primary, portalAccess: true })
+          // Portal invite (Supabase auth user + set-password email). Same skip
+          // as the admin app: a member who already has portal access, or whose
+          // countersign welcome carried the invite, doesn't need another
+          // set-password email.
+          if (!primary?.portalAccess && !lease.portalWelcomeSentAt) {
+            const inv = await invitePortalUser({ email })
+            if (!inv.ok) out.errors.push(`portal invite ${label}: ${inv.error}`)
+            else if (primary) await saveRow('members', primary.id, { ...primary, portalAccess: true })
+          }
         }
-        out.onboarded.push(`${label} → ${email}`)
+        if (alreadyWelcomed) out.onboardedSuppressed.push(`${label} (welcome already sent — onboarded stamp restored)`)
+        else if (staleWelcome) out.welcomeSkipped.push(`${label}: started ${dmy(lease.startDate)} and only cleared the payment gate now. No welcome email sent. If they're only moving in now, welcome them personally.`)
+        else out.onboarded.push(`${label} → ${email}`)
       } catch (e) { out.errors.push(`onboard ${label}: ${e.message}`) }
     }
 
@@ -700,7 +744,7 @@ export default async function handler(req, res) {
     } catch (e) { out.errors.push(`duplicate-bill check: ${e.message}`) }
 
     // ── Admin digest (only when something happened or needs attention) ──────
-    const anything = out.occupied.length + out.onboarded.length + out.expired.length + out.bondOverdue.length + out.saltoSwept.length + (out.cardReminders?.length ?? 0) + out.overdueWarned.length + out.overdueCancelled.length + out.overduePendingApproval.length + out.renewed.length + out.renewalEmailed.length + out.directorySynced.length + out.errors.length + (out.duplicateBills?.length ?? 0) + (out.leasesMissingId?.length ?? 0) > 0
+    const anything = out.occupied.length + out.onboarded.length + out.welcomeSkipped.length + out.expired.length + out.bondOverdue.length + out.saltoSwept.length + (out.cardReminders?.length ?? 0) + out.overdueWarned.length + out.overdueCancelled.length + out.overduePendingApproval.length + out.renewed.length + out.renewalEmailed.length + out.directorySynced.length + out.errors.length + (out.duplicateBills?.length ?? 0) + (out.leasesMissingId?.length ?? 0) > 0
     if (anything && resendKey && !dryRun) {
       const list = (items) => bPanel(items.map((i) => `<div style="font-family:${SANS};font-size:13px;color:${INK};padding:4px 0">${i}</div>`).join(''))
       const section = (title, items) => items.length ? bH2(title) + list(items) : ''
@@ -710,6 +754,7 @@ export default async function handler(req, res) {
         section(`✓ ${out.occupied.length} space(s) flipped to occupied`, out.occupied) +
         section(`✓ ${out.onboarded.length} member(s) onboarded`, out.onboarded) +
         section(`— ${out.onboardedSuppressed.length} onboarding(s) suppressed (already moved in)`, out.onboardedSuppressed) +
+        section(`✉ ${out.welcomeSkipped.length} welcome email(s) held back (contract started over ${WELCOME_STALE_DAYS} days ago)`, out.welcomeSkipped) +
         section(`⚠ ${out.expired.length} lease(s) expired (notice served or term ended)`, out.expired) +
         section(`🔄 ${out.renewed.length} lease(s) auto-renewed`, out.renewed) +
         section(`⚠ ${out.bondOverdue.length} bond refund(s) overdue`, out.bondOverdue) +
