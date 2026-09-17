@@ -8,6 +8,7 @@ import InvoiceForm from './InvoiceForm.jsx'
 import DocumentsPanel from './DocumentsPanel.jsx'
 import { jsPDF } from 'jspdf'
 import { supabase } from '../lib/supabase.js'
+import { markThreadRead, ReadReceipt } from '../lib/readReceipts.jsx'
 import { computeMonthlyAllowance, effectiveAllowance, spendableCredits } from '../lib/credits.js'
 
 const SIG_BADGE = {
@@ -1244,10 +1245,7 @@ function PortalMessagesAdmin({ tenantId }) {
     const all = (data ?? []).map(r => r.data).filter(m => m.tenantId === tenantId)
     all.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
     setMessages(all)
-    // mark unread (from tenant) as read by admin
-    for (const m of all.filter(m => m.sender === 'tenant' && !m.readByAdmin)) {
-      supabase.from('portal_messages').upsert({ id: m.id, data: { ...m, readByAdmin: true } })
-    }
+    markThreadRead(all, 'admin')
   }
 
   async function sendReply(e) {
@@ -1303,9 +1301,10 @@ function PortalMessagesAdmin({ tenantId }) {
                     : 'bg-muted text-foreground rounded-bl-sm'
                 }`}>
                   <p className="leading-relaxed whitespace-pre-wrap text-xs">{msg.content}</p>
-                  <p className="text-xs mt-1 opacity-60">
+                  <p className="text-xs mt-1 opacity-60 flex items-center gap-1.5">
                     {msg.sender === 'admin' ? 'You' : 'Member'} ·{' '}
                     {(() => { try { return format(parseISO(msg.timestamp), 'dd/MM h:mm a') } catch { return '' } })()}
+                    {msg.sender === 'admin' && <><span aria-hidden="true">·</span><ReadReceipt msg={msg} /></>}
                   </p>
                 </div>
               </div>

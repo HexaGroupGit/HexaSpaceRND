@@ -4,6 +4,7 @@ import { format, parseISO } from 'date-fns'
 import { supabase } from '../lib/supabase.js'
 import { useOutletContext } from 'react-router-dom'
 import { Send, MessageSquare } from 'lucide-react'
+import { markThreadRead, ReadReceipt } from '../lib/readReceipts.jsx'
 
 function fmtTime(ts) {
   try { return format(parseISO(ts), 'dd/MM h:mm a') } catch { return '' }
@@ -28,11 +29,7 @@ export default function AdminMessages() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     if (!selectedTenantId) return
     // Mark tenant messages as read when viewing
-    allMessages
-      .filter(m => m.tenantId === selectedTenantId && m.sender === 'tenant' && !m.readByAdmin)
-      .forEach(m => {
-        supabase.from('portal_messages').upsert({ id: m.id, data: { ...m, readByAdmin: true } })
-      })
+    markThreadRead(allMessages.filter(m => m.tenantId === selectedTenantId), 'admin')
   }, [selectedTenantId, allMessages])
 
   async function load() {
@@ -136,7 +133,10 @@ export default function AdminMessages() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground truncate flex-1">{last?.content}</p>
+                    <p className="text-xs text-muted-foreground min-w-0 flex-1 flex items-center gap-1">
+                      {last?.sender === 'admin' && <ReadReceipt msg={last} compact />}
+                      <span className="truncate">{last?.content}</span>
+                    </p>
                     <span className="text-xs text-muted-foreground ml-2 shrink-0">{fmtTime(lastTs)}</span>
                   </div>
                 </button>
@@ -171,8 +171,9 @@ export default function AdminMessages() {
                       : 'bg-card border border-border text-foreground rounded-bl-sm'
                   }`}>
                     <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                    <p className="text-xs mt-1 opacity-50">
+                    <p className="text-xs mt-1 opacity-50 flex items-center gap-1.5">
                       {msg.sender === 'admin' ? 'You' : selectedThread.tenant.businessName} · {fmtTime(msg.timestamp)}
+                      {msg.sender === 'admin' && <><span aria-hidden="true">·</span><ReadReceipt msg={msg} /></>}
                     </p>
                   </div>
                 </div>

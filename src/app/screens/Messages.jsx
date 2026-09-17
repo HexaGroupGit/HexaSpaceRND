@@ -3,6 +3,7 @@ import { authHeaders } from '../../lib/apiFetch.js'
 import { format, parseISO } from 'date-fns'
 import { Send } from 'lucide-react'
 import { supabase } from '../../lib/supabase.js'
+import { markThreadRead, ReadReceipt } from '../../lib/readReceipts.jsx'
 import { useApp } from '../context.js'
 import { BackHeader } from '../ui.jsx'
 import { apiUrl } from '../lib/native.js'
@@ -34,9 +35,7 @@ export default function Messages() {
     const all = (rows ?? []).map((r) => r.data).filter((m) => m.tenantId === tenant.id)
     all.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
     setMessages(all)
-    for (const m of all.filter((m) => m.sender === 'admin' && !m.readByTenant)) {
-      supabase.from('portal_messages').upsert({ id: m.id, data: { ...m, readByTenant: true } })
-    }
+    markThreadRead(all, 'tenant')
   }
 
   async function sendMessage(e) {
@@ -73,7 +72,10 @@ export default function Messages() {
               msg.sender === 'tenant' ? 'bg-charcoal text-paper' : 'bg-paper text-ink border border-ink/10'
             }`}>
               <p className="leading-relaxed whitespace-pre-wrap font-body">{msg.content}</p>
-              <p className="text-[9px] mt-1.5 opacity-50 font-heading uppercase tracking-nav">{fmtTs(msg.timestamp)}</p>
+              <p className="text-[9px] mt-1.5 opacity-50 font-heading uppercase tracking-nav flex items-center gap-1.5">
+                {fmtTs(msg.timestamp)}
+                {msg.sender === 'tenant' && <><span aria-hidden="true">·</span><ReadReceipt msg={msg} /></>}
+              </p>
             </div>
           </div>
         ))}
