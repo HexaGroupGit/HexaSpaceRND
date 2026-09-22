@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState, useEffect } from 'react'
 import {
   Plus, X, Loader2, Sparkles, Search, Calculator, Save, Trash2, Copy, Check,
@@ -282,10 +283,10 @@ function Wizard({ spaces, settings, addCampaign, onDone }) {
               </select>
             </Field>
             <Field label="Space to promote">
-              <select value={brief.spaceId} onChange={(e) => setBrief({ ...brief, spaceId: e.target.value })} className={input}>
+              <SearchSelect aria-label="Room or space" value={brief.spaceId} onChange={(e) => setBrief({ ...brief, spaceId: e.target.value })} className={input}>
                 <option value="">— General / available spaces —</option>
                 {vacant.map((s) => <option key={s.id} value={s.id}>{s.unitNumber} — {s.address ?? s.type}</option>)}
-              </select>
+              </SearchSelect>
             </Field>
             <Field label="Monthly budget ($)">
               <input type="number" value={brief.monthlyBudget} onChange={(e) => setBrief({ ...brief, monthlyBudget: e.target.value })} className={input} />

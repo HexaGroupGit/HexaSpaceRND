@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState } from 'react'
 import { ArrowLeft, Search, Loader2, Sparkles, Copy, Check, Tag, AlertCircle, Ban, Swords } from 'lucide-react'
 import { generateKeywords } from '../lib/ads.js'
@@ -49,11 +50,11 @@ export default function KeywordResearch({ store, onBack }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Space to research</label>
-            <select value={spaceId} onChange={(e) => setSpaceId(e.target.value)} className={input}>
+            <SearchSelect aria-label="Room or space" value={spaceId} onChange={(e) => setSpaceId(e.target.value)} className={input}>
               <option value="">— General / available spaces —</option>
               {vacant.length > 0 && <optgroup label="Vacant">{vacant.map((s) => <option key={s.id} value={s.id}>{s.unitNumber} — {s.address ?? s.type}</option>)}</optgroup>}
               {others.length > 0 && <optgroup label="Other">{others.map((s) => <option key={s.id} value={s.id}>{s.unitNumber} — {s.address ?? s.type} ({s.status})</option>)}</optgroup>}
-            </select>
+            </SearchSelect>
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Focus / seed (optional)</label>

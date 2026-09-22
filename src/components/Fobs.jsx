@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState, useEffect, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
@@ -385,47 +386,16 @@ function AddModal({ fobs = [], onClose, onSave }) {
   )
 }
 
-// Type-to-filter member list. Deliberately NOT a <select size=5>: a controlled
-// select with a value that matches no option makes React pre-select the first
-// option, so clicking that first name fires no change event and the selection
-// silently never registers. Plain buttons always fire.
 function MemberPicker({ members, tenants, value, onChange }) {
-  const [mq, setMq] = useState('')
-  const q = mq.trim().toLowerCase()
-  const matches = members.filter((m) => {
-    if (!q) return true
-    const c = tenants.find((t) => t.id === m.companyId)
-    return `${m.name} ${m.email ?? ''} ${c?.businessName ?? ''}`.toLowerCase().includes(q)
-  })
-  const opts = matches.slice(0, 50)
-  return (
-    <>
-      <input value={mq} onChange={(e) => setMq(e.target.value)} placeholder="Search members…" className={`${field} mb-1.5`} />
-      {members.length === 0 ? (
-        <p className="text-xs text-amber-700 border border-amber-200 bg-amber-50 rounded px-2 py-1.5">No members loaded — add a member first, then issue the device.</p>
-      ) : (
-        <div className={`border rounded bg-background max-h-40 overflow-y-auto ${value ? 'border-primary/40 ring-1 ring-primary/40' : 'border-border'}`}>
-          {opts.length === 0 ? (
-            <p className="px-3 py-2 text-sm text-muted-foreground">No members match “{mq}”.</p>
-          ) : opts.map((m) => {
-            const c = tenants.find((t) => t.id === m.companyId)
-            const on = m.id === value
-            return (
-              <button
-                key={m.id} type="button" onClick={() => onChange(m.id)}
-                className={`w-full text-left px-3 py-1.5 text-sm border-b border-border/50 last:border-0 ${on ? 'bg-primary text-primary-foreground font-medium' : 'text-foreground hover:bg-muted/60'}`}
-              >
-                {m.name}{c ? <span className={on ? 'opacity-80' : 'text-muted-foreground'}> — {c.businessName}</span> : null}
-              </button>
-            )
-          })}
-        </div>
-      )}
-      {matches.length > opts.length && (
-        <p className="text-xs text-muted-foreground mt-1">Showing the first {opts.length} of {matches.length} matches — keep typing to narrow it down.</p>
-      )}
-    </>
-  )
+  return <SearchSelect aria-label="Member" value={value} onChange={(event) => onChange(event.target.value)} className={field}>
+    <option value="">Select member</option>
+    {members.map((member) => {
+      const company = tenants.find((tenant) => tenant.id === member.companyId)
+      return <option key={member.id} value={member.id} data-search={[member.email, member.phone].filter(Boolean).join(' ')}>
+        {member.name}{company ? ' — ' + company.businessName : ''}
+      </option>
+    })}
+  </SearchSelect>
 }
 
 // An unmatched (migrated) device: link the real member, or release it to stock.
@@ -474,10 +444,10 @@ function IssueModal({ fobs, preFob, members, tenants, requestMemberId, requestTy
               No {requestType ?? 'device'} is available to issue. Add the physical device under “Add device”, or reassign/release one that's stuck with an unmatched holder.
             </p>
           ) : (
-            <select value={fobId} onChange={(e) => setFobId(e.target.value)} className={`${field} font-mono`}>
+            <SearchSelect aria-label="Device" value={fobId} onChange={(e) => setFobId(e.target.value)} className={`${field} font-mono`}>
               <option value="">Select an available device…</option>
               {available.map((f) => <option key={f.id} value={f.id}>{f.serial} · {f.type}</option>)}
-            </select>
+            </SearchSelect>
           )}
         </div>
       )}

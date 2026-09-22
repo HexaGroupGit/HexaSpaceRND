@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { Plus, X, Trash2 } from 'lucide-react'
@@ -104,10 +105,10 @@ export default function Fees() {
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <input type="text" placeholder="Search fees…" value={search} onChange={(e) => setSearch(e.target.value)}
           className="flex-1 min-w-[200px] max-w-sm border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40" />
-        <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="border border-input rounded-md px-3 py-2 text-sm bg-card">
+        <SearchSelect aria-label="Company" value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="border border-input rounded-md px-3 py-2 text-sm bg-card">
           <option value="">All companies</option>
-          {tenants.map((t) => <option key={t.id} value={t.id}>{t.businessName}</option>)}
-        </select>
+          {tenants.map((t) => <option key={t.id} value={t.id} data-search={[t.email, t.contactName, t.phone].filter(Boolean).join(' ')}>{t.businessName}</option>)}
+        </SearchSelect>
         <span className="ml-auto text-sm text-muted-foreground">Total: <strong className="text-foreground">A${total.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</strong> · {filtered.length} fees</span>
       </div>
 
@@ -172,7 +173,7 @@ function FeeModal({ editId, form, setForm, members, tenants, onClose, onSubmit }
             <L label="Type"><select value={form.type} onChange={up('type')} className={ic}>{TYPES.map((t) => <option key={t}>{t}</option>)}</select></L>
             <L label="Price (A$)"><input type="number" step="0.01" value={form.price} onChange={up('price')} className={ic} /></L>
           </div>
-          <L label="Member"><select value={form.memberId} onChange={up('memberId')} className={ic}><option value="">Select member</option>{members.map((m) => <option key={m.id} value={m.id}>{m.name}{tenants.find((t) => t.id === m.companyId) ? ` — ${tenants.find((t) => t.id === m.companyId).businessName}` : ''}</option>)}</select></L>
+          <L label="Member"><SearchSelect aria-label="Member or contact" value={form.memberId} onChange={up('memberId')} className={ic}><option value="">Select member</option>{members.map((m) => <option key={m.id} value={m.id} data-search={[m.email, m.phone, m.search].filter(Boolean).join(' ')}>{m.name}{tenants.find((t) => t.id === m.companyId) ? ` — ${tenants.find((t) => t.id === m.companyId).businessName}` : ''}</option>)}</SearchSelect></L>
           <div className="grid grid-cols-2 gap-4">
             <L label="Date"><input type="date" value={form.date} onChange={up('date')} className={ic} /></L>
             <L label="Status"><select value={form.status} onChange={up('status')} className={ic}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select></L>

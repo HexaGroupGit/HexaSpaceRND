@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, X } from 'lucide-react'
@@ -72,7 +73,6 @@ function WaitingListForm({ entry, store, onClose }) {
   const { members = [], leads = [], tenants = [], spaces = [], leases = [], pipelineStages = [] } = store
   const [mode, setMode] = useState(entry.kind || 'member')
   const [recordId, setRecordId] = useState(entry.recordId || '')
-  const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     name: '', businessName: '', email: '', phone: '',
@@ -86,7 +86,6 @@ function WaitingListForm({ entry, store, onClose }) {
   const companyName = (member) => tenants.find((tenant) => tenant.id === member.companyId)?.businessName || ''
   const alreadyWaiting = (record) => mode === 'member' ? record.waitingListRequest?.waitingList === true : isWaitingLead(record, pipelineStages)
   const eligible = mode === 'member' ? members.filter((member) => member.clientType !== 'function') : leads.filter((lead) => !lead.tenantId && !lead.dealClosed && pipelineStages.find((stage) => stage.id === lead.stageId)?.category !== 'won')
-  const matches = eligible.filter((record) => record.id === recordId || [record.name, record.email, record.phone, mode === 'member' ? companyName(record) : record.businessName].filter(Boolean).join(' ').toLowerCase().includes(search.trim().toLowerCase()))
   const options = [...new Set([...OFFERINGS, ...leads.map((lead) => lead.enquiryType || lead.interest).filter(Boolean), form.enquiryType].filter(Boolean))]
   const currentSpace = mode === 'member' && selected ? memberCurrentSpaces(selected, leases, spaces) : ''
   const suites = officeSuites(spaces, form.preferredFloor)
@@ -150,20 +149,19 @@ function WaitingListForm({ entry, store, onClose }) {
         </div>
         <form onSubmit={save} className="p-6 space-y-4">
           <label className="block text-sm font-medium">Request type
-            <select disabled={isEdit} value={mode} onChange={(event) => { setMode(event.target.value); setRecordId(''); setSearch(''); setError(''); setForm({ name: '', businessName: '', email: '', phone: '', enquiryType: 'Private Office', spaceId: '', preferredStartDate: '', preferredStartAsap: true, preferredFloor: '', preferredPax: '', waitingListNotes: '' }) }} className={`${input} mt-1`}>
+            <select disabled={isEdit} value={mode} onChange={(event) => { setMode(event.target.value); setRecordId(''); setError(''); setForm({ name: '', businessName: '', email: '', phone: '', enquiryType: 'Private Office', spaceId: '', preferredStartDate: '', preferredStartAsap: true, preferredFloor: '', preferredPax: '', waitingListNotes: '' }) }} className={`${input} mt-1`}>
               {MODES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           </label>
           {mode !== 'new' ? (
             <div className="space-y-2">
-              {!isEdit && <input aria-label={`Search existing ${mode === 'member' ? 'members' : 'leads'}`} placeholder="Search name, company, email or phone…" value={search} onChange={(event) => setSearch(event.target.value)} className={input} />}
               <label className="block text-sm font-medium">{mode === 'member' ? 'Existing member' : 'Existing lead or enquiry'}
-                <select required disabled={isEdit} value={recordId} onChange={(event) => chooseRecord(event.target.value)} className={`${input} mt-1`}>
+                <SearchSelect aria-label={mode === 'member' ? 'Existing member' : 'Existing lead or enquiry'} placeholder="Search name, company, email or phone…" required disabled={isEdit} value={recordId} onChange={(event) => chooseRecord(event.target.value)} className={`${input} mt-1`}>
                   <option value="">Select {mode === 'member' ? 'a member' : 'a lead'}</option>
-                  {matches.map((record) => <option key={record.id} value={record.id} disabled={!isEdit && alreadyWaiting(record)}>{[record.name || record.businessName, mode === 'member' ? companyName(record) : record.businessName, record.email].filter(Boolean).join(' · ')}{alreadyWaiting(record) ? ' — Already waiting' : ''}</option>)}
-                </select>
+                  {eligible.map((record) => <option key={record.id} value={record.id} data-search={[record.email, record.phone].filter(Boolean).join(' ')} disabled={!isEdit && alreadyWaiting(record)}>{[record.name || record.businessName, mode === 'member' ? companyName(record) : record.businessName, record.email].filter(Boolean).join(' · ')}{alreadyWaiting(record) ? ' — Already waiting' : ''}</option>)}
+                </SearchSelect>
               </label>
-              {!matches.length && <p className="text-xs text-muted-foreground">No matching {mode === 'member' ? 'members' : 'leads'}.</p>}
+              {!eligible.length && <p className="text-xs text-muted-foreground">No matching {mode === 'member' ? 'members' : 'leads'}.</p>}
               {selected && <p className="text-sm text-muted-foreground">{[selected.email, selected.phone].filter(Boolean).join(' · ') || 'No contact details recorded'}</p>}
               {mode === 'member' && selected && <p className="text-sm text-muted-foreground">Current space: {currentSpace || 'No active space recorded'}</p>}
               {lost && <p className="text-xs text-muted-foreground">This enquiry will return to the open pipeline while waiting for availability.</p>}
@@ -184,7 +182,7 @@ function WaitingListForm({ entry, store, onClose }) {
               <select value={form.preferredFloor} onChange={(event) => setForm({ ...form, preferredFloor: event.target.value, spaceId: '' })} className={`${input} mt-1`}><option value="">Any level</option>{OFFICE_LEVELS.map((level) => <option key={level.id} value={level.id}>{level.label}</option>)}</select>
             </label>
             <label className="text-sm sm:col-span-2">Preferred office suite
-              <select value={invalidUnit ? '' : form.spaceId} onChange={change('spaceId')} className={`${input} mt-1`}><option value="">Any suitable office suite</option>{OFFICE_LEVELS.map((level) => <optgroup key={level.id} label={level.label}>{suites.filter((space) => floorOf(space) === level.id).map((space) => <option key={space.id} value={space.id}>{officeSuiteLabel(space)}</option>)}</optgroup>)}{suites.filter((space) => !floorOf(space)).map((space) => <option key={space.id} value={space.id}>{officeSuiteLabel(space)}</option>)}</select>
+              <SearchSelect aria-label="Room or space" value={invalidUnit ? '' : form.spaceId} onChange={change('spaceId')} className={`${input} mt-1`}><option value="">Any suitable office suite</option>{OFFICE_LEVELS.map((level) => <optgroup key={level.id} label={level.label}>{suites.filter((space) => floorOf(space) === level.id).map((space) => <option key={space.id} value={space.id}>{officeSuiteLabel(space)}</option>)}</optgroup>)}{suites.filter((space) => !floorOf(space)).map((space) => <option key={space.id} value={space.id}>{officeSuiteLabel(space)}</option>)}</SearchSelect>
               {invalidUnit && <span className="block text-xs text-amber-700 mt-1">The saved unit is not an office suite on this level. Choose an office suite or clear the preference.</span>}
               {invalidUnit && <button type="button" onClick={() => setForm({ ...form, spaceId: '' })} className="text-xs underline mt-1">Clear saved unit</button>}
             </label>

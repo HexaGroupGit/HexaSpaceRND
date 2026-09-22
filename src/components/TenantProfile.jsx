@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState, useEffect, useRef } from 'react'
 import { authHeaders } from '../lib/apiFetch.js'
 import { sendPortalInvite } from '../lib/portalInvite.js'
@@ -1069,10 +1070,10 @@ function MembershipModal({ tenant, members, onClose, onSave }) {
           </div>
           <label className="block">
             <span className="block text-xs font-medium text-muted-foreground mb-1">Assign to member (optional)</span>
-            <select value={form.memberId} onChange={(e) => setForm((f) => ({ ...f, memberId: e.target.value }))} className={ic}>
+            <SearchSelect aria-label="Member or contact" value={form.memberId} onChange={(e) => setForm((f) => ({ ...f, memberId: e.target.value }))} className={ic}>
               <option value="">— Company (unassigned) —</option>
-              {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
+              {members.map((m) => <option key={m.id} value={m.id} data-search={[m.email, m.phone, m.search].filter(Boolean).join(' ')}>{m.name}</option>)}
+            </SearchSelect>
           </label>
           <label className="block">
             <span className="block text-xs font-medium text-muted-foreground mb-1">Price (AUD / month, ex GST)</span>

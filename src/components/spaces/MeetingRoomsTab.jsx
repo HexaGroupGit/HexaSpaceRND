@@ -1,3 +1,4 @@
+import SearchSelect from '../SearchSelect.jsx'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Pencil, Trash2, CalendarPlus } from 'lucide-react'
@@ -188,10 +189,10 @@ export default function MeetingRoomsTab({ ctx }) {
         <Modal title={`Book — ${bookRoom.unitNumber}`} onClose={() => setBookRoom(null)}>
           <div className="space-y-4">
             <Field label="Member">
-              <select value={book.memberId} onChange={(e) => setBook({ ...book, memberId: e.target.value })} className={ic}>
+              <SearchSelect aria-label="Member or contact" value={book.memberId} onChange={(e) => setBook({ ...book, memberId: e.target.value })} className={ic}>
                 <option value="">Select member</option>
-                {memberOpts.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
+                {memberOpts.map((m) => <option key={m.id} value={m.id} data-search={[m.email, m.phone, m.search].filter(Boolean).join(' ')}>{m.label}</option>)}
+              </SearchSelect>
             </Field>
             <Field label="Date"><input type="date" value={book.date} onChange={(e) => setBook({ ...book, date: e.target.value })} className={ic} /></Field>
             <div className="grid grid-cols-2 gap-4">

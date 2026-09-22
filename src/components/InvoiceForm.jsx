@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState, useEffect } from 'react'
 import { format, addDays, parseISO, startOfMonth, endOfMonth, addMonths, getDaysInMonth } from 'date-fns'
 import { X, Plus } from 'lucide-react'
@@ -256,14 +257,14 @@ export default function InvoiceForm({ invoices, tenants, leases, spaces, setting
                 className="w-full border border-border rounded px-3 py-2 text-sm bg-muted/50 text-foreground cursor-default"
               />
             ) : (
-              <select
+              <SearchSelect aria-label="Company"
                 value={form.tenantId}
                 onChange={(e) => { setForm({ ...form, tenantId: e.target.value }); setErrors((er) => ({ ...er, tenantId: '' })) }}
                 className={errors.tenantId ? errorInputCls : inputCls}
               >
                 <option value="">Select company</option>
-                {tenants.map((t) => <option key={t.id} value={t.id}>{t.businessName}</option>)}
-              </select>
+                {tenants.map((t) => <option key={t.id} value={t.id} data-search={[t.email, t.contactName, t.phone].filter(Boolean).join(' ')}>{t.businessName}</option>)}
+              </SearchSelect>
             )}
           </FormRow>
 
@@ -389,13 +390,13 @@ export default function InvoiceForm({ invoices, tenants, leases, spaces, setting
                   placeholder="Description"
                   className="border border-input rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
-                <select
+                <SearchSelect aria-label="Account"
                   value={line.revenueAccount}
                   onChange={(e) => updateLine(line.id, 'revenueAccount', e.target.value)}
                   className="border border-input rounded px-2 py-1.5 text-xs bg-card focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   {REVENUE_ACCOUNTS.map((a) => <option key={a} value={a}>{a}</option>)}
-                </select>
+                </SearchSelect>
                 <input
                   type="number"
                   value={line.unitPrice}

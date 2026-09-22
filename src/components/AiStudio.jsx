@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState } from 'react'
 import { Sparkles, Loader2, Copy, Check, RefreshCw, AlertCircle, Megaphone, Target, Search, Image as ImageIcon, Download, Save } from 'lucide-react'
 import { generateMarketing } from '../lib/aiMarketing.js'
@@ -115,11 +116,11 @@ export default function AiStudio({ store }) {
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Space {kind === 'image' ? '(for "save to listing")' : '(optional)'}</label>
-            <select value={spaceId} onChange={(e) => onSpaceChange(e.target.value)} className={input}>
+            <SearchSelect aria-label="Room or space" value={spaceId} onChange={(e) => onSpaceChange(e.target.value)} className={input}>
               <option value="">— General / brand —</option>
               {vacant.length > 0 && <optgroup label="Vacant">{vacant.map((s) => <option key={s.id} value={s.id}>{s.unitNumber} — {s.address ?? s.type}</option>)}</optgroup>}
               {others.length > 0 && <optgroup label="Other">{others.map((s) => <option key={s.id} value={s.id}>{s.unitNumber} — {s.address ?? s.type} ({s.status})</option>)}</optgroup>}
-            </select>
+            </SearchSelect>
           </div>
 
           {kind === 'image' ? (

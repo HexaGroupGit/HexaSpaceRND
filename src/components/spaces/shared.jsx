@@ -156,7 +156,7 @@ export function Modal({ title, onClose, children, maxW = 'max-w-md' }) {
 export function memberOptions(members, tenants) {
   return members.map((m) => {
     const company = tenants.find((t) => t.id === m.companyId)?.businessName
-    return { id: m.id, label: company ? `${m.name} — ${company}` : m.name, companyId: m.companyId }
+    return { id: m.id, label: company ? `${m.name} — ${company}` : m.name, companyId: m.companyId, search: [m.email, m.phone].filter(Boolean).join(' ') }
   })
 }
 

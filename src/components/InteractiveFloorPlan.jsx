@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState, useRef, Fragment } from 'react'
 import { format, parseISO, isValid, differenceInDays } from 'date-fns'
 import { X, MapPin, Crosshair, ZoomIn, ZoomOut, Maximize2, Presentation, Car } from 'lucide-react'
@@ -446,14 +447,14 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
 
           {allocatable.length > 0 && (
             <div className="space-y-2 border-t border-border pt-3">
-              <select
+              <SearchSelect aria-label="Member or contact"
                 value={assignTo}
                 onChange={(e) => setAssignTo(e.target.value)}
                 className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
               >
                 <option value="">Choose a member…</option>
-                {memberOpts.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
+                {memberOpts.map((m) => <option key={m.id} value={m.id} data-search={[m.email, m.phone, m.search].filter(Boolean).join(' ')}>{m.label}</option>)}
+              </SearchSelect>
               <button
                 onClick={allocate}
                 disabled={!assignTo}

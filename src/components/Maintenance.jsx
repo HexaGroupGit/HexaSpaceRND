@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
@@ -193,10 +194,10 @@ export default function Maintenance() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Space / Unit</label>
-                  <select value={form.spaceId} onChange={(e) => setForm({ ...form, spaceId: e.target.value })} className={input}>
+                  <SearchSelect aria-label="Room or space" value={form.spaceId} onChange={(e) => setForm({ ...form, spaceId: e.target.value })} className={input}>
                     <option value="">— Select space —</option>
                     {spaces.map((s) => <option key={s.id} value={s.id}>{s.unitNumber} {s.type ? `(${s.type})` : ''}</option>)}
-                  </select>
+                  </SearchSelect>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Priority</label>

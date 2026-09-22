@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { Plus, X } from 'lucide-react'
@@ -208,7 +209,7 @@ function MemberModal({ open, editId, form, setForm, tenants, onClose, onSubmit }
           {tab === 'General' && (
             <>
               <F label="Name" required><input required value={form.name} onChange={up('name')} placeholder="Full Name" className={ic} /></F>
-              <F label="Company"><select value={form.companyId} onChange={up('companyId')} className={ic}><option value="">Select company</option>{tenants.map((t) => <option key={t.id} value={t.id}>{t.businessName}</option>)}</select></F>
+              <F label="Company"><SearchSelect aria-label="Company" value={form.companyId} onChange={up('companyId')} className={ic}><option value="">Select company</option>{tenants.map((t) => <option key={t.id} value={t.id} data-search={[t.email, t.contactName, t.phone].filter(Boolean).join(' ')}>{t.businessName}</option>)}</SearchSelect></F>
               <div className="grid grid-cols-2 gap-4">
                 <F label="Email"><input type="email" value={form.email} onChange={up('email')} placeholder="Contact Email" className={ic} /></F>
                 <F label="Phone"><input value={form.phone} onChange={up('phone')} className={ic} /></F>

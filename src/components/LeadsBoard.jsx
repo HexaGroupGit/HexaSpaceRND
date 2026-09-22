@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState } from 'react'
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -200,12 +201,12 @@ export default function LeadsBoard({ store }) {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Space of interest</label>
-                  <select value={form.spaceId} onChange={(e) => setForm({ ...form, spaceId: e.target.value })} className={input}>
+                  <SearchSelect aria-label="Room or space" value={form.spaceId} onChange={(e) => setForm({ ...form, spaceId: e.target.value })} className={input}>
                     <option value="">{form.waitingList ? '— Select preferred unit —' : '— Select vacant unit —'}</option>
                     {spaceOptions.map((s) => (
                       <option key={s.id} value={s.id}>{s.unitNumber} — {s.address ?? s.type} (${s.monthlyRate?.toLocaleString('en-AU')}/mo)</option>
                     ))}
-                  </select>
+                  </SearchSelect>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Est. value ($/mo)</label>

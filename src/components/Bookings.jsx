@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { Plus, X, Trash2, Loader2, KeyRound, Check, Ban } from 'lucide-react'
@@ -179,10 +180,10 @@ export default function Bookings() {
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="border border-input rounded-md px-3 py-2 text-sm bg-card" />
         <span className="text-muted-foreground text-sm">–</span>
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="border border-input rounded-md px-3 py-2 text-sm bg-card" />
-        <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="border border-input rounded-md px-3 py-2 text-sm bg-card">
+        <SearchSelect aria-label="Company" value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="border border-input rounded-md px-3 py-2 text-sm bg-card">
           <option value="">All companies</option>
-          {tenants.map((t) => <option key={t.id} value={t.id}>{t.businessName}</option>)}
-        </select>
+          {tenants.map((t) => <option key={t.id} value={t.id} data-search={[t.email, t.contactName, t.phone].filter(Boolean).join(' ')}>{t.businessName}</option>)}
+        </SearchSelect>
         <span className="ml-auto text-sm text-muted-foreground">{rows.length} bookings</span>
       </div>
 
@@ -257,8 +258,8 @@ function BookingModal({ form, setForm, rooms, members, tenants, onClose, onSubmi
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
         </div>
         <div className="px-6 py-5 space-y-4">
-          <L label="Resource"><select value={form.resourceId} onChange={up('resourceId')} className={ic}><option value="">Select room / space</option>{rooms.map((r) => <option key={r.id} value={r.id}>{r.unitNumber}{r.hourlyRate ? ` — $${r.hourlyRate}/hr` : ''}</option>)}</select></L>
-          <L label="Member"><select value={form.memberId} onChange={up('memberId')} className={ic}><option value="">Select member</option>{members.map((m) => <option key={m.id} value={m.id}>{m.name}{tenants.find((t) => t.id === m.companyId) ? ` — ${tenants.find((t) => t.id === m.companyId).businessName}` : ''}</option>)}</select></L>
+          <L label="Resource"><SearchSelect aria-label="Room or space" value={form.resourceId} onChange={up('resourceId')} className={ic}><option value="">Select room / space</option>{rooms.map((r) => <option key={r.id} value={r.id}>{r.unitNumber}{r.hourlyRate ? ` — $${r.hourlyRate}/hr` : ''}</option>)}</SearchSelect></L>
+          <L label="Member"><SearchSelect aria-label="Member or contact" value={form.memberId} onChange={up('memberId')} className={ic}><option value="">Select member</option>{members.map((m) => <option key={m.id} value={m.id} data-search={[m.email, m.phone, m.search].filter(Boolean).join(' ')}>{m.name}{tenants.find((t) => t.id === m.companyId) ? ` — ${tenants.find((t) => t.id === m.companyId).businessName}` : ''}</option>)}</SearchSelect></L>
           <L label="Date"><input type="date" value={form.date} onChange={up('date')} className={ic} /></L>
           <div className="grid grid-cols-2 gap-4">
             <L label="Start"><input type="time" value={form.startTime} onChange={up('startTime')} className={ic} /></L>

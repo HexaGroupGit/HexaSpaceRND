@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState, useEffect } from 'react'
 import { authHeaders } from '../lib/apiFetch.js'
 import { useOutletContext } from 'react-router-dom'
@@ -1639,13 +1640,13 @@ function XeroSection({ settings, updateSettings }) {
         <>
           {ACCOUNT_ROWS.map(([key, label, desc]) => (
             <FormRow key={key} label={label} description={desc}>
-              <select
+              <SearchSelect aria-label="Account"
                 value={form[key] ?? ''}
                 onChange={(e) => set(key)(e.target.value)}
                 className="w-full border border-input rounded-md px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {XERO_ACCOUNTS.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
+              </SearchSelect>
             </FormRow>
           ))}
           <SaveButton onClick={save} saved={saved} />
@@ -2142,11 +2143,11 @@ function RemoteUnlockSection({ settings, updateSettings, spaces }) {
       <div className="space-y-2">
         {rows.map((r, i) => (
           <div key={i} className="flex items-center gap-2">
-            <select value={r.spaceId} onChange={(e) => upd(i, { spaceId: e.target.value })}
+            <SearchSelect aria-label="Room or space" value={r.spaceId} onChange={(e) => upd(i, { spaceId: e.target.value })}
               className="border border-input rounded-md px-2 py-2 text-sm bg-card flex-1">
               <option value="">Select space…</option>
               {lockable.map((s) => <option key={s.id} value={s.id}>{s.unitNumber}</option>)}
-            </select>
+            </SearchSelect>
             <input value={r.lockId} onChange={(e) => upd(i, { lockId: e.target.value })}
               placeholder="Salto lock ID" className="border border-input rounded-md px-3 py-2 text-sm flex-1" />
             <input value={r.label ?? ''} onChange={(e) => upd(i, { label: e.target.value })}

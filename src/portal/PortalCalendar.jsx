@@ -1,3 +1,4 @@
+import SearchSelect from '../components/SearchSelect.jsx'
 import { useState } from 'react'
 import { X, Repeat, Check, User } from 'lucide-react'
 import { format, addDays, addMonths } from 'date-fns'
@@ -441,9 +442,9 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
         <div className="px-6 py-5 space-y-4">
           <div>
             <label className="hx-eyebrow block mb-1.5">Space</label>
-            <select value={f.resourceId} onChange={up('resourceId')} className="hx-input">
+            <SearchSelect aria-label="Room or space" value={f.resourceId} onChange={up('resourceId')} className="hx-input">
               {resources.map((r) => { const rr = bookingRate(r, company?.id, leases); return <option key={r.id} value={r.id}>{r.unitNumber}{rr ? ` — A$${rr}/hr` : ''}</option> })}
-            </select>
+            </SearchSelect>
           </div>
           <div>
             <label className="hx-eyebrow block mb-1.5">Title (optional)</label>

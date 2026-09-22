@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, X, Users, Clock, CalendarClock } from 'lucide-react'
@@ -415,14 +416,14 @@ function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, lease
           <div>
             <span className={lbl}>Member</span>
             <div className="grid grid-cols-2 gap-3">
-              <select value={f.companyId} onChange={pickCompany} className={ic}>
+              <SearchSelect aria-label="Company" value={f.companyId} onChange={pickCompany} className={ic}>
                 <option value="">Select company</option>
-                {tenants.map((t) => <option key={t.id} value={t.id}>{t.businessName}</option>)}
-              </select>
-              <select value={f.memberId} onChange={pickMember} className={ic}>
+                {tenants.map((t) => <option key={t.id} value={t.id} data-search={[t.email, t.contactName, t.phone].filter(Boolean).join(' ')}>{t.businessName}</option>)}
+              </SearchSelect>
+              <SearchSelect aria-label="Member or contact" value={f.memberId} onChange={pickMember} className={ic}>
                 <option value="">Select member</option>
-                {memberOpts.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
+                {memberOpts.map((m) => <option key={m.id} value={m.id} data-search={[m.email, m.phone, m.search].filter(Boolean).join(' ')}>{m.name}</option>)}
+              </SearchSelect>
             </div>
             <button onClick={addNewMember} className="text-xs text-blue-600 hover:underline mt-1">Add new</button>
           </div>
@@ -441,9 +442,9 @@ function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, lease
           {/* Meeting room */}
           <label className="block">
             <span className={lbl}>{roomLabel}</span>
-            <select value={f.resourceId} onChange={up('resourceId')} className={ic}>
+            <SearchSelect aria-label="Room or space" value={f.resourceId} onChange={up('resourceId')} className={ic}>
               {rooms.map((r) => <option key={r.id} value={r.id}>{r.unitNumber}{r.size ? ` · ${r.size}` : ''}{r.hourlyRate ? ` — $${r.hourlyRate}/hr` : ''}</option>)}
-            </select>
+            </SearchSelect>
           </label>
 
           {/* From / To */}

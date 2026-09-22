@@ -1,3 +1,4 @@
+import SearchSelect from '../SearchSelect.jsx'
 import { useState } from 'react'
 import { Plus, Pencil, Trash2, UserPlus, UserMinus, Search, X } from 'lucide-react'
 import {
@@ -276,10 +277,10 @@ export default function AssignableResourceTab({ ctx, config }) {
         <Modal title={`Assign — ${assignFor.unitNumber}`} onClose={() => setAssignFor(null)}>
           <div className="space-y-4">
             <Field label="Member">
-              <select value={assignMember} onChange={(e) => setAssignMember(e.target.value)} className={ic}>
+              <SearchSelect aria-label="Member or contact" value={assignMember} onChange={(e) => setAssignMember(e.target.value)} className={ic}>
                 <option value="">Unassigned</option>
-                {memberOpts.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
+                {memberOpts.map((m) => <option key={m.id} value={m.id} data-search={[m.email, m.phone, m.search].filter(Boolean).join(' ')}>{m.label}</option>)}
+              </SearchSelect>
             </Field>
             <p className="text-xs text-muted-foreground">Assigning sets this {noun.toLowerCase()} to occupied and records which member it belongs to.</p>
             <div className="flex justify-end gap-3 pt-1">

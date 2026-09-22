@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useMemo, useState, useEffect } from 'react'
 import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
@@ -209,14 +210,14 @@ export default function PricingRequests() {
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium mb-1.5">Space *</label>
-                  <select value={form.spaceId} className="w-full border border-input rounded-md px-3 py-2 text-sm"
+                  <SearchSelect aria-label="Room or space" value={form.spaceId} className="w-full border border-input rounded-md px-3 py-2 text-sm"
                     onChange={(e) => {
                       const sp = officeish.find((s) => s.id === e.target.value)
                       setForm({ ...form, spaceId: e.target.value, listRent: sp?.monthlyRate ?? '' })
                     }}>
                     <option value="">Choose a space…</option>
                     {officeish.map((s) => <option key={s.id} value={s.id}>{s.unitNumber} — {s.type}{s.monthlyRate ? ` (${money(s.monthlyRate)})` : ''}</option>)}
-                  </select>
+                  </SearchSelect>
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1.5">Company / prospect *</label>

@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState, useEffect } from 'react'
 import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
@@ -345,7 +346,7 @@ export default function AgreementGenerator() {
           <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
             Select Lease
           </label>
-          <select
+          <SearchSelect aria-label="Lease"
             value={selectedLeaseId}
             onChange={(e) => { setSelectedLeaseId(e.target.value); setGenerated(false) }}
             className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black bg-white"
@@ -362,7 +363,7 @@ export default function AgreementGenerator() {
                 </option>
               )
             })}
-          </select>
+          </SearchSelect>
         </div>
 
         {/* Preview card */}

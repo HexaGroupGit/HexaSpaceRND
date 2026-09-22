@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useRef, useState } from 'react'
 import { Loader2, Send, X } from 'lucide-react'
 import { availabilityEmailDraft, matchingAvailableOffices, officeSuiteLabel } from '../lib/waitingOffice.js'
@@ -77,10 +78,10 @@ export default function WaitingAvailabilityEmail({ entry, store, onClose }) {
             {!entry.email && <p role="alert" className="text-sm text-amber-700">Add an email address to this contact’s record before sending.</p>}
             <fieldset disabled={sending} className="space-y-4">
               <label className="block text-sm">Available office suite
-                <select required value={office ? spaceId : ''} onChange={(event) => selectOffice(event.target.value)} className={`${input} mt-1`}>
+                <SearchSelect aria-label="Room or space" required value={office ? spaceId : ''} onChange={(event) => selectOffice(event.target.value)} className={`${input} mt-1`}>
                   {!office && <option value="">Choose an available office suite</option>}
                   {offices.map((space) => <option key={space.id} value={space.id}>{officeSuiteLabel(space)}</option>)}
-                </select>
+                </SearchSelect>
               </label>
               {!office && <p role="alert" className="text-sm text-amber-700">No matching office is currently available for this selection.</p>}
               {previous && <p className="text-xs text-amber-700">An availability email for this suite was already sent on {new Date(previous.sentAt).toLocaleDateString('en-AU')}. Sending again will send a new email.</p>}

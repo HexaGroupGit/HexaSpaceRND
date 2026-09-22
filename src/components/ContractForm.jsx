@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Trash2, Minus, ChevronDown, X, AlertCircle } from 'lucide-react'
 import { discountedPrice, discountPct } from '../lib/leasePricing.js'
@@ -472,7 +473,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
           <Section title="Company Information">
             <div className="grid grid-cols-2 gap-6">
               <Field label="Company" required error={errors.tenantId}>
-                <select
+                <SearchSelect aria-label="Company"
                   value={form.tenantId}
                   onChange={(e) => setForm({ ...form, tenantId: e.target.value, memberName: '' })}
                   className={selectCls(errors.tenantId)}
@@ -480,11 +481,11 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                 >
                   <option value="">Select company…</option>
                   {tenants.map((t) => (
-                    <option key={t.id} value={t.id}>
+                    <option key={t.id} value={t.id} data-search={[t.email, t.contactName, t.phone].filter(Boolean).join(' ')}>
                       {t.businessName}
                     </option>
                   ))}
-                </select>
+                </SearchSelect>
                 {selectedTenant && depositHeld > 0 && (
                   <div className="mt-2">
                     <span className="inline-block bg-blue-50 text-blue-700 border border-blue-200 text-xs font-medium px-2.5 py-1 rounded">
@@ -495,7 +496,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
               </Field>
 
               <Field label="Member">
-                <select
+                <SearchSelect aria-label="Member or contact"
                   value={form.memberName}
                   onChange={(e) => setForm({ ...form, memberName: e.target.value })}
                   className={selectCls()}
@@ -516,7 +517,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                       return <option key={n} value={n}>{n}{m?.billingPerson ? ' · billing person' : ''}</option>
                     })
                   })()}
-                </select>
+                </SearchSelect>
               </Field>
             </div>
           </Section>
@@ -674,7 +675,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                         <span className="text-sm font-medium text-foreground whitespace-nowrap">
                           {typeLabel} *
                         </span>
-                        <select
+                        <SearchSelect aria-label="Room or space"
                           value={item.spaceId}
                           onChange={(e) => handleSpaceSelect(itemIdx, e.target.value)}
                           className="border border-input rounded px-3 py-1.5 text-sm bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 min-w-[200px]"
@@ -699,7 +700,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                               }
                               return s.status === 'vacant'
                             }))}
-                        </select>
+                        </SearchSelect>
                       </div>
 
                       <div className="flex items-center gap-2">

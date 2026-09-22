@@ -1,3 +1,4 @@
+import SearchSelect from './SearchSelect.jsx'
 import { useState, useEffect, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
@@ -279,14 +280,14 @@ function BookingForm({ booking, onSave, onClose }) {
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Client</h3>
             <div>
               <label className={lab}>Existing member</label>
-              <select className={inp} value={f.companyId || ''} onChange={(e) => pickMember(e.target.value)}>
+              <SearchSelect aria-label="Company" className={inp} value={f.companyId || ''} onChange={(e) => pickMember(e.target.value)}>
                 <option value="">— Not a member (enter details below) —</option>
                 {memberOptions.map(({ tenant, contact }) => (
                   <option key={tenant.id} value={tenant.id}>
                     {tenant.businessName}{contact.name ? ` — ${contact.name}` : ''}
                   </option>
                 ))}
-              </select>
+              </SearchSelect>
               <p className="text-[11px] text-muted-foreground mt-1">
                 {f.companyId
                   ? 'Billed to this company. The invite to confirm goes to the contact below.'

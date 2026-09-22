@@ -1,3 +1,4 @@
+import SearchSelect from '../components/SearchSelect.jsx'
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
@@ -45,7 +46,7 @@ export default function PortalLayout({ company, member, companies = [], onSwitch
       {multiCompany && (
         <div className="px-4 pt-4 pb-1">
           <label className="font-heading uppercase tracking-label text-[9px] text-paper/40 block mb-1.5">Viewing company</label>
-          <select
+          <SearchSelect aria-label="Company"
             value={company?.id || ''}
             onChange={(e) => onSwitchCompany?.(e.target.value)}
             className="w-full bg-paper/10 text-paper text-[12px] font-body border border-paper/20 rounded px-3 py-2 cursor-pointer focus:outline-none focus:border-hexa-green/60"
@@ -53,7 +54,7 @@ export default function PortalLayout({ company, member, companies = [], onSwitch
             {companies.map((c) => (
               <option key={c.id} value={c.id} className="text-ink">{c.businessName}</option>
             ))}
-          </select>
+          </SearchSelect>
         </div>
       )}
 
