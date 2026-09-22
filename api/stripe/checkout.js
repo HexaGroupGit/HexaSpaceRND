@@ -7,7 +7,8 @@
 // Amounts are charged inc. GST, matching the invoice PDF/email total.
 
 import { applyCors } from '../_cors.js'
-import { requireMember, isAdminEmail, isBillingAuthority } from '../_auth.js'
+import { requireMember, isAdminEmail } from '../_auth.js'
+import { canManageCompanyBilling } from '../_billingAuth.js'
 
 function totalsIncGst(invoice) {
   let taxable = 0, exempt = 0
@@ -32,10 +33,6 @@ export default async function handler(req, res) {
   if (auth.error) return res.status(auth.status).json({ error: auth.error })
   const supabase = auth.sb
   const isAdmin = await isAdminEmail(supabase, auth.user.email)
-  // Only the company's billing/contact person (or an admin) may pay invoices.
-  if (!isAdmin && !(await isBillingAuthority(supabase, auth.user.email))) {
-    return res.status(403).json({ error: 'Only your company’s billing contact can pay invoices.' })
-  }
 
   const { invoiceId, returnTo } = req.body ?? {}
   if (!invoiceId) return res.status(400).json({ error: 'invoiceId is required.' })
@@ -54,7 +51,9 @@ export default async function handler(req, res) {
 
     const invoice = invRow?.data
     if (!invoice) return res.status(404).json({ error: 'Invoice not found.' })
-    if (!isAdmin && invoice.tenantId !== auth.companyId) return res.status(403).json({ error: 'Not your invoice.' })
+    if (!isAdmin && !(await canManageCompanyBilling(supabase, auth.user.email, invoice.tenantId))) {
+      return res.status(403).json({ error: 'Only this company’s billing contact can pay its invoices.' })
+    }
     if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' })
     if (invoice.status === 'voided') return res.status(400).json({ error: 'This invoice has been voided.' })
 

@@ -7,7 +7,8 @@
 /** Is this company a drop-in — i.e. holds no active membership/lease? */
 export async function isDropInCompany(sb, companyId) {
   if (!companyId) return true
-  const { data } = await sb.from('leases').select('data').eq('data->>tenantId', companyId)
+  const { data, error } = await sb.from('leases').select('data').eq('data->>tenantId', companyId)
+  if (error) throw error
   return !(data ?? []).some((r) => r.data?.status === 'active')
 }
 

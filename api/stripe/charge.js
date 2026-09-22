@@ -5,6 +5,7 @@
 import { stripeConfigured, chargeInvoiceOffSession } from '../_stripe.js'
 import { applyCors } from '../_cors.js'
 import { requireMember, isAdminEmail } from '../_auth.js'
+import { canManageCompanyBilling } from '../_billingAuth.js'
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return
@@ -26,8 +27,8 @@ export default async function handler(req, res) {
     const { data: invRow } = await supabase.from('invoices').select('data').eq('id', invoiceId).single()
     const invoice = invRow?.data
     if (!invoice) return res.status(404).json({ error: 'Invoice not found.' })
-    if (!isAdmin && invoice.tenantId !== auth.companyId) {
-      return res.status(403).json({ error: 'Not your invoice.' })
+    if (!isAdmin && !(await canManageCompanyBilling(supabase, auth.user.email, invoice.tenantId))) {
+      return res.status(403).json({ error: 'Only this company’s billing contact can pay its invoices.' })
     }
 
     const { data: tRow } = await supabase.from('tenants').select('data').eq('id', invoice.tenantId).single()
