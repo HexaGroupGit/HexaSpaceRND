@@ -37,7 +37,7 @@ function interestOf(lead) {
 const EMPTY = {
   name: '', businessName: '', email: '', phone: '',
   spaceId: '', source: 'website', stageId: '', value: '', notes: '',
-  enquiryType: '', preferredStartDate: '', waitingList: false,
+  enquiryType: '', preferredStartDate: '', preferredStartAsap: false, waitingList: false,
 }
 
 export default function LeadsBoard({ store }) {
@@ -75,6 +75,7 @@ export default function LeadsBoard({ store }) {
       phone: lead.phone ?? '', spaceId: lead.spaceId ?? '', source: lead.source ?? 'website',
       stageId: lead.stageId ?? stages[0]?.id ?? '', value: lead.value ?? '', notes: lead.notes ?? '',
       enquiryType: interestOf(lead), preferredStartDate: lead.preferredStartDate ?? '', waitingList: isWaitingLead(lead, pipelineStages),
+      preferredStartAsap: lead.preferredStartAsap === true,
     })
     setShowForm(true)
   }
@@ -82,7 +83,7 @@ export default function LeadsBoard({ store }) {
   function handleSave(e) {
     e.preventDefault()
     const original = leads.find((lead) => lead.id === editId)
-    const payload = { ...form, name: form.name.trim(), value: form.value === '' ? 0 : Number(form.value) }
+    const payload = { ...form, preferredStartDate: form.preferredStartAsap ? '' : form.preferredStartDate, name: form.name.trim(), value: form.value === '' ? 0 : Number(form.value) }
     if (!payload.name) return
     if (form.waitingList !== (original?.waitingList === true)) Object.assign(payload, waitingListUpdates(form.waitingList))
     if (editId) updateLead(editId, payload)
@@ -232,7 +233,8 @@ export default function LeadsBoard({ store }) {
                 </div>
                 <div>
                   <label htmlFor="lead-preferred-start" className="block text-xs font-medium text-muted-foreground mb-1">Preferred start date</label>
-                  <input id="lead-preferred-start" type="date" value={form.preferredStartDate} onChange={(e) => setForm({ ...form, preferredStartDate: e.target.value })} className={input} />
+                  <input id="lead-preferred-start" type="date" disabled={form.preferredStartAsap} value={form.preferredStartDate} onChange={(e) => setForm({ ...form, preferredStartDate: e.target.value })} className={input} />
+                  <label className="flex items-center gap-2 text-xs mt-2"><input type="checkbox" checked={form.preferredStartAsap} onChange={(e) => setForm({ ...form, preferredStartAsap: e.target.checked, preferredStartDate: e.target.checked ? '' : form.preferredStartDate })} /> ASAP</label>
                 </div>
                 {!editingLead?.tenantId && !editingLead?.dealClosed && !['won', 'lost'].includes(stages.find((stage) => stage.id === form.stageId)?.category) && (
                   <label className="col-span-2 flex items-center gap-2 text-sm">

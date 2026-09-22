@@ -1,16 +1,21 @@
 import { useState } from 'react'
 import { format, parseISO } from 'date-fns'
-import { ClipboardList, List, Table2, Pencil, X } from 'lucide-react'
+import { ClipboardList, List, Table2, Pencil, X, Mail } from 'lucide-react'
+import { officeSuiteLabel } from '../lib/waitingOffice.js'
+import { FLOOR_LABELS } from '../lib/roomFloor.js'
 
 function dateLabel(value) {
   if (!value) return '—'
   try { return format(parseISO(value), 'dd/MM/yyyy') } catch { return '—' }
 }
 
-export default function WaitingList({ leads, spaces, filtered = false, onOpen, onEdit, onRemove }) {
+export default function WaitingList({ leads, spaces, filtered = false, onOpen, onEdit, onRemove, matches = {}, onNotify }) {
   const [view, setView] = useState('table')
   const [search, setSearch] = useState('')
-  const spaceLabel = (lead) => spaces.find((space) => space.id === lead.spaceId)?.unitNumber
+  const spaceLabel = (lead) => {
+    const space = spaces.find((space) => space.id === lead.spaceId)
+    return space?.type === 'office' ? officeSuiteLabel(space) : space?.unitNumber
+  }
   const rows = leads.filter((lead) => [lead.name, lead.businessName, lead.email, lead.phone, lead.enquiryType, lead.interest, spaceLabel(lead), lead.notes, lead.waitingListNotes, lead.currentSpace, lead.waitingListReason]
     .filter(Boolean).join(' ').toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a, b) => (a.waitingListAddedAt || a.createdAt || '').localeCompare(b.waitingListAddedAt || b.createdAt || ''))
@@ -27,7 +32,17 @@ export default function WaitingList({ leads, spaces, filtered = false, onOpen, o
       {lead.businessName && <div className="text-xs text-muted-foreground">{lead.businessName}</div>}
     </div>
   )
-  const interest = (lead) => [lead.enquiryType || lead.interest, spaceLabel(lead)].filter(Boolean).join(' · ') || 'Not specified'
+  const interest = (lead) => [lead.enquiryType || lead.interest, spaceLabel(lead) || FLOOR_LABELS[lead.preferredFloor], lead.preferredPax ? `Minimum ${lead.preferredPax} pax` : ''].filter(Boolean).join(' · ') || 'Any suitable office suite'
+  const start = (lead) => lead.preferredStartAsap ? 'ASAP' : dateLabel(lead.preferredStartDate)
+  const availability = (lead) => {
+    const available = matches[lead.id] || []
+    const lastSent = (lead.waitingListNotifications || []).at(-1)
+    return <div className="space-y-1">
+      <p className={`text-xs ${available.length ? 'text-green-700 font-medium' : 'text-muted-foreground'}`}>{available.length ? `${available.length} ${available.length === 1 ? 'office available' : 'offices available'}` : 'Waiting for availability'}</p>
+      {available.length > 0 && <button type="button" onClick={() => onNotify(lead)} className="inline-flex items-center gap-1 text-xs font-medium border border-input rounded-md px-2 py-1.5 hover:bg-muted"><Mail size={13} /> Review email</button>}
+      {lastSent && <p className="text-xs text-muted-foreground">Last emailed {dateLabel(lastSent.sentAt)}</p>}
+    </div>
+  }
   const request = (lead) => (
     <div>
       <span className={`text-xs px-2 py-1 rounded ${lead.kind === 'member' ? 'bg-purple-50 text-purple-700' : 'bg-amber-50 text-amber-800'}`}>{lead.waitingListReason || 'Waiting for availability'}</span>
@@ -55,7 +70,7 @@ export default function WaitingList({ leads, spaces, filtered = false, onOpen, o
         <div className="bg-card border border-border rounded-xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase tracking-wide">
-              <tr>{['Name', 'Request', 'Contact', 'Interested in', 'Preferred start', 'Waiting since', 'Actions'].map((label) => <th key={label} scope="col" className="px-4 py-3 font-medium whitespace-nowrap">{label}</th>)}</tr>
+              <tr>{['Name', 'Request', 'Contact', 'Interested in', 'Preferred start', 'Availability', 'Waiting since', 'Actions'].map((label) => <th key={label} scope="col" className="px-4 py-3 font-medium whitespace-nowrap">{label}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-border">
               {rows.map((lead) => (
@@ -64,7 +79,8 @@ export default function WaitingList({ leads, spaces, filtered = false, onOpen, o
                   <td className="px-4 py-3">{request(lead)}</td>
                   <td className="px-4 py-3 text-muted-foreground"><div>{lead.email || '—'}</div><div>{lead.phone}</div></td>
                   <td className="px-4 py-3">{interest(lead)}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{dateLabel(lead.preferredStartDate)}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{start(lead)}</td>
+                  <td className="px-4 py-3">{availability(lead)}</td>
                   <td className="px-4 py-3 whitespace-nowrap">{dateLabel(lead.waitingListAddedAt || lead.createdAt)}</td>
                   <td className="px-4 py-3">{actions(lead)}</td>
                 </tr>
@@ -80,7 +96,8 @@ export default function WaitingList({ leads, spaces, filtered = false, onOpen, o
               <div className="mt-2">{request(lead)}</div>
               <p className="mt-2">{interest(lead)}</p>
               <p className="text-muted-foreground break-words">{[lead.email, lead.phone].filter(Boolean).join(' · ') || 'No contact details'}</p>
-              <p className="text-xs text-muted-foreground mt-2">Waiting since {dateLabel(lead.waitingListAddedAt || lead.createdAt)} · Preferred start: {dateLabel(lead.preferredStartDate)}</p>
+              <p className="text-xs text-muted-foreground mt-2">Waiting since {dateLabel(lead.waitingListAddedAt || lead.createdAt)} · Preferred start: {start(lead)}</p>
+              <div className="mt-2">{availability(lead)}</div>
               {(lead.waitingListNotes || lead.notes) && <p className="mt-2 text-muted-foreground whitespace-pre-wrap">{lead.waitingListNotes || lead.notes}</p>}
             </li>
           ))}

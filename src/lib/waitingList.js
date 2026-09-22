@@ -40,7 +40,10 @@ export function waitingRequestFields(form, previous = {}) {
     waitingListAddedAt: previous.waitingList && previous.waitingListAddedAt ? previous.waitingListAddedAt : new Date().toISOString(),
     enquiryType: form.enquiryType.trim(),
     spaceId: form.spaceId,
-    preferredStartDate: form.preferredStartDate,
+    preferredFloor: form.preferredFloor || '',
+    preferredPax: form.preferredPax ? Number(form.preferredPax) : null,
+    preferredStartAsap: form.preferredStartAsap === true,
+    preferredStartDate: form.preferredStartAsap ? '' : form.preferredStartDate,
     waitingListNotes: form.waitingListNotes.trim(),
   }
 }
