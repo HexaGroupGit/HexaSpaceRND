@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, UserPlus, UserMinus } from 'lucide-react'
+import { Plus, Pencil, Trash2, UserPlus, UserMinus, Search, X } from 'lucide-react'
 import {
   FLOORS, CAR_PARK_FLOORS, floorLabel, StatusPill, money, Field, Modal, ic,
   memberOptions, assignmentFor, contractFor, nextUnitNumber,
@@ -26,11 +26,17 @@ export default function AssignableResourceTab({ ctx, config }) {
   const [assignFor, setAssignFor] = useState(null)
   const [assignMember, setAssignMember] = useState('')
   const [setupNote, setSetupNote] = useState('')
+  const [plateSearch, setPlateSearch] = useState('')
 
   const isParking = type === 'parking'
   const items = spaces.filter((s) => s.type === type)
   // Car park bays read best in bay-number order: 201, 202 … 432.
   if (isParking) items.sort((a, b) => String(a.unitNumber).localeCompare(String(b.unitNumber), undefined, { numeric: true }))
+  // Match full or partial registrations regardless of case, spaces or hyphens.
+  const plateKey = normalisePlate(plateSearch).replace(/[\s-]+/g, '')
+  const filteredItems = isParking && plateSearch.trim()
+    ? items.filter((space) => plateKey && normalisePlate(space.numberPlate).replace(/[\s-]+/g, '').includes(plateKey))
+    : items
   // A bay sold on a contract is taken even though no member is assigned to it.
   const contractOf = (s) => (isParking ? contractFor(s, leases) : null)
   const assigned = items.filter((s) => s.assignedMemberId || contractOf(s)).length
@@ -135,6 +141,21 @@ export default function AssignableResourceTab({ ctx, config }) {
       )}
       {setupNote && <p className="text-xs text-green-700 mb-4">{setupNote}</p>}
 
+      {isParking && (
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="relative w-full max-w-sm">
+            <Search size={16} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              type="search" aria-label="Search parking by number plate" placeholder="Search number plate…"
+              value={plateSearch} onChange={(event) => setPlateSearch(event.target.value)}
+              className={`${ic} pl-9 pr-9`} autoComplete="off" spellCheck={false}
+            />
+            {plateSearch && <button type="button" onClick={() => setPlateSearch('')} aria-label="Clear number plate search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"><X size={15} /></button>}
+          </div>
+          <p aria-live="polite" className="text-xs text-muted-foreground">{plateSearch.trim() ? `${filteredItems.length} of ${items.length} bays` : 'Search a full or partial plate; spaces and hyphens are ignored.'}</p>
+        </div>
+      )}
+
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b border-border">
@@ -145,10 +166,10 @@ export default function AssignableResourceTab({ ctx, config }) {
             </tr>
           </thead>
           <tbody>
-            {items.length === 0 && (
-              <tr><td colSpan={isParking ? 7 : 6} className="px-4 py-12 text-center text-muted-foreground text-sm">No {noun.toLowerCase()}s yet.</td></tr>
+            {filteredItems.length === 0 && (
+              <tr><td colSpan={isParking ? 7 : 6} className="px-4 py-12 text-center text-muted-foreground text-sm">{isParking && plateSearch.trim() ? `No parking bays match number plate “${plateSearch.trim()}”.` : `No ${noun.toLowerCase()}s yet.`}</td></tr>
             )}
-            {items.map((s) => {
+            {filteredItems.map((s) => {
               const a = assignmentFor(s, members, tenants)
               const contract = a ? null : contractOf(s)
               return (
