@@ -6,10 +6,12 @@ import EnquiriesInbox from './EnquiriesInbox.jsx'
 import ReferralsPanel from './ReferralsPanel.jsx'
 import FunctionEnquiries from './FunctionEnquiries.jsx'
 import TourBookingModal from './TourBookingModal.jsx'
+import { isWaitingLead } from '../lib/waitingList.js'
 
 // CRM — the customer pipeline. Leads & Enquiries are the core; Referrals feed it.
 const TABS = [
   { key: 'leads',     label: 'Leads' },
+  { key: 'waiting',   label: 'Waiting List' },
   { key: 'enquiries', label: 'Enquiries' },
   { key: 'functions', label: 'Function Enquiries' },
   { key: 'referrals', label: 'Referrals' },
@@ -21,6 +23,7 @@ export default function Crm() {
   const [bookingTour, setBookingTour] = useState(false)
 
   const { leads = [], pipelineStages = [] } = store
+  const waitingCount = leads.filter((lead) => isWaitingLead(lead, pipelineStages)).length
   const wonStageId = pipelineStages.find((s) => s.category === 'won')?.id
   const lostStageId = pipelineStages.find((s) => s.category === 'lost')?.id
   const openLeads = leads.filter((l) => l.stageId !== wonStageId && l.stageId !== lostStageId).length
@@ -52,16 +55,17 @@ export default function Crm() {
       </div>
 
       {/* Sub-tab bar */}
-      <div className="border-b border-border mb-6 flex">
+      <div className="border-b border-border mb-6 flex overflow-x-auto">
         {TABS.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2 ${
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2 whitespace-nowrap ${
               tab === key ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             {label}
+            {key === 'waiting' && <span className="bg-muted text-muted-foreground text-xs px-1.5 py-0.5 rounded">{waitingCount}</span>}
             {key === 'enquiries' && unreadEnquiries > 0 && (
               <span className="bg-blue-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full leading-none">{unreadEnquiries}</span>
             )}
@@ -70,6 +74,7 @@ export default function Crm() {
       </div>
 
       {tab === 'leads' && <LeadsBoard store={store} />}
+      {tab === 'waiting' && <LeadsBoard store={store} waitingList />}
       {tab === 'enquiries' && <EnquiriesInbox store={store} />}
       {tab === 'functions' && <FunctionEnquiries store={store} />}
       {tab === 'referrals' && <ReferralsPanel store={store} />}

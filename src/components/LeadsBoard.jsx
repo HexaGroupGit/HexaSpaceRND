@@ -8,6 +8,8 @@ import { parseISO, differenceInCalendarDays } from 'date-fns'
 import { Plus, X, Pencil, Trash2, UserPlus, Mail, Phone, CheckCircle2, CalendarClock } from 'lucide-react'
 import LeadDetail from './LeadDetail.jsx'
 import { to12h } from '../lib/tourInvite.js'
+import WaitingList from './WaitingList.jsx'
+import { isWaitingLead, waitingListUpdates } from '../lib/waitingList.js'
 
 const SOURCES = ['website', 'walk-in', 'referral', 'phone', 'email', 'other']
 
@@ -36,9 +38,10 @@ function interestOf(lead) {
 const EMPTY = {
   name: '', businessName: '', email: '', phone: '',
   spaceId: '', source: 'website', stageId: '', value: '', notes: '',
+  enquiryType: '', preferredStartDate: '', waitingList: false,
 }
 
-export default function LeadsBoard({ store }) {
+export default function LeadsBoard({ store, waitingList = false }) {
   const {
     leads = [], pipelineStages = [], spaces = [], tenants = [],
     addLead, updateLead, deleteLead, moveLeadToStage, convertLeadToTenant,
@@ -51,17 +54,19 @@ export default function LeadsBoard({ store }) {
   const [interest, setInterest] = useState('all')
   const [openId, setOpenId] = useState(null)
   const openLead = openId ? leads.find((l) => l.id === openId) : null
+  const editingLead = leads.find((lead) => lead.id === editId)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
   const stages = [...pipelineStages].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
 
   // Enquiry-type filter — canonical offerings plus any extra types seen on leads.
   const interestOptions = [...new Set([...INTEREST_TYPES, ...leads.map(interestOf).filter(Boolean)])]
-  const visibleLeads = interest === 'all' ? leads : leads.filter((l) => interestOf(l) === interest)
+  const eligibleLeads = waitingList ? leads.filter((lead) => isWaitingLead(lead, pipelineStages)) : leads
+  const visibleLeads = interest === 'all' ? eligibleLeads : eligibleLeads.filter((l) => interestOf(l) === interest)
 
   function openAdd() {
     setEditId(null)
-    setForm({ ...EMPTY, stageId: stages[0]?.id ?? '' })
+    setForm({ ...EMPTY, stageId: stages.find((stage) => stage.category === 'new')?.id ?? stages.find((stage) => !['won', 'lost'].includes(stage.category))?.id ?? '', enquiryType: interest === 'all' ? '' : interest, waitingList })
     setShowForm(true)
   }
 
@@ -71,13 +76,17 @@ export default function LeadsBoard({ store }) {
       name: lead.name ?? '', businessName: lead.businessName ?? '', email: lead.email ?? '',
       phone: lead.phone ?? '', spaceId: lead.spaceId ?? '', source: lead.source ?? 'website',
       stageId: lead.stageId ?? stages[0]?.id ?? '', value: lead.value ?? '', notes: lead.notes ?? '',
+      enquiryType: interestOf(lead), preferredStartDate: lead.preferredStartDate ?? '', waitingList: isWaitingLead(lead, pipelineStages),
     })
     setShowForm(true)
   }
 
   function handleSave(e) {
     e.preventDefault()
-    const payload = { ...form, value: form.value === '' ? 0 : Number(form.value) }
+    const original = leads.find((lead) => lead.id === editId)
+    const payload = { ...form, name: form.name.trim(), value: form.value === '' ? 0 : Number(form.value) }
+    if (!payload.name) return
+    if (form.waitingList !== (original?.waitingList === true)) Object.assign(payload, waitingListUpdates(form.waitingList))
     if (editId) updateLead(editId, payload)
     else addLead(payload)
     setShowForm(false)
@@ -101,8 +110,8 @@ export default function LeadsBoard({ store }) {
     if (lead && lead.stageId !== over.id) moveLeadToStage(lead.id, over.id)
   }
 
-  // Space options: vacant spaces + the lead's current space (so editing still resolves it)
-  const vacantSpaces = spaces.filter((s) => s.status === 'vacant')
+  // Waiting leads can request occupied units; other leads see vacant + current units.
+  const vacantSpaces = form.waitingList ? spaces : spaces.filter((s) => s.status === 'vacant')
   const spaceOptions = (() => {
     const ids = new Set(vacantSpaces.map((s) => s.id))
     const extra = form.spaceId && !ids.has(form.spaceId) ? spaces.filter((s) => s.id === form.spaceId) : []
@@ -114,7 +123,7 @@ export default function LeadsBoard({ store }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4 gap-3">
+      <div className="flex flex-wrap items-center justify-between mb-4 gap-3">
         <div className="flex items-center gap-2">
           <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">Enquiring about</label>
           <select
@@ -130,10 +139,14 @@ export default function LeadsBoard({ store }) {
         </div>
         <button onClick={openAdd}
           className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90">
-          <Plus size={15} /> Add Lead
+          <Plus size={15} /> {waitingList ? 'Add to Waiting List' : 'Add Lead'}
         </button>
       </div>
 
+      {waitingList ? (
+        <WaitingList leads={visibleLeads} spaces={spaces} filtered={interest !== 'all'} onOpen={setOpenId} onEdit={openEdit}
+          onRemove={(lead) => updateLead(lead.id, waitingListUpdates(false))} />
+      ) : (
       <DndContext sensors={sensors} onDragStart={(e) => setActiveId(e.active.id)} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
         <div className="flex gap-4 overflow-x-auto pb-4">
           {stages.map((stage) => {
@@ -159,6 +172,7 @@ export default function LeadsBoard({ store }) {
           {activeLead ? <LeadCard lead={activeLead} spaces={spaces} tenants={tenants} dragging /> : null}
         </DragOverlay>
       </DndContext>
+      )}
 
       {openLead && <LeadDetail lead={openLead} store={store} onClose={() => setOpenId(null)} />}
 
@@ -167,7 +181,7 @@ export default function LeadsBoard({ store }) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-card rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card">
-              <h2 className="font-semibold text-foreground">{editId ? 'Edit Lead' : 'Add Lead'}</h2>
+              <h2 className="font-semibold text-foreground">{editId ? 'Edit Lead' : waitingList ? 'Add to Waiting List' : 'Add Lead'}</h2>
               <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
             <form onSubmit={handleSave} className="px-6 py-5 space-y-4">
@@ -193,7 +207,7 @@ export default function LeadsBoard({ store }) {
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Space of interest</label>
                   <select value={form.spaceId} onChange={(e) => setForm({ ...form, spaceId: e.target.value })} className={input}>
-                    <option value="">— Select vacant unit —</option>
+                    <option value="">{form.waitingList ? '— Select preferred unit —' : '— Select vacant unit —'}</option>
                     {spaceOptions.map((s) => (
                       <option key={s.id} value={s.id}>{s.unitNumber} — {s.address ?? s.type} (${s.monthlyRate?.toLocaleString('en-AU')}/mo)</option>
                     ))}
@@ -212,10 +226,26 @@ export default function LeadsBoard({ store }) {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Stage</label>
-                  <select value={form.stageId} onChange={(e) => setForm({ ...form, stageId: e.target.value })} className={input}>
+                  <select value={form.stageId} onChange={(e) => setForm({ ...form, stageId: e.target.value, waitingList: form.waitingList && !['won', 'lost'].includes(stages.find((stage) => stage.id === e.target.value)?.category) })} className={input}>
                     {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label htmlFor="lead-interest" className="block text-xs font-medium text-muted-foreground mb-1">Enquiring about</label>
+                  <select id="lead-interest" value={form.enquiryType} onChange={(e) => setForm({ ...form, enquiryType: e.target.value })} className={input}>
+                    <option value="">Not specified</option>
+                    {interestOptions.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="lead-preferred-start" className="block text-xs font-medium text-muted-foreground mb-1">Preferred start date</label>
+                  <input id="lead-preferred-start" type="date" value={form.preferredStartDate} onChange={(e) => setForm({ ...form, preferredStartDate: e.target.value })} className={input} />
+                </div>
+                {!editingLead?.tenantId && !editingLead?.dealClosed && !['won', 'lost'].includes(stages.find((stage) => stage.id === form.stageId)?.category) && (
+                  <label className="col-span-2 flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={form.waitingList} onChange={(e) => setForm({ ...form, waitingList: e.target.checked })} /> On waiting list
+                  </label>
+                )}
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
                   <textarea value={form.notes} rows={3} onChange={(e) => setForm({ ...form, notes: e.target.value })}
@@ -227,7 +257,7 @@ export default function LeadsBoard({ store }) {
                   className="px-4 py-2 text-sm text-foreground border border-input rounded-md hover:bg-muted/50">Cancel</button>
                 <button type="submit"
                   className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium">
-                  {editId ? 'Save Changes' : 'Add Lead'}
+                  {editId ? 'Save Changes' : waitingList ? 'Add to Waiting List' : 'Add Lead'}
                 </button>
               </div>
             </form>

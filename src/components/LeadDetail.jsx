@@ -10,6 +10,7 @@ import { buildProposalPdf, buildDeskBrochurePdf, buildVirtualBrochurePdf, buildO
 import { availableOffices, availableParking } from '../lib/officeAvailability.js'
 import TourBookingModal from './TourBookingModal.jsx'
 import { tourWhenLabel, durationLabel } from '../lib/tourInvite.js'
+import { isWaitingLead, waitingListUpdates } from '../lib/waitingList.js'
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: User },
@@ -72,6 +73,7 @@ export default function LeadDetail({ lead, store, onClose }) {
   const stage = pipelineStages.find((s) => s.id === lead.stageId)
   const converted = lead.tenantId && tenants.some((t) => t.id === lead.tenantId)
   const dealClosed = lead.dealClosed || !!commission
+  const waiting = isWaitingLead(lead, pipelineStages)
   const stageName = (id) => pipelineStages.find((s) => s.id === id)?.name ?? 'stage'
 
   // Close-deal / commission
@@ -432,10 +434,15 @@ export default function LeadDetail({ lead, store, onClose }) {
               <CheckCircle2 size={15} /> Converted to a tenant.
             </div>
           ) : (
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               <button onClick={() => convertLeadToTenant(lead.id)} className="flex items-center gap-1.5 text-sm font-medium bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90">
                 <UserPlus size={14} /> Convert to tenant
               </button>
+              {!lead.tenantId && !dealClosed && !['won', 'lost'].includes(stage?.category) && (
+                <button onClick={() => updateLead(lead.id, waitingListUpdates(!waiting))} className="text-sm border border-input px-3 py-1.5 rounded-md hover:bg-muted/50">
+                  {waiting ? 'Remove from waiting list' : 'Add to waiting list'}
+                </button>
+              )}
               <button onClick={() => { if (window.confirm('Delete this lead?')) { deleteLead(lead.id); onClose() } }}
                 className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-red-600 px-2 py-1.5">
                 <Trash2 size={14} /> Delete
