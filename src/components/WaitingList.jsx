@@ -11,7 +11,7 @@ export default function WaitingList({ leads, spaces, filtered = false, onOpen, o
   const [view, setView] = useState('table')
   const [search, setSearch] = useState('')
   const spaceLabel = (lead) => spaces.find((space) => space.id === lead.spaceId)?.unitNumber
-  const rows = leads.filter((lead) => [lead.name, lead.businessName, lead.email, lead.phone, lead.enquiryType, lead.interest, spaceLabel(lead), lead.notes]
+  const rows = leads.filter((lead) => [lead.name, lead.businessName, lead.email, lead.phone, lead.enquiryType, lead.interest, spaceLabel(lead), lead.notes, lead.waitingListNotes, lead.currentSpace, lead.waitingListReason]
     .filter(Boolean).join(' ').toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a, b) => (a.waitingListAddedAt || a.createdAt || '').localeCompare(b.waitingListAddedAt || b.createdAt || ''))
 
@@ -23,11 +23,17 @@ export default function WaitingList({ leads, spaces, filtered = false, onOpen, o
   )
   const name = (lead) => (
     <div>
-      <button type="button" onClick={() => onOpen(lead.id)} className="font-medium text-foreground text-left hover:underline">{lead.name || lead.businessName || 'Unnamed lead'}</button>
+      <button type="button" onClick={() => onOpen(lead)} className="font-medium text-foreground text-left hover:underline">{lead.name || lead.businessName || 'Unnamed contact'}</button>
       {lead.businessName && <div className="text-xs text-muted-foreground">{lead.businessName}</div>}
     </div>
   )
   const interest = (lead) => [lead.enquiryType || lead.interest, spaceLabel(lead)].filter(Boolean).join(' · ') || 'Not specified'
+  const request = (lead) => (
+    <div>
+      <span className={`text-xs px-2 py-1 rounded ${lead.kind === 'member' ? 'bg-purple-50 text-purple-700' : 'bg-amber-50 text-amber-800'}`}>{lead.waitingListReason || 'Waiting for availability'}</span>
+      {lead.currentSpace && <p className="text-xs text-muted-foreground mt-2">Current: {lead.currentSpace}</p>}
+    </div>
+  )
 
   return (
     <div>
@@ -43,18 +49,19 @@ export default function WaitingList({ leads, spaces, filtered = false, onOpen, o
       {rows.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center text-muted-foreground">
           <ClipboardList size={26} className="mx-auto mb-2" />
-          <p className="text-sm">{search.trim() || filtered ? 'No entries match your filters.' : 'Your waiting list is empty. Add a person or open an existing lead to add them here.'}</p>
+          <p className="text-sm">{search.trim() || filtered ? 'No entries match your filters.' : 'Your waiting list is empty. Add an existing member, an existing enquiry or a new lead.'}</p>
         </div>
       ) : view === 'table' ? (
         <div className="bg-card border border-border rounded-xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase tracking-wide">
-              <tr>{['Name', 'Contact', 'Interested in', 'Preferred start', 'Waiting since', 'Actions'].map((label) => <th key={label} scope="col" className="px-4 py-3 font-medium whitespace-nowrap">{label}</th>)}</tr>
+              <tr>{['Name', 'Request', 'Contact', 'Interested in', 'Preferred start', 'Waiting since', 'Actions'].map((label) => <th key={label} scope="col" className="px-4 py-3 font-medium whitespace-nowrap">{label}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-border">
               {rows.map((lead) => (
                 <tr key={lead.id} className="hover:bg-muted/30">
                   <td className="px-4 py-3">{name(lead)}</td>
+                  <td className="px-4 py-3">{request(lead)}</td>
                   <td className="px-4 py-3 text-muted-foreground"><div>{lead.email || '—'}</div><div>{lead.phone}</div></td>
                   <td className="px-4 py-3">{interest(lead)}</td>
                   <td className="px-4 py-3 whitespace-nowrap">{dateLabel(lead.preferredStartDate)}</td>
@@ -70,10 +77,11 @@ export default function WaitingList({ leads, spaces, filtered = false, onOpen, o
           {rows.map((lead) => (
             <li key={lead.id} className="bg-card border border-border rounded-xl p-4 text-sm">
               <div className="flex items-start justify-between gap-3">{name(lead)}{actions(lead)}</div>
+              <div className="mt-2">{request(lead)}</div>
               <p className="mt-2">{interest(lead)}</p>
               <p className="text-muted-foreground break-words">{[lead.email, lead.phone].filter(Boolean).join(' · ') || 'No contact details'}</p>
               <p className="text-xs text-muted-foreground mt-2">Waiting since {dateLabel(lead.waitingListAddedAt || lead.createdAt)} · Preferred start: {dateLabel(lead.preferredStartDate)}</p>
-              {lead.notes && <p className="mt-2 text-muted-foreground whitespace-pre-wrap">{lead.notes}</p>}
+              {(lead.waitingListNotes || lead.notes) && <p className="mt-2 text-muted-foreground whitespace-pre-wrap">{lead.waitingListNotes || lead.notes}</p>}
             </li>
           ))}
         </ul>

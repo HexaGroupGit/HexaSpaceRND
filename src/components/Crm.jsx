@@ -6,7 +6,8 @@ import EnquiriesInbox from './EnquiriesInbox.jsx'
 import ReferralsPanel from './ReferralsPanel.jsx'
 import FunctionEnquiries from './FunctionEnquiries.jsx'
 import TourBookingModal from './TourBookingModal.jsx'
-import { isWaitingLead } from '../lib/waitingList.js'
+import { waitingListEntries } from '../lib/waitingList.js'
+import WaitingListManager from './WaitingListManager.jsx'
 
 // CRM — the customer pipeline. Leads & Enquiries are the core; Referrals feed it.
 const TABS = [
@@ -23,7 +24,7 @@ export default function Crm() {
   const [bookingTour, setBookingTour] = useState(false)
 
   const { leads = [], pipelineStages = [] } = store
-  const waitingCount = leads.filter((lead) => isWaitingLead(lead, pipelineStages)).length
+  const waitingCount = waitingListEntries(store).length
   const wonStageId = pipelineStages.find((s) => s.category === 'won')?.id
   const lostStageId = pipelineStages.find((s) => s.category === 'lost')?.id
   const openLeads = leads.filter((l) => l.stageId !== wonStageId && l.stageId !== lostStageId).length
@@ -74,7 +75,7 @@ export default function Crm() {
       </div>
 
       {tab === 'leads' && <LeadsBoard store={store} />}
-      {tab === 'waiting' && <LeadsBoard store={store} waitingList />}
+      {tab === 'waiting' && <WaitingListManager store={store} />}
       {tab === 'enquiries' && <EnquiriesInbox store={store} />}
       {tab === 'functions' && <FunctionEnquiries store={store} />}
       {tab === 'referrals' && <ReferralsPanel store={store} />}

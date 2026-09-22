@@ -8,7 +8,6 @@ import { parseISO, differenceInCalendarDays } from 'date-fns'
 import { Plus, X, Pencil, Trash2, UserPlus, Mail, Phone, CheckCircle2, CalendarClock } from 'lucide-react'
 import LeadDetail from './LeadDetail.jsx'
 import { to12h } from '../lib/tourInvite.js'
-import WaitingList from './WaitingList.jsx'
 import { isWaitingLead, waitingListUpdates } from '../lib/waitingList.js'
 
 const SOURCES = ['website', 'walk-in', 'referral', 'phone', 'email', 'other']
@@ -41,7 +40,7 @@ const EMPTY = {
   enquiryType: '', preferredStartDate: '', waitingList: false,
 }
 
-export default function LeadsBoard({ store, waitingList = false }) {
+export default function LeadsBoard({ store }) {
   const {
     leads = [], pipelineStages = [], spaces = [], tenants = [],
     addLead, updateLead, deleteLead, moveLeadToStage, convertLeadToTenant,
@@ -61,12 +60,11 @@ export default function LeadsBoard({ store, waitingList = false }) {
 
   // Enquiry-type filter — canonical offerings plus any extra types seen on leads.
   const interestOptions = [...new Set([...INTEREST_TYPES, ...leads.map(interestOf).filter(Boolean)])]
-  const eligibleLeads = waitingList ? leads.filter((lead) => isWaitingLead(lead, pipelineStages)) : leads
-  const visibleLeads = interest === 'all' ? eligibleLeads : eligibleLeads.filter((l) => interestOf(l) === interest)
+  const visibleLeads = interest === 'all' ? leads : leads.filter((l) => interestOf(l) === interest)
 
   function openAdd() {
     setEditId(null)
-    setForm({ ...EMPTY, stageId: stages.find((stage) => stage.category === 'new')?.id ?? stages.find((stage) => !['won', 'lost'].includes(stage.category))?.id ?? '', enquiryType: interest === 'all' ? '' : interest, waitingList })
+    setForm({ ...EMPTY, stageId: stages.find((stage) => stage.category === 'new')?.id ?? stages.find((stage) => !['won', 'lost'].includes(stage.category))?.id ?? '', enquiryType: interest === 'all' ? '' : interest })
     setShowForm(true)
   }
 
@@ -139,14 +137,10 @@ export default function LeadsBoard({ store, waitingList = false }) {
         </div>
         <button onClick={openAdd}
           className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90">
-          <Plus size={15} /> {waitingList ? 'Add to Waiting List' : 'Add Lead'}
+          <Plus size={15} /> Add Lead
         </button>
       </div>
 
-      {waitingList ? (
-        <WaitingList leads={visibleLeads} spaces={spaces} filtered={interest !== 'all'} onOpen={setOpenId} onEdit={openEdit}
-          onRemove={(lead) => updateLead(lead.id, waitingListUpdates(false))} />
-      ) : (
       <DndContext sensors={sensors} onDragStart={(e) => setActiveId(e.active.id)} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
         <div className="flex gap-4 overflow-x-auto pb-4">
           {stages.map((stage) => {
@@ -172,7 +166,6 @@ export default function LeadsBoard({ store, waitingList = false }) {
           {activeLead ? <LeadCard lead={activeLead} spaces={spaces} tenants={tenants} dragging /> : null}
         </DragOverlay>
       </DndContext>
-      )}
 
       {openLead && <LeadDetail lead={openLead} store={store} onClose={() => setOpenId(null)} />}
 
@@ -181,7 +174,7 @@ export default function LeadsBoard({ store, waitingList = false }) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-card rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card">
-              <h2 className="font-semibold text-foreground">{editId ? 'Edit Lead' : waitingList ? 'Add to Waiting List' : 'Add Lead'}</h2>
+              <h2 className="font-semibold text-foreground">{editId ? 'Edit Lead' : 'Add Lead'}</h2>
               <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
             <form onSubmit={handleSave} className="px-6 py-5 space-y-4">
@@ -257,7 +250,7 @@ export default function LeadsBoard({ store, waitingList = false }) {
                   className="px-4 py-2 text-sm text-foreground border border-input rounded-md hover:bg-muted/50">Cancel</button>
                 <button type="submit"
                   className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium">
-                  {editId ? 'Save Changes' : waitingList ? 'Add to Waiting List' : 'Add Lead'}
+                  {editId ? 'Save Changes' : 'Add Lead'}
                 </button>
               </div>
             </form>
