@@ -170,7 +170,15 @@ export default async function handler(req, res) {
         rate: membershipPrice,
         tenantId,
       })
-      voSpace = { ...alloc.space, status: 'reserved', occupantTenantId: tenantId }
+      // Link the suite to the company on both fields it is read by: Spaces and
+      // the mail sort read assignedCompanyId, the directory reads
+      // occupantTenantId. A REUSED suite also carries whatever rate its last
+      // holder had, so restate the price from this proposal.
+      voSpace = {
+        ...alloc.space, status: 'reserved',
+        occupantTenantId: tenantId, assignedCompanyId: tenantId, assignedMemberId: memberId,
+        rate: membershipPrice, monthlyRate: membershipPrice,
+      }
       const { error: voErr } = await supabase
         .from('spaces')
         .upsert({ id: voSpace.id, data: voSpace, updated_at: now.toISOString() })

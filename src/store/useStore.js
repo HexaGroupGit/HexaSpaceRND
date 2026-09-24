@@ -1144,10 +1144,21 @@ export function useStore() {
       if (activeTenants.length > 1) return // shared space — don't guess
       if (activeTenants.length === 1) {
         // The one active lease is authoritative — point the occupant at it.
-        // Scoped to dedicated offices; pooled/bookable resources (parking,
-        // studios, flex) keep whatever occupant tag they already have.
-        if (s.type === 'office' && s.occupantTenantId !== activeTenants[0]) {
-          updateSpace(s.id, { occupantTenantId: activeTenants[0], occupantName: '' })
+        // Scoped to dedicated offices and virtual suites; pooled/bookable
+        // resources (parking, studios, flex) keep whatever occupant tag they
+        // already have.
+        //
+        // Virtual suites are in scope because a suite number is the member's
+        // registered business address: if its company tag is ever cleared by
+        // hand, the directory, the mail board and the getting-started pack all
+        // stop finding them. Restoring it from the live contract on load means
+        // an accidental unassign heals itself, so `assignedCompanyId` is kept
+        // in step here too — it is what Spaces and the mail sort read.
+        if (['office', 'virtual'].includes(s.type)) {
+          const patch = {}
+          if (s.occupantTenantId !== activeTenants[0]) { patch.occupantTenantId = activeTenants[0]; patch.occupantName = '' }
+          if (s.type === 'virtual' && s.assignedCompanyId !== activeTenants[0]) patch.assignedCompanyId = activeTenants[0]
+          if (Object.keys(patch).length) updateSpace(s.id, patch)
         }
         return
       }
@@ -1158,7 +1169,13 @@ export function useStore() {
         (['expired', 'terminated'].includes(l.status) || l.offboardedAt) &&
         (!s.occupantTenantId || l.tenantId === s.occupantTenantId))
       if (!hasLive && hasEndedForOccupant) {
-        updateSpace(s.id, { status: 'vacant', occupantTenantId: null, occupantName: '' })
+        updateSpace(s.id, {
+          status: 'vacant', occupantTenantId: null, occupantName: '',
+          // Cleared alongside, or a departed member's suite keeps reading as
+          // theirs in Spaces for ever. The NUMBER still can't be handed out —
+          // takenSuiteNumbers counts their contract whatever its status.
+          ...(s.type === 'virtual' ? { assignedCompanyId: null, assignedMemberId: null } : {}),
+        })
       }
     })
   }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps

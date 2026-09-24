@@ -1,4 +1,4 @@
-// Virtual-office suite numbering.
+// Virtual-office suite numbering and the contract behind a suite.
 //
 // A Virtual Office member gets their own suite number at 830 Whitehorse Road —
 // it's what makes the address usable for ASIC registration, a bank, Google
@@ -19,6 +19,15 @@
 // (Suite 0–29 → 200–229). Level 4 and 5 offices are named "Office 1"–"Office 15"
 // and carry no suite number at all, so nothing physical occupies the 4xx band —
 // which is why live virtual offices legitimately sit as low as 406.
+
+import { monthlyRentNow } from './leasePricing.js'
+import { buildPaymentSchedule } from './paymentSchedule.js'
+
+// The two Virtual Office packages, as quoted on the website and the brochure.
+// The premium inclusions (lounge access, daily meeting-room hours) switch on at
+// $150 — voInclusions.js reads VO_LIST_PRICE for that threshold.
+export const VO_PACKAGES = { address: 75, plus: 150 }
+export const VO_LIST_PRICE = VO_PACKAGES.plus
 
 // First number a NEW virtual office may mint. Not a collision guard (nothing
 // physical is in the 4xx band); it simply starts the series where the OfficeRND
@@ -101,7 +110,7 @@ export function reusableVirtualSuite({ spaces = [], leases = [], start = VO_SUIT
 }
 
 // A fresh virtual-office space record for `unitNumber`.
-export function newVirtualSuiteSpace({ unitNumber, rate = 150, tenantId = null, status = 'vacant' }) {
+export function newVirtualSuiteSpace({ unitNumber, rate = VO_LIST_PRICE, tenantId = null, status = 'vacant' }) {
   return {
     id: `hx_vo_${String(unitNumber).replace(/\s+/g, '_').toLowerCase()}`,
     unitNumber,
@@ -120,7 +129,7 @@ export function newVirtualSuiteSpace({ unitNumber, rate = 150, tenantId = null, 
 // Allocate a suite for a virtual-office member: reuse a free one where we can,
 // otherwise mint the next number. Returns { space, created } — `created` tells
 // the caller whether the space still has to be inserted.
-export function allocateVirtualSuite({ spaces = [], leases = [], start = VO_SUITE_START, rate = 150, tenantId = null } = {}) {
+export function allocateVirtualSuite({ spaces = [], leases = [], start = VO_SUITE_START, rate = VO_LIST_PRICE, tenantId = null } = {}) {
   const existing = reusableVirtualSuite({ spaces, leases, start })
   if (existing) return { space: existing, created: false }
   const { unitNumber } = nextVirtualSuite({ spaces, leases, start })
@@ -131,4 +140,124 @@ export function allocateVirtualSuite({ spaces = [], leases = [], start = VO_SUIT
 export function virtualSuiteLabel(space) {
   const n = space?.type === 'virtual' ? buildingSuiteNumber(space) : null
   return n == null ? null : `Suite ${n}`
+}
+
+// ── The contract behind a suite ──────────────────────────────────────────────
+//
+// A suite number IS the member's registered business address — it is on their
+// ASIC record, their bank file and the mail sorted downstairs. So the contract,
+// not a stored assignment field, is what a suite belongs to: the fields can be
+// cleared by a stray click, the signed contract cannot. Everything the admin
+// UI shows about a suite is resolved from the live contract holding it, and the
+// stored fields are only a fallback for a suite nobody holds yet.
+
+// The live (active or pending, not offboarded) contract holding a suite. Two
+// links, in order of trust:
+//   • spaceId / items[].spaceId — the real pointer, set by every flow that
+//     allocates a suite (proposal accept, exit enrolment, manual contract).
+//   • the suite number written on the contract's resource line — the only link
+//     a migrated OfficeRND VO has, and the number the member was actually told.
+// Nothing weaker counts: one company can hold several virtual offices, so
+// matching on tenant alone would hand one member's suite to another contract.
+export function virtualSuiteContract(space, leases = [], spaces = null) {
+  return virtualSuiteClaims(space, leases, spaces)[0] ?? null
+}
+
+// Every live contract claiming a suite, best claim first. More than one means
+// two companies are pointed at a single registered address — it happens when a
+// contract's items[] keeps a suite its spaceId has since moved off, and it is
+// worth surfacing because items[] is what the billing engine names on the
+// invoice. Ranked so the answer never depends on lease array order:
+//   1. spaceId — the contract's primary pointer, and what `resource` agrees with
+//   2. items[].spaceId — a bundled line, which is the one that goes stale
+// The suite NUMBER is only consulted when nobody claims the space either way:
+// it is there for migrated OfficeRND VOs that have no space record at all, and
+// the import left unsigned pendings quoting numbers that live members already
+// hold — reading those as claims would contest half the floor.
+export function virtualSuiteClaims(space, leases = [], spaces = null) {
+  if (!space?.id) return []
+  const live = leases.filter((l) => ['active', 'pending'].includes(l?.status) && !l?.offboardedAt)
+  const byPointer = live
+    .map((l) => ({ l, r: l.spaceId === space.id ? 1 : (l.items ?? []).some((i) => i?.spaceId === space.id) ? 2 : 0 }))
+    .filter((x) => x.r > 0)
+    .sort((a, b) => a.r - b.r)
+    .map((x) => x.l)
+  if (byPointer.length) return byPointer
+  const n = buildingSuiteNumber(space)
+  if (n == null) return []
+  const dangling = (l) => !l.spaceId || (spaces ? !spaces.some((s) => s?.id === l.spaceId) : false)
+  return live.filter((l) => dangling(l) && (suiteFromText(l.resource) ?? suiteFromText(l.suite)) === n)
+}
+
+// Everything the admin needs to know about one suite, resolved from the live
+// contract: who holds it, what they actually pay this month, and whether the
+// space record still agrees with the contract.
+export function virtualSuiteHolding(space, { leases = [], tenants = [], members = [], spaces = null } = {}) {
+  const claims = virtualSuiteClaims(space, leases, spaces)
+  const lease = claims[0] ?? null
+  const suite = buildingSuiteNumber(space)
+  const contractSuite = lease ? (suiteFromText(lease.resource) ?? suiteFromText(lease.suite)) : null
+  const companyId = lease?.tenantId ?? space?.assignedCompanyId ?? space?.occupantTenantId ?? null
+  // The contract's own monthly line for THIS suite — not lease.monthlyRent,
+  // which is stale on a stepped contract and includes bundled parking.
+  const price = lease ? monthlyRentNow(lease, { spaceId: space?.id }) : null
+  // One schedule, two very different findings. A $0 month inside a schedule
+  // that charges in other months is a promotional free month and will end. A
+  // schedule that totals $0 over the WHOLE term is a contract with no rent
+  // configured at all: it bills nothing and auto-renews silently, so it must
+  // never wear the same "rent-free" label.
+  //
+  // The test is on the schedule, not on the price fields, because $0 has more
+  // than one spelling — monthlyRent: 0 with no steps, and listPrice: 150 with
+  // a '100%' discount, both produce a term that never charges. A VO bundled
+  // free onto a paying contract is NOT this: that schedule still totals > 0.
+  const schedule = lease ? buildPaymentSchedule(lease, null) : null
+  const monthKey = new Date().toISOString().slice(0, 7)
+  const noRent = !!lease && (!schedule || schedule.totals.total === 0)
+  const rentFree = !noRent && !!schedule &&
+    schedule.rows.find((r) => r.key === monthKey)?.total === 0
+  return {
+    lease,
+    tenant: tenants.find((t) => t.id === companyId) ?? null,
+    member: members.find((m) => m.id === (lease?.memberId ?? space?.assignedMemberId)) ?? null,
+    companyId,
+    suite,
+    contractSuite,
+    // A live contract's suite is not the admin's to hand around or delete.
+    locked: !!lease,
+    // The contract names a different number than the space carries: one of the
+    // two is what the member registered, and we no longer know which.
+    suiteMismatch: !!(lease && contractSuite != null && suite != null && contractSuite !== suite),
+    // The space is tagged to a company the contract doesn't name.
+    companyDrift: !!(lease && space?.assignedCompanyId && space.assignedCompanyId !== lease.tenantId),
+    // Two live contracts pointed at one registered address.
+    rivals: claims.slice(1),
+    // Held by a contract but carrying no company tag — invisible to anything
+    // that reads the space rather than the contract (directory, mail board).
+    unlinked: !!(lease && !space?.assignedCompanyId),
+    // Live contract, no rent anywhere in its term. See rentFree above.
+    noRent,
+    monthly: rentFree || noRent ? 0 : price?.monthly ?? null,
+    list: price?.list ?? null,
+    rentFree,
+  }
+}
+
+// The patch that re-points a suite at the contract that actually holds it.
+// Empty when nothing has drifted.
+export function relinkVirtualSuitePatch(space, holding) {
+  const { lease } = holding ?? {}
+  if (!lease) return {}
+  const patch = {}
+  if (space?.assignedCompanyId !== lease.tenantId) patch.assignedCompanyId = lease.tenantId
+  if (space?.occupantTenantId !== lease.tenantId) patch.occupantTenantId = lease.tenantId
+  if (lease.memberId && space?.assignedMemberId !== lease.memberId) patch.assignedMemberId = lease.memberId
+  const rate = holding.list ?? holding.monthly
+  if (rate != null && rate > 0 && Number(space?.rate ?? space?.monthlyRate ?? 0) !== rate) {
+    patch.rate = rate
+    patch.monthlyRate = rate
+  }
+  const desired = lease.status === 'pending' ? 'reserved' : 'occupied'
+  if (space?.status !== desired) patch.status = desired
+  return patch
 }

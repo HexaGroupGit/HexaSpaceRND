@@ -46,3 +46,38 @@ export function discountedPrice(listPrice, discount) {
 export function stepMonthly(step) {
   return applyDiscount(Number(step?.listPrice ?? 0) * Number(step?.qty ?? 1), step?.discount)
 }
+
+// What a contract charges per month RIGHT NOW.
+//
+// `lease.monthlyRent` is only the figure that was saved the last time the
+// contract was edited — a stepped contract (a rise at month 13, an introductory
+// quarter) has moved on from it. The step covering `onISO` is the live price.
+// `spaceId` narrows to one item when the contract bundles several, so a virtual
+// suite reports its own line rather than the office + parking total.
+//
+// Returns { monthly, list }: monthly is what is actually charged (the step's
+// discount applied), list is the RRP it was discounted from. Past the last
+// step the final price holds — an expired schedule must never read as $0.
+export function monthlyRentNow(lease, { spaceId = null, onISO = null } = {}) {
+  const on = onISO ?? new Date().toISOString().slice(0, 10)
+  const items = lease?.items?.length ? lease.items : null
+  if (!items) {
+    const list = Number(lease?.listPrice ?? lease?.monthlyRent ?? 0)
+    return { monthly: discountedPrice(list, lease?.discount), list }
+  }
+  const scoped = spaceId ? items.filter((i) => i.spaceId === spaceId) : items
+  const steps = (scoped.length ? scoped : items).flatMap((i) => i.steps ?? []).filter(Boolean)
+  if (!steps.length) {
+    const list = Number(lease?.listPrice ?? lease?.monthlyRent ?? 0)
+    return { monthly: discountedPrice(list, lease?.discount), list }
+  }
+  const live = steps.filter((s) =>
+    (!s.startDate || String(s.startDate) <= on) && (!s.endDate || String(s.endDate) >= on))
+  const use = live.length
+    ? live
+    : [[...steps].sort((a, b) => String(a.startDate ?? '').localeCompare(String(b.startDate ?? ''))).at(-1)]
+  return {
+    monthly: round2(use.reduce((sum, s) => sum + stepMonthly(s), 0)),
+    list: round2(use.reduce((sum, s) => sum + Number(s?.listPrice ?? 0) * Number(s?.qty ?? 1), 0)),
+  }
+}

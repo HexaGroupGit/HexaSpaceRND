@@ -1,11 +1,13 @@
 import SearchSelect from '../SearchSelect.jsx'
-import { useState } from 'react'
-import { Plus, Pencil, Trash2, UserPlus, UserMinus, Search, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Plus, Pencil, Trash2, UserPlus, UserMinus, Search, X, Lock, Link2, AlertTriangle } from 'lucide-react'
 import {
   FLOORS, CAR_PARK_FLOORS, floorLabel, StatusPill, money, Field, Modal, ic,
   memberOptions, assignmentFor, contractFor, nextUnitNumber,
 } from './shared.jsx'
-import { nextVirtualSuite } from '../../lib/virtualSuites.js'
+import {
+  nextVirtualSuite, virtualSuiteHolding, relinkVirtualSuitePatch, VO_LIST_PRICE,
+} from '../../lib/virtualSuites.js'
 import {
   PARKING_RATE, PARKING_INCLUDED_LABEL, missingParkingBays, retiredParkingSpaces,
   parkingSetupPrompt, parkingSetupSummary, normalisePlate,
@@ -30,18 +32,46 @@ export default function AssignableResourceTab({ ctx, config }) {
   const [plateSearch, setPlateSearch] = useState('')
 
   const isParking = type === 'parking'
-  const items = spaces.filter((s) => s.type === type)
-  // Car park bays read best in bay-number order: 201, 202 … 432.
-  if (isParking) items.sort((a, b) => String(a.unitNumber).localeCompare(String(b.unitNumber), undefined, { numeric: true }))
+  const isVirtual = type === 'virtual'
+  // Memoised so the holdings below (one payment schedule per suite) only
+  // recompute when the data behind them actually changes.
+  const items = useMemo(() => {
+    const list = spaces.filter((s) => s.type === type)
+    // Car park bays read best in bay-number order: 201, 202 … 432.
+    if (isParking) list.sort((a, b) => String(a.unitNumber).localeCompare(String(b.unitNumber), undefined, { numeric: true }))
+    return list
+  }, [spaces, type, isParking])
   // Match full or partial registrations regardless of case, spaces or hyphens.
   const plateKey = normalisePlate(plateSearch).replace(/[\s-]+/g, '')
   const filteredItems = isParking && plateSearch.trim()
     ? items.filter((space) => plateKey && normalisePlate(space.numberPlate).replace(/[\s-]+/g, '').includes(plateKey))
     : items
-  // A bay sold on a contract is taken even though no member is assigned to it.
-  const contractOf = (s) => (isParking ? contractFor(s, leases) : null)
+  // A resource sold on a contract is taken even when no member is assigned to
+  // it — true of a parking bay, and true of a virtual suite, whose number is
+  // the member's registered address and so belongs to the CONTRACT, not to
+  // whatever the space record happens to have stored.
+  //
+  // Resolved once per render rather than per lookup: the rent-free test behind
+  // each holding builds the contract's whole payment schedule, and the banner,
+  // the counts and every row all want the same answer.
+  const holdings = useMemo(
+    () => (isVirtual
+      ? new Map(items.map((s) => [s.id, virtualSuiteHolding(s, { leases, tenants, members, spaces })]))
+      : new Map()),
+    [isVirtual, items, leases, tenants, members, spaces], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const holdingOf = (s) => holdings.get(s?.id) ?? null
+  const contractOf = (s) => (isVirtual ? holdingOf(s)?.lease ?? null : isParking ? contractFor(s, leases) : null)
   const assigned = items.filter((s) => s.assignedMemberId || contractOf(s)).length
   const memberOpts = memberOptions(members, tenants)
+  const editHolding = editId ? holdingOf({ id: editId }) : null
+  // Suites whose space record no longer agrees with the contract holding them.
+  // This used to need a one-off repair script to find (scripts/fix-vo-suites.mjs
+  // cleaned up the OfficeRND import); surfacing it here means the next drift is
+  // visible the day it happens, while the mail is still reaching the right desk.
+  const drifted = [...holdings.entries()]
+    .map(([id, h]) => ({ space: items.find((s) => s.id === id), h }))
+    .filter(({ space, h }) => space && (h.suiteMismatch || h.companyDrift || h.unlinked || h.rivals.length || h.noRent))
   const setupPrompt = isParking
     ? parkingSetupPrompt(missingParkingBays(spaces).length, retiredParkingSpaces(spaces, leases).length)
     : ''
@@ -53,7 +83,12 @@ export default function AssignableResourceTab({ ctx, config }) {
     const { unitNumber } = type === 'virtual'
       ? nextVirtualSuite({ spaces, leases })
       : nextUnitNumber(spaces, type, prefix, start)
-    return { unitNumber, floor: 'l4', size: '', rate: '', attributes: '', numberPlate: '', included: false }
+    // A suite created with no price reads as "Free" in the table and bills at
+    // $0 if a contract is ever pointed at it, so start from the list price.
+    return {
+      unitNumber, floor: 'l4', size: '', rate: isVirtual ? String(VO_LIST_PRICE) : '',
+      attributes: '', numberPlate: '', included: false,
+    }
   }
   function openNew() {
     if (autoAssignOnAdd) {
@@ -105,15 +140,71 @@ export default function AssignableResourceTab({ ctx, config }) {
 
   function doAssign() {
     const m = members.find((x) => x.id === assignMember)
+    // A live contract owns its suite: re-pointing it by hand would leave the
+    // signed agreement, the directory and the mail board naming three
+    // different companies. Relink repairs drift; assign never overrides.
+    const held = isVirtual ? contractOf(assignFor) : null
+    if (held) {
+      alert(`${assignFor.unitNumber} is held by contract ${held.contractNumber ?? held.id}. Move the contract to a different suite instead of reassigning the space.`)
+      setAssignFor(null)
+      return
+    }
     updateSpace(assignFor.id, {
       assignedMemberId: assignMember || undefined,
       assignedCompanyId: m?.companyId || undefined,
+      // occupantTenantId is what the directory, mail board and reconcile pass
+      // read; leaving it behind is how a suite ends up assigned here and
+      // invisible everywhere else.
+      ...(isVirtual ? { occupantTenantId: m?.companyId || undefined } : {}),
       status: assignMember ? 'occupied' : 'vacant',
     })
     setAssignFor(null)
   }
+
+  // Unassigning a virtual suite takes away the address the member registered
+  // with ASIC, so it is refused outright while a contract holds it and
+  // confirmed when it doesn't. (The number itself is never recycled — see
+  // takenSuiteNumbers — so releasing a suite only frees it for its own holder.)
   function unassign(s) {
-    updateSpace(s.id, { assignedMemberId: undefined, assignedCompanyId: undefined, status: 'vacant' })
+    const held = contractOf(s)
+    if (held) {
+      alert(`${s.unitNumber} is held by contract ${held.contractNumber ?? held.id}${held.companyName ? ` (${held.companyName})` : ''}. Terminate or move that contract to release the suite.`)
+      return
+    }
+    const who = assignmentFor(s, members, tenants)
+    const warn = isVirtual
+      ? `Release ${s.unitNumber} from ${who?.company || who?.name || 'this member'}?
+
+`
+        + 'This is their registered business address — mail addressed to it will no longer be matched to them.'
+      : `Unassign ${s.unitNumber}?`
+    if (!confirm(warn)) return
+    updateSpace(s.id, {
+      assignedMemberId: undefined, assignedCompanyId: undefined,
+      ...(isVirtual ? { occupantTenantId: undefined } : {}),
+      status: 'vacant',
+    })
+  }
+
+  // Re-point a drifted suite at the contract that actually holds it.
+  function relink(space) {
+    const patch = relinkVirtualSuitePatch(space, holdingOf(space))
+    if (Object.keys(patch).length) updateSpace(space.id, patch)
+  }
+
+  function remove(s) {
+    const held = contractOf(s)
+    if (held) {
+      alert(`${s.unitNumber} is held by contract ${held.contractNumber ?? held.id}. Deleting it would orphan that contract — terminate the contract first.`)
+      return
+    }
+    const warn = isVirtual
+      ? `Delete ${s.unitNumber}?
+
+`
+        + 'Suite numbers are never reissued, so this one will not come back and the series will skip it.'
+      : `Delete this ${noun.toLowerCase()}?`
+    if (confirm(warn)) deleteSpace(s.id)
   }
 
   return (
@@ -141,6 +232,43 @@ export default function AssignableResourceTab({ ctx, config }) {
         </div>
       )}
       {setupNote && <p className="text-xs text-green-700 mb-4">{setupNote}</p>}
+
+      {drifted.length > 0 && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-md px-3 py-2.5 text-sm">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle size={15} aria-hidden="true" />
+            {drifted.length} suite{drifted.length === 1 ? '' : 's'} out of step with the contract holding {drifted.length === 1 ? 'it' : 'them'}
+          </div>
+          <ul className="mt-1.5 space-y-1 text-xs">
+            {drifted.map(({ space, h }) => (
+              <li key={space.id} className="flex items-center gap-2">
+                <span className="font-medium">{space.unitNumber}</span>
+                <span>
+                  {h.noRent
+                    ? `contract ${h.lease.contractNumber ?? h.lease.id} has no rent set for its whole term — it bills nothing and renews silently`
+                    : h.rivals.length
+                    ? `claimed by ${[h.lease, ...h.rivals].map((l) => l.contractNumber ?? l.id).join(' and ')} — two companies on one address`
+                    : h.suiteMismatch
+                      ? `contract ${h.lease.contractNumber ?? h.lease.id} says Suite ${h.contractSuite}`
+                      : h.companyDrift
+                        ? `tagged to a different company than contract ${h.lease.contractNumber ?? h.lease.id}`
+                        : `held by contract ${h.lease.contractNumber ?? h.lease.id} but not linked to a company`}
+                </span>
+                {!h.suiteMismatch && !h.rivals.length && !h.noRent && (
+                  <button onClick={() => relink(space)} className="ml-auto shrink-0 font-semibold underline hover:no-underline">
+                    Relink
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {drifted.some(({ h }) => h.suiteMismatch || h.rivals.length || h.noRent) && (
+            <p className="mt-1.5 text-xs">
+              A mismatched number, a contested one, or a missing rent has to be settled on the contract — the member registered one of those numbers with ASIC, and the contract’s own pricing lines decide what gets invoiced. Set a rent with rent-free months rather than $0, which never expires. Fix it there, then relink.
+            </p>
+          )}
+        </div>
+      )}
 
       {isParking && (
         <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -171,8 +299,14 @@ export default function AssignableResourceTab({ ctx, config }) {
               <tr><td colSpan={isParking ? 7 : 6} className="px-4 py-12 text-center text-muted-foreground text-sm">{isParking && plateSearch.trim() ? `No parking bays match number plate “${plateSearch.trim()}”.` : `No ${noun.toLowerCase()}s yet.`}</td></tr>
             )}
             {filteredItems.map((s) => {
-              const a = assignmentFor(s, members, tenants)
-              const contract = a ? null : contractOf(s)
+              // A virtual suite's contract outranks the stored assignment —
+              // that is the whole point: the fields drift, the contract doesn't.
+              const h = holdingOf(s)
+              const a = h?.lease
+                ? { name: h.member?.name ?? h.lease.memberName ?? '—', company: h.tenant?.businessName ?? h.lease.companyName ?? '' }
+                : assignmentFor(s, members, tenants)
+              const contract = h?.lease ?? (a ? null : contractOf(s))
+              const locked = !!h?.locked
               return (
                 <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/50">
                   <td className="px-4 py-3">
@@ -182,9 +316,29 @@ export default function AssignableResourceTab({ ctx, config }) {
                   <td className="px-4 py-3 text-muted-foreground">{floorLabel(s.floor)}</td>
                   {rateLabel && (
                     <td className="px-4 py-3 font-medium text-foreground">
-                      {s.includedInContract
-                        ? <span className="font-normal text-muted-foreground">{PARKING_INCLUDED_LABEL}</span>
-                        : (s.rate ?? s.monthlyRate) ? `${money(s.rate ?? s.monthlyRate)}${ratePer}` : 'Free'}
+                      {s.includedInContract ? (
+                        <span className="font-normal text-muted-foreground">{PARKING_INCLUDED_LABEL}</span>
+                      ) : h?.lease ? (
+                        // What the member is charged this month, off the
+                        // contract's own pricing step — not the rate stored on
+                        // the space, which is a default nobody re-checks.
+                        <div>
+                          <div className={h.noRent ? 'text-amber-700' : undefined}>
+                            {h.noRent ? 'No rent set' : h.rentFree ? 'Rent-free' : `${money(h.monthly)}${ratePer}`}
+                          </div>
+                          {(h.noRent || h.rentFree || (h.list != null && h.list > (h.monthly ?? 0))) && (
+                            <div className={`text-xs font-normal ${h.noRent ? 'text-amber-700' : 'text-muted-foreground'}`}>
+                              {h.noRent ? 'whole term' : h.rentFree ? 'rent-free month' : `was ${money(h.list)}${ratePer}`}
+                            </div>
+                          )}
+                          <div className="text-xs font-normal text-muted-foreground">on contract</div>
+                        </div>
+                      ) : (s.rate ?? s.monthlyRate) ? (
+                        <div>
+                          <div>{money(s.rate ?? s.monthlyRate)}{ratePer}</div>
+                          {isVirtual && <div className="text-xs font-normal text-muted-foreground">list price</div>}
+                        </div>
+                      ) : 'Free'}
                     </td>
                   )}
                   {isParking && (
@@ -195,7 +349,15 @@ export default function AssignableResourceTab({ ctx, config }) {
                     </td>
                   )}
                   <td className="px-4 py-3">
-                    {a ? (
+                    {h?.lease ? (
+                      <div>
+                        <div className="text-foreground">{a.company || a.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {[h.lease.contractNumber && `Contract ${h.lease.contractNumber}`, a.company && a.name !== '—' ? a.name : null]
+                            .filter(Boolean).join(' · ')}
+                        </div>
+                      </div>
+                    ) : a ? (
                       <div>
                         <div className="text-foreground">{a.name}</div>
                         {a.company && <div className="text-xs text-muted-foreground">{a.company}</div>}
@@ -210,7 +372,11 @@ export default function AssignableResourceTab({ ctx, config }) {
                   <td className="px-4 py-3"><StatusPill status={s.status} /></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      {s.assignedMemberId ? (
+                      {locked ? (
+                        <span title={`Held by contract ${h.lease.contractNumber ?? h.lease.id} — release it there`} className="flex items-center gap-1 text-xs text-muted-foreground border border-border px-2.5 py-1.5 rounded-md">
+                          <Lock size={12} aria-hidden="true" /> On contract
+                        </span>
+                      ) : s.assignedMemberId ? (
                         <button onClick={() => unassign(s)} title="Unassign" className="flex items-center gap-1 text-xs text-foreground border border-input px-2.5 py-1.5 rounded-md hover:bg-muted/50">
                           <UserMinus size={12} /> Unassign
                         </button>
@@ -219,8 +385,16 @@ export default function AssignableResourceTab({ ctx, config }) {
                           <UserPlus size={12} /> Assign
                         </button>
                       )}
+                      {locked && (h.companyDrift || h.unlinked) && (
+                        <button onClick={() => relink(s)} title="Re-point this suite at the contract holding it" className="p-1.5 rounded hover:bg-muted text-amber-600"><Link2 size={14} /></button>
+                      )}
                       <button onClick={() => openEdit(s)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"><Pencil size={14} /></button>
-                      <button onClick={() => { if (confirm(`Delete this ${noun.toLowerCase()}?`)) deleteSpace(s.id) }} className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>
+                      <button
+                        onClick={() => remove(s)}
+                        disabled={locked}
+                        title={locked ? 'Held by a live contract' : `Delete this ${noun.toLowerCase()}`}
+                        className="p-1.5 rounded text-muted-foreground enabled:hover:bg-red-50 enabled:hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                      ><Trash2 size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -233,8 +407,26 @@ export default function AssignableResourceTab({ ctx, config }) {
       {editId !== undefined && (
         <Modal title={editId ? `Edit ${noun}` : `Add ${noun}`} onClose={() => setEditId(undefined)}>
           <div className="space-y-4">
+            {editHolding?.lease && (
+              <p className="flex items-start gap-2 text-xs bg-muted/50 border border-border rounded-md px-3 py-2 text-muted-foreground">
+                <Lock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <span>
+                  Held by contract <span className="font-medium text-foreground">{editHolding.lease.contractNumber ?? editHolding.lease.id}</span>
+                  {editHolding.tenant?.businessName ? ` — ${editHolding.tenant.businessName}` : ''}, billing{' '}
+                  <span className="font-medium text-foreground">{editHolding.rentFree ? 'rent-free this month' : `${money(editHolding.monthly)}${ratePer}`}</span>.
+                  {isVirtual && ' The suite number is their registered business address and the contract sets the price — change either on the contract, not here.'}
+                </span>
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Name *"><input value={form.unitNumber} onChange={(e) => setForm({ ...form, unitNumber: e.target.value })} className={ic} /></Field>
+              <Field label="Name *">
+                <input
+                  value={form.unitNumber}
+                  onChange={(e) => setForm({ ...form, unitNumber: e.target.value })}
+                  readOnly={isVirtual && !!editHolding?.lease}
+                  className={`${ic}${isVirtual && editHolding?.lease ? ' bg-muted text-muted-foreground cursor-not-allowed' : ''}`}
+                />
+              </Field>
               <Field label="Floor">
                 <select value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })} className={ic}>
                   {(isParking ? CAR_PARK_FLOORS : FLOORS).map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
@@ -282,7 +474,11 @@ export default function AssignableResourceTab({ ctx, config }) {
                 {memberOpts.map((m) => <option key={m.id} value={m.id} data-search={[m.email, m.phone, m.search].filter(Boolean).join(' ')}>{m.label}</option>)}
               </SearchSelect>
             </Field>
-            <p className="text-xs text-muted-foreground">Assigning sets this {noun.toLowerCase()} to occupied and records which member it belongs to.</p>
+            <p className="text-xs text-muted-foreground">
+              {isVirtual
+                ? 'Assigning records the company holding this suite so mail, the directory and the getting-started pack can find them. A suite on a live contract is set from the contract instead and cannot be reassigned here.'
+                : `Assigning sets this ${noun.toLowerCase()} to occupied and records which member it belongs to.`}
+            </p>
             <div className="flex justify-end gap-3 pt-1">
               <button onClick={() => setAssignFor(null)} className="px-4 py-2 text-sm text-foreground border border-input rounded-md hover:bg-muted/50">Cancel</button>
               <button onClick={doAssign} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">Save</button>

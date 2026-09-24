@@ -11,6 +11,7 @@ import { availableOffices, availableParking } from '../lib/officeAvailability.js
 import TourBookingModal from './TourBookingModal.jsx'
 import { tourWhenLabel, durationLabel } from '../lib/tourInvite.js'
 import { isWaitingLead, waitingListUpdates } from '../lib/waitingList.js'
+import { VO_PACKAGES } from '../lib/virtualSuites.js'
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: User },
@@ -38,10 +39,12 @@ const MEMBERSHIP_TYPES = [
   { key: 'dedicated', label: 'Dedicated Desk' },
 ]
 
-// Virtual Office packages.
+// Virtual Office packages. Prices come from VO_PACKAGES so the proposal, the
+// agreement's inclusions list (voInclusions reads the same $150 threshold to
+// decide which lines print) and a suite's list rate in Spaces can't drift apart.
 const VIRTUAL_PACKAGES = {
-  address: { key: 'address', label: 'Virtual Office — Business Address', price: 75, includes: ['Registered business address with your own Level 4 suite number', 'Mail handling'] },
-  plus: { key: 'plus', label: 'Virtual Office Plus', price: 150, includes: ['Registered business address with your own Level 4 suite number', 'Mail handling', '9am–5pm lounge access with tea & coffee', '2 hours free daily in our 4-pax office'] },
+  address: { key: 'address', label: 'Virtual Office — Business Address', price: VO_PACKAGES.address, includes: ['Registered business address with your own Level 4 suite number', 'Mail handling'] },
+  plus: { key: 'plus', label: 'Virtual Office Plus', price: VO_PACKAGES.plus, includes: ['Registered business address with your own Level 4 suite number', 'Mail handling', '9am–5pm lounge access with tea & coffee', '2 hours free daily in our 4-pax office'] },
 }
 
 // Term + incentive rules. Free months are the client's LAST months and only apply

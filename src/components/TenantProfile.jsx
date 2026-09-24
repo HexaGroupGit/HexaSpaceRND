@@ -12,6 +12,7 @@ import { jsPDF } from 'jspdf'
 import { supabase } from '../lib/supabase.js'
 import { markThreadRead, ReadReceipt } from '../lib/readReceipts.jsx'
 import { computeMonthlyAllowance, effectiveAllowance, spendableCredits } from '../lib/credits.js'
+import { VO_PACKAGES } from '../lib/virtualSuites.js'
 
 const SIG_BADGE = {
   manually_signed:   { label: 'Signed',       cls: 'bg-green-100 text-green-700' },
@@ -1014,7 +1015,7 @@ const MEMBERSHIP_PLANS = [
   { key: 'Flexible Desk',  price: 300 },
   { key: 'Dedicated Desk', price: 600 },
   { key: 'Private Office', price: 0 },
-  { key: 'Virtual Office', price: 150 },
+  { key: 'Virtual Office', price: VO_PACKAGES.plus },
 ]
 
 function MembershipModal({ tenant, members, onClose, onSave }) {

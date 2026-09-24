@@ -2,7 +2,7 @@
 // Membership Agreement (screen/e-sign template + PDF export).
 // Two packages: $75+GST (basic) and $150+GST (premium). The premium-only
 // lines below are dropped from contracts priced under $150/month.
-import { virtualSuiteLabel } from './virtualSuites.js'
+import { virtualSuiteLabel, VO_LIST_PRICE } from './virtualSuites.js'
 
 export const VO_PREMIUM_ONLY = [
   'Daily Access to Sky & Tian Meeting Room + Consulting Rooms (2 Hours Daily)',
@@ -49,7 +49,7 @@ export function leaseInclusions(lease, space) {
     .map((l) => l.replace(/^[-•*]\s*/, '').trim())
     .filter(Boolean)
   if (!isVirtualOfficeAgreement(lease, space)) return custom
-  const base = voListMonthly(lease) >= 150
+  const base = voListMonthly(lease) >= VO_LIST_PRICE
     ? VO_INCLUSIONS
     : VO_INCLUSIONS.filter((i) => !VO_PREMIUM_ONLY.includes(i))
   // Once the member holds a suite, the agreement names it: this exact line is
