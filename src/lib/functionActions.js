@@ -10,7 +10,7 @@
 // lands (holdWithoutDeposit) — same confirmed stage, deposit still owed.
 import { supabase } from './supabase.js'
 import { authHeaders } from './apiFetch.js'
-import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money, bookingSessions, sessionsLabel, withPaymentPlan, dueNowLabel } from './functionBooking.js'
+import { ADDONS, computeQuote, bufferedWindow, balanceDueDate, money, bookingSessions, sessionsLabel, normaliseSessions, sameSessions, withPaymentPlan, dueNowLabel } from './functionBooking.js'
 import { buildFullInvoice, buildSessionHolds, invoiceBaseFor } from './functionConfirm.js'
 import { PORTAL_URL } from './sendEmail.js'
 import { sendPortalInvite } from './portalInvite.js'
@@ -228,6 +228,100 @@ export async function reissueHeldInvoice({ store, booking }) {
   const id = newInvoiceId()
   store.addInvoice(buildFullInvoice({ booking, quote: q, base: invoiceBaseFor(booking), id }))
   return persistFn({ ...booking, quote: q, fullInvoiceId: id })
+}
+
+// ── Reschedule (date / start / end per session) ──────────────────────────────
+// The sibling of updatePricing, and it exists for the same reason: a function's
+// price is a function of its schedule. Hours drive the hire, each session is
+// priced at ITS OWN weekday/weekend rate, cleaning is charged per session and
+// the late surcharge is judged against the first one — so moving a booking from
+// a Friday to a Saturday, or adding an hour, changes what is owed.
+//
+// Four things have to move together, and missing any one of them leaves a
+// booking that looks right in the hub and wrong everywhere else:
+//   • sessions[] plus the eventDate/startTime/endTime mirror of the FIRST
+//     session, which reminders, sorting and the portal cards all read;
+//   • the quote, recomputed through the same engine so negotiated overrides
+//     survive the move;
+//   • the calendar holds — a secured venue has a hold per session with a
+//     ±30-min buffer, and a stale one blocks the wrong day while leaving the
+//     new day bookable by someone else;
+//   • the invoices, whose descriptions name the dates and whose balance falls
+//     due 14 days before the FIRST session.
+//
+// Returns { booking, holdsRebuilt, invoiceNote }.
+export async function updateSchedule({ store, booking, sessions, findFunctionSpace, overrides = undefined }) {
+  const { sessions: clean, bad } = normaliseSessions(sessions)
+  if (!clean.length) throw new Error('A booking needs at least one session with a date and both times.')
+  if (bad) throw new Error(`Session on ${bad.date} ends at or before it starts (${bad.startTime}–${bad.endTime}).`)
+
+  const before = bookingSessions(booking)
+  const sameSchedule = sameSessions(before, clean)
+
+  const first = clean[0]
+  let b = {
+    ...booking,
+    ...(overrides === undefined ? {} : { priceOverrides: overrides || null, pricingAdjustedAt: overrides ? nowIso() : null }),
+    sessions: clean,
+    eventDate: first.date, startTime: first.startTime, endTime: first.endTime,
+    ...(sameSchedule ? {} : { rescheduledAt: nowIso(), previousSessions: before }),
+  }
+  b.quote = computeQuote({ ...b, bookedOn: today() })
+
+  // Rebuild the calendar holds only when this booking already has them (the
+  // venue is secured). Before that there is nothing on the calendar to move.
+  let holdsRebuilt = 0
+  const existing = booking.calendarBookingIds ?? (booking.calendarBookingId ? [booking.calendarBookingId] : [])
+  if (!sameSchedule && existing.length) {
+    const fn = findFunctionSpace ? findFunctionSpace(store.spaces) : null
+    if (fn) {
+      existing.forEach((id) => store.deleteBooking(id))
+      const ids = buildSessionHolds({ booking: b, functionSpaceId: fn.id })
+        .map((hold) => store.addBooking(hold)?.id)
+        .filter(Boolean)
+      b.calendarBookingIds = ids
+      b.calendarBookingId = ids[0] ?? null
+      holdsRebuilt = ids.length
+    }
+  }
+
+  const saved = await persistFn(b)
+
+  // Invoices. An unpaid opening invoice is voided and re-raised by the caller
+  // (the same reissue path pricing changes use). A PAID deposit leaves a
+  // balance invoice already sitting there with the old dates in its
+  // description and a due date pegged to the old first session — patch it in
+  // place rather than voiding something the client may already be paying.
+  let invoiceNote = null
+  if (!sameSchedule) {
+    const live = await fnInvoices(saved.ref)
+    const balance = live.find((i) => i.invoiceType === 'function_balance' && !['paid', 'voided'].includes(i.status))
+    if (balance) {
+      const due = balanceDueDate(saved.eventDate) || today()
+      const patched = {
+        ...balance,
+        dueDate: due,
+        lineItems: (balance.lineItems ?? []).map((li) => ({
+          ...li,
+          description: String(li.description ?? '').replace(/\(([^()]*)\)\s*$/, `(${sessionsLabel(saved)})`),
+        })),
+      }
+      if ((store.invoices || []).some((i) => i.id === balance.id)) store.updateInvoice(balance.id, patched)
+      else await supabase.from('invoices').upsert({ id: balance.id, data: patched, updated_at: nowIso() })
+      invoiceNote = `Balance invoice ${balance.number ?? balance.id} re-dated — now due ${due}.`
+    }
+  }
+
+  // Times may have moved into (or out of) after-hours, which changes whether
+  // building management has to unlock the front door and the L4 lift. The
+  // endpoint is idempotent and no-ops for business-hours sessions.
+  if (!sameSchedule && saved.stage === 'confirmed') {
+    fetch('/api/function-bookings/access-request', {
+      method: 'POST', headers: await authHeaders(), body: JSON.stringify({ id: saved.id }),
+    }).catch(() => {})
+  }
+
+  return { booking: saved, holdsRebuilt, invoiceNote, changed: !sameSchedule }
 }
 
 // ── 4. Ask the client to pick a different date (clash) ───────────────────────

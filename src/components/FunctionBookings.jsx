@@ -10,12 +10,13 @@ import {
 import {
   ADDONS, STAGES, money, computeQuote, bufferedWindow,
   bookingSessions, sessionsLabel, seriesDateClashes, seriesCalendarClashes, withPaymentPlan, dueNowLabel,
+  toMin, fromMin, hoursBetween, isWeekendDate, normaliseSessions, sameSessions,
 } from '../lib/functionBooking.js'
 import { findFunctionSpace } from '../portal/functionSpace.js'
 import { billingContactFor } from '../lib/credits.js'
 import FunctionPayInFullDialog from './FunctionPayInFullDialog.jsx'
 import { canPayInFull } from '../lib/functionConfirm.js'
-import { approveFunctionBooking, confirmDepositPaid, holdWithoutDeposit, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, reissueDeposit, reissueHeldInvoice, requestBuildingAccess, updatePaymentPlan, canChangePaymentPlan } from '../lib/functionActions.js'
+import { approveFunctionBooking, confirmDepositPaid, holdWithoutDeposit, resolveDeposit, declineFunctionBooking, askAmendDate, sendBrochure, sendBookingInvite, updatePricing, updateSchedule, reissueDeposit, reissueHeldInvoice, requestBuildingAccess, updatePaymentPlan, canChangePaymentPlan } from '../lib/functionActions.js'
 
 const today = () => new Date().toISOString().split('T')[0]
 const nowIso = () => new Date().toISOString()
@@ -107,12 +108,78 @@ function QuoteBreakdown({ booking }) {
   )
 }
 
+// ── Session rows (date · start · end · duration) ─────────────────────────────
+// Shared by the new/edit form and the Adjust panel so both write the same
+// shape and validate the same way. Duration is a derived view of endTime, not
+// a stored field: typing hours moves the end, and dragging the end updates the
+// hours — a function is sold by the hour, so it's the number people negotiate
+// in, but the booking, the calendar hold and the quote all key off real times.
+export function SessionRows({ sessions, onChange, minRows = 1 }) {
+  const setRow = (i, patch) => onChange(sessions.map((s, idx) => (idx === i ? { ...s, ...patch } : s)))
+  const add = () => onChange([...sessions, {
+    date: '', startTime: sessions[sessions.length - 1]?.startTime || '18:00',
+    endTime: sessions[sessions.length - 1]?.endTime || '22:00',
+  }])
+  const remove = (i) => { if (sessions.length > minRows) onChange(sessions.filter((_, idx) => idx !== i)) }
+  const setDuration = (i, hours) => {
+    const s = sessions[i]
+    const h = Number(hours)
+    if (!s?.startTime || !Number.isFinite(h) || h <= 0) return
+    // Clamp at the end of the day: a 23:00 start can't run 4 hours, and
+    // silently wrapping past midnight would make endTime <= startTime and be
+    // rejected on save with a confusing message.
+    setRow(i, { endTime: fromMin(Math.min(toMin(s.startTime) + Math.round(h * 60), 24 * 60 - 1)) })
+  }
+  return (
+    <div className="space-y-2">
+      {sessions.map((s, i) => {
+        const hrs = s.startTime && s.endTime ? hoursBetween(s.startTime, s.endTime) : 0
+        const bad = !!(s.startTime && s.endTime && hrs <= 0)
+        return (
+          <div key={i}>
+            <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-1.5 items-center">
+              <input type="date" aria-label={`Session ${i + 1} date`} className={inp} value={s.date}
+                onChange={(e) => setRow(i, { date: e.target.value })} />
+              <input type="time" aria-label={`Session ${i + 1} start`} className={`${inp} w-[5.5rem]`} value={s.startTime}
+                onChange={(e) => setRow(i, { startTime: e.target.value })} />
+              <input type="time" aria-label={`Session ${i + 1} end`} className={`${inp} w-[5.5rem]`} value={s.endTime}
+                onChange={(e) => setRow(i, { endTime: e.target.value })} />
+              <input type="number" aria-label={`Session ${i + 1} duration in hours`} min="0.5" step="0.5"
+                className={`${inp} w-[4.25rem]`} value={hrs > 0 ? hrs : ''} placeholder="hrs"
+                onChange={(e) => setDuration(i, e.target.value)} />
+              <button type="button" onClick={() => remove(i)} disabled={sessions.length <= minRows}
+                className="p-1.5 text-muted-foreground hover:text-red-600 disabled:opacity-30" title="Remove session">
+                <X size={14} />
+              </button>
+            </div>
+            {(bad || s.date) && (
+              <p className={`text-[11px] mt-0.5 ${bad ? 'text-red-600' : 'text-muted-foreground'}`}>
+                {bad
+                  ? 'End time must be after the start time.'
+                  : `${isWeekendDate(s.date) ? 'Weekend' : 'Weekday'} rate · calendar hold ${bufferedWindow(s.startTime, s.endTime).blockStart}–${bufferedWindow(s.startTime, s.endTime).blockEnd} incl. buffer`}
+              </p>
+            )}
+          </div>
+        )
+      })}
+      <button type="button" onClick={add} className="flex items-center gap-1.5 text-xs text-blue-700 hover:underline">
+        <Plus size={12} /> Add another session
+      </button>
+    </div>
+  )
+}
+
 // ── Adjust pricing (negotiated proposals) ────────────────────────────────────
 // Writes booking.priceOverrides; the shared quote engine applies them on every
 // recompute, so the negotiated price survives approve/confirm and shows
 // identically in the portal, agreement emails and invoices.
-function PricingBox({ booking, onApply, busy }) {
+export function PricingBox({ booking, onApply, busy, calendarBookings = [], functionRows = [], spaces = [] }) {
   const o = booking.priceOverrides || {}
+  // Schedule is editable here because it is a price input: hours drive the
+  // hire, each session takes its own weekday/weekend rate, and cleaning is per
+  // session. Seeded from the saved booking; `scheduleChanged` decides whether
+  // anything downstream (holds, invoices, access request) needs to move.
+  const [sess, setSess] = useState(() => bookingSessions(booking).map((x) => ({ ...x })))
   const [f, setF] = useState({
     rate: o.rate ?? '', cleaningFee: o.cleaningFee ?? '', securityDeposit: o.securityDeposit ?? '',
     discountPct: o.discountPct ?? '', discountAmount: o.discountAmount ?? '', discountReason: o.discountReason ?? '',
@@ -134,16 +201,67 @@ function PricingBox({ booking, onApply, busy }) {
     if (lines.length) out.extraLines = lines.map((l) => ({ description: l.description.trim(), amount: Number(l.amount) }))
     return Object.keys(out).length ? out : null
   })()
-  const preview = computeQuote({ ...booking, priceOverrides: cleaned, bookedOn: today() })
+  const { sessions: sorted, bad: badSession, dropped } = normaliseSessions(sess)
+  const saved = bookingSessions(booking)
+  const scheduleChanged = !sameSessions(sorted, saved)
+  const scheduleValid = sorted.length > 0 && !badSession && dropped === 0
+
+  // Price the EDITED schedule, so the totals below answer "what will this cost
+  // after the move" rather than what it costs today.
+  const candidate = { ...booking, sessions: sorted.length ? sorted : saved, priceOverrides: cleaned }
+  const preview = computeQuote({ ...candidate, bookedOn: today() })
   const inFull = !!booking.payInFull
+
+  // Clash-check the new times before saving, not after. Same helpers the detail
+  // panel uses, so this catches holds on North/South/West too — booking the
+  // Function Space takes all three rooms.
+  const newCalClash = scheduleChanged && scheduleValid
+    ? seriesCalendarClashes(calendarBookings, findFunctionSpace(spaces)?.id, candidate, spaces)
+    : []
+  const newFnClash = scheduleChanged && scheduleValid ? seriesDateClashes(functionRows, candidate) : []
+  const clashCount = newCalClash.length + newFnClash.length
+  const holds = (booking.calendarBookingIds ?? (booking.calendarBookingId ? [booking.calendarBookingId] : [])).length
 
   // Deposit raised but unpaid → saving should re-issue the invoice at the new
   // amount. Also covers a courtesy hold (confirmed, deposit still owed).
   const reissue = ['awaiting_deposit', 'confirmed'].includes(booking.stage) && !booking.depositPaid
 
+  // A clash doesn't block the save — management does sometimes knowingly
+  // double-book the venue's sub-rooms — but it is never silent.
+  function submit(overrides) {
+    if (clashCount > 0 && !confirm(`The new time clashes with ${clashCount} existing booking${clashCount === 1 ? '' : 's'}.
+
+Save anyway?`)) return
+    onApply(overrides, reissue, scheduleChanged ? sorted : null)
+  }
+
   return (
     <div className="bg-muted/50 border border-border rounded-md p-3 space-y-3 mt-2">
-      <div className="grid grid-cols-2 gap-2">
+      <div>
+        <label className={lab}>Schedule — date · start · end · hours</label>
+        <SessionRows sessions={sess} onChange={setSess} />
+        {scheduleChanged && (
+          <p className="text-[11px] text-indigo-700 mt-1.5">
+            {preview.hours}h across {preview.sessionCount} session{preview.sessionCount === 1 ? '' : 's'} (was {computeQuote({ ...booking, bookedOn: today() }).hours}h).
+            {holds > 0 && ' Saving moves the calendar hold' + (holds > 1 ? 's' : '') + '.'}
+            {booking.depositPaid && ' The balance invoice will be re-dated to 14 days before the new first session.'}
+          </p>
+        )}
+        {clashCount > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-md px-2.5 py-2 text-[11px] text-red-700 space-y-0.5 mt-1.5">
+            <div className="font-semibold">⚠ The new time clashes with {clashCount} existing booking{clashCount === 1 ? '' : 's'}</div>
+            {newCalClash.map((c, i) => (
+              <div key={`c${i}`}>{fmtDate(c.clashDate)} — {c.title || c.type || 'Booking'} {c.startTime}–{c.endTime}{c.functionRef ? ` (${c.functionRef})` : ''}</div>
+            ))}
+            {newFnClash.map((c, i) => (
+              <div key={`f${i}`}>{fmtDate(c.clashDate)} — {c.eventName || c.ref} {c.startTime}–{c.endTime} · {STAGES[c.stage]?.label || c.stage}</div>
+            ))}
+            <div className="text-red-600/80">Windows include the 30-min buffer each side. You'll be asked to confirm.</div>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 border-t border-border pt-3">
         <div><label className={lab}>Hourly rate ($/hr ex-GST)</label><input type="number" min={0} step="0.01" className={inp} value={f.rate} onChange={set('rate')} placeholder="250 wk / 325 w-end" /></div>
         <div><label className={lab}>Cleaning fee (per session)</label><input type="number" min={0} step="0.01" className={inp} value={f.cleaningFee} onChange={set('cleaningFee')} placeholder="200" /></div>
         <div><label className={lab}>Discount %</label><input type="number" min={0} max={100} step="0.1" className={inp} value={f.discountPct} onChange={set('discountPct')} placeholder="—" /></div>
@@ -176,14 +294,17 @@ function PricingBox({ booking, onApply, busy }) {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button disabled={busy} onClick={() => onApply(cleaned, reissue)}
+        <button disabled={busy || !scheduleValid} onClick={() => submit(cleaned)}
           className="flex-1 bg-primary text-primary-foreground py-2 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
-          {busy ? 'Saving…' : reissue ? `Save & re-issue ${inFull || booking.stage === 'confirmed' ? 'invoice' : 'deposit invoice'}` : 'Save pricing'}
+          {busy ? 'Saving…'
+            : !scheduleValid ? 'Complete every session row'
+            : reissue ? `Save & re-issue ${inFull || booking.stage === 'confirmed' ? 'invoice' : 'deposit invoice'}`
+            : scheduleChanged ? 'Save schedule & pricing' : 'Save pricing'}
         </button>
         {booking.priceOverrides && (
-          <button disabled={busy} onClick={() => onApply(null, reissue)}
+          <button disabled={busy} onClick={() => submit(null)}
             className="px-3 py-2 rounded-md text-sm border border-input text-muted-foreground hover:text-foreground disabled:opacity-40">
-            Reset to standard
+            Reset pricing
           </button>
         )}
       </div>
@@ -247,10 +368,7 @@ function BookingForm({ booking, onSave, onClose }) {
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
   const setAddon = (k, v) => setF((p) => ({ ...p, addons: { ...p.addons, [k]: v } }))
-  const setSession = (i, k, v) => setSessions((prev) => prev.map((s, idx) => (idx === i ? { ...s, [k]: v } : s)))
-  const addSession = () => setSessions((prev) => [...prev, { date: '', startTime: prev[prev.length - 1]?.startTime || '18:00', endTime: prev[prev.length - 1]?.endTime || '22:00' }])
-  const removeSession = (i) => setSessions((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev))
-  const completeSessions = sessions.filter((s) => s.date && s.startTime && s.endTime)
+  const { sessions: completeSessions, bad: badSession } = normaliseSessions(sessions)
   const quote = computeQuote({ ...f, sessions: completeSessions, bookedOn: today() })
 
   async function submit(e) {
@@ -258,11 +376,12 @@ function BookingForm({ booking, onSave, onClose }) {
     if (!f.name && !f.organisation) { alert('Enter a contact name or organisation.'); return }
     if (!f.email) { alert('Email is required.'); return }
     if (completeSessions.length === 0) { alert('At least one session with a date and times is required.'); return }
+    if (badSession) { alert(`Session on ${badSession.date} ends at or before it starts (${badSession.startTime}–${badSession.endTime}).`); return }
     setSaving(true)
     try {
       // eventDate/startTime/endTime always mirror the FIRST session so legacy
       // consumers (reminders, sorting, portal cards) keep working.
-      const sorted = [...completeSessions].sort((a, z) => `${a.date}T${a.startTime}`.localeCompare(`${z.date}T${z.startTime}`))
+      const sorted = completeSessions
       const first = sorted[0]
       await onSave({ ...f, sessions: sorted, eventDate: first.date, startTime: first.startTime, endTime: first.endTime, quote })
     } finally { setSaving(false) }
@@ -312,21 +431,8 @@ function BookingForm({ booking, onSave, onClose }) {
               </div>
             </div>
             <div className="space-y-2">
-              <label className={lab}>Session{sessions.length > 1 ? 's' : ''} (date &amp; times)</label>
-              {sessions.map((s, i) => (
-                <div key={i} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
-                  <input type="date" className={inp} value={s.date} onChange={(e) => setSession(i, 'date', e.target.value)} />
-                  <input type="time" className={`${inp} w-24`} value={s.startTime} onChange={(e) => setSession(i, 'startTime', e.target.value)} />
-                  <input type="time" className={`${inp} w-24`} value={s.endTime} onChange={(e) => setSession(i, 'endTime', e.target.value)} />
-                  <button type="button" onClick={() => removeSession(i)} disabled={sessions.length === 1}
-                    className="p-1.5 text-muted-foreground hover:text-red-600 disabled:opacity-30" title="Remove session">
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-              <button type="button" onClick={addSession} className="flex items-center gap-1.5 text-xs text-blue-700 hover:underline">
-                <Plus size={12} /> Add another session
-              </button>
+              <label className={lab}>Session{sessions.length > 1 ? 's' : ''} — date · start · end · hours</label>
+              <SessionRows sessions={sessions} onChange={setSessions} />
               {sessions.length > 1 && (
                 <p className="text-xs text-muted-foreground">
                   Series of {completeSessions.length} session{completeSessions.length !== 1 ? 's' : ''} — each priced at its own weekday/weekend rate,
@@ -395,7 +501,7 @@ function RefundBox({ booking, onResolve }) {
 }
 
 // ── Detail panel ─────────────────────────────────────────────────────────────
-function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calClash }) {
+export function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calClash, calendarBookings = [], functionRows = [], spaces = [] }) {
   const b = booking
   const [showPricing, setShowPricing] = useState(false)
   const [resent, setResent] = useState(false)
@@ -455,7 +561,7 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
             </h3>
             {!['completed', 'refunded', 'cancelled', 'declined'].includes(b.stage) && (
               <button onClick={() => setShowPricing((v) => !v)} className="flex items-center gap-1 text-xs text-foreground underline">
-                <DollarSign size={11} /> {showPricing ? 'Close' : 'Adjust pricing'}
+                <DollarSign size={11} /> {showPricing ? 'Close' : 'Adjust price & dates'}
               </button>
             )}
           </div>
@@ -468,7 +574,8 @@ function Detail({ booking, onClose, onEdit, onDelete, actions, busy, clash, calC
           )}
           {showPricing && (
             <PricingBox booking={b} busy={busy}
-              onApply={async (overrides, reissue) => { await actions.adjustPricing(b, overrides, reissue); setShowPricing(false) }} />
+              calendarBookings={calendarBookings} functionRows={functionRows} spaces={spaces}
+              onApply={async (overrides, reissue, sessions) => { await actions.adjustPricing(b, overrides, reissue, sessions); setShowPricing(false) }} />
           )}
         </div>
 
@@ -791,15 +898,30 @@ export default function FunctionBookings() {
     },
     // Negotiated pricing: save the overrides, and — when the deposit invoice is
     // out but unpaid — void + re-raise it at the new amount and email the client.
-    async adjustPricing(b, overrides, reissue) {
+    // `sessions` non-null means the schedule moved too — updateSchedule writes
+    // the overrides in the same pass so the quote is recomputed once, against
+    // the new dates AND the new rates.
+    async adjustPricing(b, overrides, reissue, sessions = null) {
       setBusy(true)
       try {
-        let rec = await updatePricing({ booking: b, overrides })
+        let rec
+        let note = null
+        if (sessions) {
+          const r = await updateSchedule({ store, booking: b, sessions, findFunctionSpace, overrides })
+          rec = r.booking
+          note = [
+            r.holdsRebuilt ? `${r.holdsRebuilt} calendar hold${r.holdsRebuilt === 1 ? '' : 's'} moved.` : null,
+            r.invoiceNote,
+          ].filter(Boolean).join(' ')
+        } else {
+          rec = await updatePricing({ booking: b, overrides })
+        }
         // A courtesy hold sits on one full invoice, not the deposit split.
         if (reissue) rec = rec.stage === 'confirmed'
           ? await reissueHeldInvoice({ store, booking: rec })
           : await reissueDeposit({ store, booking: rec })
         apply(rec)
+        if (note) alert(note)
       } catch (e) {
         alert(e.message)
       } finally { setBusy(false) }
@@ -883,7 +1005,8 @@ export default function FunctionBookings() {
       {selected && (
         <Detail booking={selected} onClose={() => setSelected(null)} onEdit={() => { setEditData(selected); setShowForm(true) }} onDelete={() => handleDelete(selected)} actions={actions} busy={busy}
           clash={seriesDateClashes(rows, selected)}
-          calClash={seriesCalendarClashes(calendarBookings, findFunctionSpace(spaces)?.id, selected, spaces)} />
+          calClash={seriesCalendarClashes(calendarBookings, findFunctionSpace(spaces)?.id, selected, spaces)}
+          calendarBookings={calendarBookings} functionRows={rows} spaces={spaces} />
       )}
       {showForm && <BookingForm booking={editData} onSave={handleFormSave} onClose={() => { setShowForm(false); setEditData(null) }} />}
 

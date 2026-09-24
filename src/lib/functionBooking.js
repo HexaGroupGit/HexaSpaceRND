@@ -56,8 +56,16 @@ export function fromMin(x) {
 export function shiftTime(t, deltaMin) {
   return fromMin(toMin(t) + deltaMin)
 }
+// An END time of "00:00" means midnight — the end of the day, not minute zero
+// of it. Read literally, an 18:00–00:00 function came out as zero hours and so
+// priced the venue hire at $0; a function running to midnight is completely
+// ordinary, so the end of the day is what that input has to mean.
+export function endMin(t) {
+  const m = toMin(t)
+  return m === 0 ? 24 * 60 : m
+}
 export function hoursBetween(start, end) {
-  return Math.max(0, (toMin(end) - toMin(start)) / 60)
+  return Math.max(0, (endMin(end) - toMin(start)) / 60)
 }
 export function isWeekendDate(dateStr) {
   if (!dateStr) return false
@@ -76,7 +84,10 @@ function daysBetween(fromStr, toStr) {
 export function bufferedWindow(startTime, endTime) {
   return {
     blockStart: shiftTime(startTime, -BUFFER_MIN),
-    blockEnd: shiftTime(endTime, BUFFER_MIN),
+    // A calendar hold is a single-date window, so a late session's buffer
+    // cannot spill into the next day — it stops at 23:59 rather than emitting
+    // the "24:00" that fromMin's clamp used to produce.
+    blockEnd: fromMin(Math.min(endMin(endTime) + BUFFER_MIN, 24 * 60 - 1)),
   }
 }
 
@@ -112,6 +123,28 @@ export function bookingSessions(b = {}) {
       .sort((a, z) => `${a.date}T${a.startTime}`.localeCompare(`${z.date}T${z.startTime}`))
   }
   return b.eventDate ? [{ date: b.eventDate, startTime: b.startTime, endTime: b.endTime }] : []
+}
+
+// Clean a set of edited session rows into what a booking may store: complete
+// rows only, chronological, and each one a real forward window. Shared by the
+// new/edit form and the reschedule action so a booking can never be saved with
+// a session that ends before it starts: hoursBetween clamps such a window to
+// zero, so it doesn't error — it just prices the venue hire at $0 and says
+// nothing. Rejecting it here is the only thing standing between a typo and a
+// free function.
+export function normaliseSessions(rows = []) {
+  const clean = rows
+    .filter((x) => x?.date && x?.startTime && x?.endTime)
+    .map((x) => ({ date: x.date, startTime: x.startTime, endTime: x.endTime }))
+    .sort((a, z) => `${a.date}T${a.startTime}`.localeCompare(`${z.date}T${z.startTime}`))
+  const bad = clean.find((x) => endMin(x.endTime) <= toMin(x.startTime))
+  return { sessions: clean, bad: bad ?? null, dropped: rows.length - clean.length }
+}
+
+// Have two session lists got the same dates and times, in the same order?
+export function sameSessions(a = [], b = []) {
+  return a.length === b.length &&
+    a.every((x, i) => x.date === b[i]?.date && x.startTime === b[i]?.startTime && x.endTime === b[i]?.endTime)
 }
 
 // "25/07/2026" for one session, "6 sessions · 25/07 – 30/08/2026" for a series.
@@ -252,9 +285,13 @@ export function dueNowLabel(q) {
 // past: for a late booking (event within 14 days) it falls due immediately.
 export function balanceDueDate(eventDate, bookedOn) {
   if (!eventDate) return null
-  const d = new Date(`${eventDate}T00:00:00`)
-  d.setDate(d.getDate() - BALANCE_DUE_DAYS)
-  const due = d.toISOString().split('T')[0]
+  // Date maths in UTC. Building the date as LOCAL midnight and then reading it
+  // back through toISOString() subtracted another day everywhere east of
+  // Greenwich — in Melbourne every balance invoice fell due a day early, which
+  // is a day earlier into the dunning run too. Same day-shift that billed
+  // September twice; a calendar date should never round-trip through a zone.
+  const [y, m, d] = String(eventDate).split('-').map(Number)
+  const due = new Date(Date.UTC(y, m - 1, d - BALANCE_DUE_DAYS)).toISOString().split('T')[0]
   const today = bookedOn || new Date().toISOString().split('T')[0]
   return due < today ? today : due // late booking → due now
 }
