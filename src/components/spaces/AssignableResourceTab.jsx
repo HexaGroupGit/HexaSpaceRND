@@ -324,11 +324,16 @@ export default function AssignableResourceTab({ ctx, config }) {
                         // the space, which is a default nobody re-checks.
                         <div>
                           <div className={h.noRent ? 'text-amber-700' : undefined}>
-                            {h.noRent ? 'No rent set' : h.rentFree ? 'Rent-free' : `${money(h.monthly)}${ratePer}`}
+                            {h.noRent ? 'No rent set'
+                              : h.complimentary ? 'Complimentary'
+                              : h.rentFree ? 'Rent-free'
+                              : `${money(h.monthly)}${ratePer}`}
                           </div>
-                          {(h.noRent || h.rentFree || (h.list != null && h.list > (h.monthly ?? 0))) && (
+                          {(h.noRent || h.complimentary || h.rentFree || (h.list != null && h.list > (h.monthly ?? 0))) && (
                             <div className={`text-xs font-normal ${h.noRent ? 'text-amber-700' : 'text-muted-foreground'}`}>
-                              {h.noRent ? 'whole term' : h.rentFree ? 'rent-free month' : `was ${money(h.list)}${ratePer}`}
+                              {h.noRent || h.complimentary ? 'whole term'
+                                : h.rentFree ? 'rent-free month'
+                                : `was ${money(h.list)}${ratePer}`}
                             </div>
                           )}
                           <div className="text-xs font-normal text-muted-foreground">on contract</div>

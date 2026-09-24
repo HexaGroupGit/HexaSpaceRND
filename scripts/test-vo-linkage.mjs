@@ -78,6 +78,11 @@ for (const [label, l] of [['monthlyRent: 0', lZero], ['100% discount', lDisc]]) 
   check(`no rent set (${label}) flagged as noRent`, h.noRent && !h.rentFree)
 }
 
+// 7b. a freebie declared on the contract is not an error
+const lComp = { ...lDisc, id: 'CON-403', contractNumber: 'CON-403', complimentary: true }
+const hComp = virtualSuiteHolding(s429, { leases: [lComp], tenants, members, spaces: [s429] })
+check('declared complimentary is not flagged as noRent', hComp.complimentary && !hComp.noRent && hComp.monthly === 0)
+
 // 8. past the last step the price holds — an expired schedule must not read $0
 const l8 = { id: 'CON-500', contractNumber: 'CON-500', tenantId: 't1', status: 'active', spaceId: s429.id, monthlyRent: 150,
   startDate: '2024-01-01', items: [{ spaceId: s429.id, steps: [{ startDate: '2024-01-01', endDate: '2024-12-31', listPrice: 140, qty: 1 }] }] }

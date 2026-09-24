@@ -211,9 +211,14 @@ export function virtualSuiteHolding(space, { leases = [], tenants = [], members 
   // than one spelling — monthlyRent: 0 with no steps, and listPrice: 150 with
   // a '100%' discount, both produce a term that never charges. A VO bundled
   // free onto a paying contract is NOT this: that schedule still totals > 0.
+  // A suite given away on purpose (a founder, a partner, a goodwill month) is
+  // declared with `complimentary` on the contract. That is the difference
+  // between a deliberate freebie and someone typing 0 into the rent box, and
+  // only the undeclared kind is worth an admin's attention.
   const schedule = lease ? buildPaymentSchedule(lease, null) : null
   const monthKey = new Date().toISOString().slice(0, 7)
-  const noRent = !!lease && (!schedule || schedule.totals.total === 0)
+  const complimentary = !!lease?.complimentary
+  const noRent = !!lease && !complimentary && (!schedule || schedule.totals.total === 0)
   const rentFree = !noRent && !!schedule &&
     schedule.rows.find((r) => r.key === monthKey)?.total === 0
   return {
@@ -235,8 +240,10 @@ export function virtualSuiteHolding(space, { leases = [], tenants = [], members 
     // Held by a contract but carrying no company tag — invisible to anything
     // that reads the space rather than the contract (directory, mail board).
     unlinked: !!(lease && !space?.assignedCompanyId),
-    // Live contract, no rent anywhere in its term. See rentFree above.
+    // Live contract, no rent anywhere in its term, and nobody said so on
+    // purpose. See rentFree and complimentary above.
     noRent,
+    complimentary,
     monthly: rentFree || noRent ? 0 : price?.monthly ?? null,
     list: price?.list ?? null,
     rentFree,
