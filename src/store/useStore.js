@@ -825,6 +825,7 @@ export function useStore() {
   const [invoices, setInvoices] = useState([])
   const [discounts, setDiscounts] = useState([])
   const [maintenance, setMaintenance] = useState([])
+  const [tasks, setTasks] = useState([])
   const [pricingRequests, setPricingRequests] = useState([])
   const [leads, setLeads] = useState([])
   const [pipelineStages, setPipelineStages] = useState([])
@@ -991,6 +992,14 @@ export function useStore() {
           .then(({ data, error }) => {
             if (error) { console.error('pricing_requests load failed:', error); return }
             setPricingRequests(data?.length ? extractRows(data) : [])
+          })
+        // Assistant to-do board — admin-only table (tasks-schema.sql). Same
+        // separate round trip as pricing_requests; an install that hasn't run
+        // the schema yet just shows an empty board.
+        supabase.from('tasks').select('data')
+          .then(({ data, error }) => {
+            if (error) { console.error('tasks load failed:', error); return }
+            setTasks(data?.length ? extractRows(data) : [])
           })
         setLeads(loadedLeads)
         setPipelineStages([...loadedStages].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)))
@@ -2163,6 +2172,32 @@ export function useStore() {
     deleteRow('maintenance', id)
   }, [])
 
+  // ── Assistant tasks ───────────────────────────────────────────────────────
+  // Callers pass tasks already shaped by newTask() in src/lib/tasks.js — that's
+  // where a draft from the AI gets its id and has its priority, category, due
+  // date and deep link clamped, so nothing unvalidated reaches the table.
+  const addTasks = useCallback((items) => {
+    const list = (Array.isArray(items) ? items : [items]).filter((t) => t?.id && t.title)
+    if (!list.length) return []
+    setTasks((prev) => [...list, ...prev])
+    list.forEach((t) => syncRow('tasks', t.id, t))
+    return list
+  }, [])
+
+  const updateTask = useCallback((id, updates) => {
+    setTasks((prev) => {
+      const next = prev.map((t) => t.id === id ? { ...t, ...updates } : t)
+      const row = next.find((t) => t.id === id)
+      if (row) syncRow('tasks', id, row)
+      return next
+    })
+  }, [])
+
+  const deleteTask = useCallback((id) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id))
+    deleteRow('tasks', id)
+  }, [])
+
   // ── Pricing requests ──────────────────────────────────────────────────────
   // Staff propose a rate for a space; a manager approves it with reasoning.
   // See src/lib/pricingApproval.js for who may decide and when.
@@ -2516,6 +2551,7 @@ export function useStore() {
     invoices, addInvoice, updateInvoice, voidInvoice, deleteInvoice, addPaymentToInvoice, deletePaymentFromInvoice, addCommentToInvoice, approveBondRefund, runAutoBillRun,
     discounts, addDiscount, updateDiscount, deleteDiscount,
     maintenance, addMaintenanceIssue, updateMaintenanceIssue, deleteMaintenanceIssue,
+    tasks, addTasks, updateTask, deleteTask,
     pricingRequests, addPricingRequest, updatePricingRequest,
     leads, addLead, updateLead, moveLeadToStage, deleteLead, convertLeadToTenant, appendLeadActivity,
     pipelineStages, addStage, updateStage, deleteStage,

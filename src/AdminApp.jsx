@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout.jsx'
 import Dashboard from './components/Dashboard.jsx'
+import Assistant from './components/Assistant.jsx'
 import Tenants from './components/Tenants.jsx'
 import Spaces from './components/Spaces.jsx'
 import PricingRequests from './components/PricingRequests.jsx'
@@ -55,6 +56,7 @@ export default function AdminApp({ onLogout }) {
       <Routes>
         <Route path="/" element={<Layout store={store} onLogout={onLogout} />}>
           <Route index element={<Dashboard />} />
+          <Route path="assistant" element={<Assistant />} />
           <Route path="companies" element={<Tenants />} />
           <Route path="tenants" element={<Tenants />} />
           <Route path="members" element={<Members />} />

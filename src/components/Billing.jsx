@@ -8,7 +8,7 @@ import CancelBookingDialog from './CancelBookingDialog.jsx'
 import InvoiceForm from './InvoiceForm.jsx'
 import { sendEmail, invoiceEmailHtml, makePayToken, invoicePayLink, brandShell, bKicker, bH1, bP, bSmall, bBtn, BRAND } from '../lib/sendEmail.js'
 import { billingContactFor } from '../lib/credits.js'
-import { invoiceLease, invoiceSpace, locationLabel } from '../lib/billing.js'
+import { invoiceLease, invoiceSpace, locationLabel, calcInvoiceTotal, calcAmountDue } from '../lib/billing.js'
 import { buildMonthlyInvoiceForLease, combineTenantInvoices, attachUnbilledFees, sweptFeeIdsOf } from '../lib/billingEngine.js'
 // Server-grade tax-invoice PDF, deliberately self-contained (jspdf only) so the
 // browser bundle and the auto-billing cron attach the identical document.
@@ -20,22 +20,6 @@ const STATUS_STYLE = {
   paid: 'bg-green-100 text-green-800',
   overdue: 'bg-red-100 text-red-800',
   voided: 'bg-gray-100 text-gray-500',
-}
-
-function calcInvoiceTotal(invoice, taxRate = 0.1) {
-  const sub = (invoice.lineItems ?? []).reduce((s, l) => {
-    return s + Math.round(l.unitPrice * l.qty * (1 - (l.discountPct ?? 0) / 100) * 100) / 100
-  }, 0)
-  const disc = Math.round(sub * ((invoice.discountPct ?? 0) / 100) * 100) / 100
-  const taxable = sub - disc
-  const gst = invoice.vatEnabled !== false ? Math.round(taxable * taxRate * 100) / 100 : 0
-  return taxable + gst
-}
-
-function calcAmountDue(invoice, taxRate = 0.1) {
-  const total = calcInvoiceTotal(invoice, taxRate)
-  const paid = (invoice.payments ?? []).reduce((s, p) => s + Number(p.amount), 0)
-  return Math.max(0, total - paid)
 }
 
 export default function Billing() {

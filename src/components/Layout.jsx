@@ -6,14 +6,20 @@ import {
   Wrench, BarChart2, Menu, X, Calendar, MessageSquare,
   ClipboardList, Megaphone, Building2, User, Tag, DollarSign,
   CalendarCheck, Activity, CalendarDays, PartyPopper, Mailbox, Croissant, KeyRound,
-  MonitorPlay, DoorOpen, BadgeDollarSign, GraduationCap, Mic, PhoneCall,
+  MonitorPlay, DoorOpen, BadgeDollarSign, GraduationCap, Mic, PhoneCall, Sparkles,
 } from 'lucide-react'
 import { logout } from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
 import { pendingStudioRequests } from '../lib/studio.js'
+import AssistantWidget from './AssistantWidget.jsx'
 
 const GROUPS = [
-  { items: [{ to: '/', icon: LayoutDashboard, label: 'Dashboard' }] },
+  {
+    items: [
+      { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/assistant', icon: Sparkles, label: 'Assistant' },
+    ],
+  },
   {
     heading: 'Operations',
     items: [
@@ -73,6 +79,7 @@ export default function Layout({ store, onLogout }) {
   // Studio sessions are held, not booked, until someone answers them — surface
   // the count so a request can't sit unanswered while a client waits.
   const pendingStudio = pendingStudioRequests(store?.bookings, store?.spaces).length
+  const openTasks = (store?.tasks ?? []).filter((t) => t.status !== 'done').length
 
   useEffect(() => {
     loadUnread()
@@ -134,6 +141,11 @@ export default function Layout({ store, onLogout }) {
                     {pendingStudio}
                   </span>
                 )}
+                {to === '/assistant' && openTasks > 0 && (
+                  <span className="bg-zinc-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                    {openTasks}
+                  </span>
+                )}
                 {to === '/crm' && unreadEnquiries > 0 && (
                   <span className="bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
                     {unreadEnquiries}
@@ -191,6 +203,9 @@ export default function Layout({ store, onLogout }) {
           <Outlet context={store} />
         </main>
       </div>
+
+      {/* Floating ops assistant — every admin screen, bottom-right. */}
+      <AssistantWidget store={store} />
     </div>
   )
 }

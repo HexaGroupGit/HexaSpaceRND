@@ -87,3 +87,24 @@ export function lineDescription(line, lease, space, inv) {
   }
   return line?.description ?? ''
 }
+
+// ── Invoice money ────────────────────────────────────────────────────────────
+// Lives here so the Billing table, the dashboard and the assistant briefing all
+// price an invoice the same way. GST is on by default (vatEnabled !== false);
+// each line rounds to cents BEFORE summing, matching what the PDF prints.
+
+export function calcInvoiceTotal(invoice, taxRate = 0.1) {
+  const sub = (invoice?.lineItems ?? []).reduce((s, l) => {
+    return s + Math.round(l.unitPrice * l.qty * (1 - (l.discountPct ?? 0) / 100) * 100) / 100
+  }, 0)
+  const disc = Math.round(sub * ((invoice?.discountPct ?? 0) / 100) * 100) / 100
+  const taxable = sub - disc
+  const gst = invoice?.vatEnabled !== false ? Math.round(taxable * taxRate * 100) / 100 : 0
+  return taxable + gst
+}
+
+/** What's still owing — total less payments, never negative. */
+export function calcAmountDue(invoice, taxRate = 0.1) {
+  const paid = (invoice?.payments ?? []).reduce((s, p) => s + Number(p.amount ?? 0), 0)
+  return Math.max(0, calcInvoiceTotal(invoice, taxRate) - paid)
+}
