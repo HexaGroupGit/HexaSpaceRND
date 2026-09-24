@@ -42,6 +42,16 @@ const l4 = { ...l1, id: 'CON-7', contractNumber: 'CON-7', spaceId: s431.id, reso
 const h4 = virtualSuiteHolding(s431, { leases: [l4], tenants, members, spaces: [s431] })
 check('company drift detected, contract wins', h4.companyDrift && h4.tenant?.businessName === 'Acme Pty Ltd')
 
+// 4b. relink must not demote an occupied suite back to reserved
+const sOcc = { id: 'hx_vo_occ', type: 'virtual', unitNumber: 'Suite 450', floor: 'l4', status: 'occupied', assignedCompanyId: 't1' }
+const lPend = { ...l1, id: 'CON-8', contractNumber: 'CON-8', status: 'pending', spaceId: sOcc.id, resource: 'Suite 450', items: undefined }
+const hOcc = virtualSuiteHolding(sOcc, { leases: [lPend], tenants, members, spaces: [sOcc] })
+check('relink never demotes occupied -> reserved', !('status' in relinkVirtualSuitePatch(sOcc, hOcc)))
+const sVac = { ...sOcc, id: 'hx_vo_vac', status: 'vacant' }
+const lPend2 = { ...lPend, spaceId: sVac.id }
+const hVac = virtualSuiteHolding(sVac, { leases: [lPend2], tenants, members, spaces: [sVac] })
+check('relink still promotes vacant -> reserved', relinkVirtualSuitePatch(sVac, hVac).status === 'reserved')
+
 // 5. free suite, no contract → not locked
 const s432 = { id: 'hx_vo_z', type: 'virtual', unitNumber: 'Suite 432', floor: 'l4', rate: 150 }
 const h5 = virtualSuiteHolding(s432, { leases: [l1], tenants, members, spaces: [s432] })

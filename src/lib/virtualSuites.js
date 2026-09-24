@@ -257,7 +257,13 @@ export function relinkVirtualSuitePatch(space, holding) {
     patch.rate = rate
     patch.monthlyRate = rate
   }
+  // Promote to the status the contract implies, but NEVER pull an already
+  // occupied suite back to reserved: the member has moved in and their mail is
+  // arriving, whatever the contract's signature state still says. Same guard
+  // the reconcile pass in useStore applies for the same reason.
   const desired = lease.status === 'pending' ? 'reserved' : 'occupied'
-  if (space?.status !== desired) patch.status = desired
+  if (space?.status !== desired && !(space?.status === 'occupied' && desired === 'reserved')) {
+    patch.status = desired
+  }
   return patch
 }
