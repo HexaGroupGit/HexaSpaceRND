@@ -17,7 +17,13 @@ const isVirtual = (l) => /virtual/i.test(l?.membershipType || '')
 const isOffice = (l) => /office/i.test(l?.membershipType || '')
 
 export function invoiceLease(inv, leases = []) {
-  return inv ? leases.find((l) => l.id === inv.leaseId) || null : null
+  // Never match on a missing leaseId. `find(l => l.id === undefined)` returns
+  // the first lease whose OWN id is missing, so every invoice with no leaseId
+  // resolved to the same unrelated contract — and since lineDescription renders
+  // the rent line from that lease's suite, 1039 historical invoices displayed
+  // another member's suite number (all of them "Level 4 Suite 426").
+  if (!inv?.leaseId) return null
+  return leases.find((l) => l.id === inv.leaseId) || null
 }
 
 /** The space an invoice is for: invoice.spaceId, else via its lease. */
