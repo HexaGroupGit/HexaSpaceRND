@@ -263,7 +263,9 @@ function SlotSheet({ room, date, start, member, company, allBookings, balance, l
   // Drop-ins pay the LIST rate (the member discount is a membership benefit) and
   // pay on the spot — a month-end fee collects nothing from someone who gets no
   // month-end bill. Members are unchanged.
-  const quote = priceBooking({ room, hours: hrs, company, leases, isPerk })
+  // `date` prices against the month being booked into, so a forward booking
+  // quotes that month's allowance rather than this month's leftovers.
+  const quote = priceBooking({ room, hours: hrs, company, leases, isPerk, date })
   const { rate, cost, creditsUsed } = quote
   const credits = quote.needed
   const overage = quote.shortfallCredits

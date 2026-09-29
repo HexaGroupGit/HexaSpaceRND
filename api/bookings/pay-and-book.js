@@ -65,7 +65,7 @@ export default async function handler(req, res) {
     // Price it exactly as the app quoted: list rate for a drop-in, credits first.
     const perk = companyPerk(companyId, leases, spaces, settings)
     const isPerk = isPerkRoom(room, perk)
-    const quote = priceBooking({ room, hours, company, leases, isPerk })
+    const quote = priceBooking({ room, hours, company, leases, isPerk, date })
     if (!requiresUpfrontPayment({ company, leases, isPerk, payNow: quote.payNow })) {
       return res.status(400).json({ error: 'This booking does not need paying up front — book it the normal way.' })
     }

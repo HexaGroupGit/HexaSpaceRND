@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { X, Repeat, Check, User } from 'lucide-react'
 import { format, addDays, addMonths } from 'date-fns'
 import { supabase } from '../lib/supabase.js'
-import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig, spendableCredits, hasActiveMembership, creditMonthKey } from '../lib/credits.js'
+import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig, hasActiveMembership, spendablePoolFor, bookingMonthKey, creditPoolPatch, round2 } from '../lib/credits.js'
 import { bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
 import { isRequestGated, studioRequestState } from '../lib/studio.js'
@@ -49,13 +49,15 @@ export default function PortalCalendar({ resources, allBookings, member, company
   const LABEL_HOURS = Array.from({ length: DAY_END - DAY_START + 1 }, (_, i) => DAY_START + i)
   const canAfterHours = companyCanAfterHours(company?.id, leases, allSpaces ?? resources, settings)
   const win = bookingWindow(canAfterHours, settings)
-  // Live company credit balance (deducted as bookings are made this session).
-  // On a new month the pool tops back up to the company's monthly allowance —
-  // mirrors the admin app's monthly reset, keyed on creditsPeriod so the two agree.
-  // A drop-in signed into the portal has no pool at all, whatever the stored
-  // figure says — credits come with a membership.
-  const monthKey = creditMonthKey()
-  const [remaining, setRemaining] = useState(() => spendableCredits(company, leases))
+  // Live company credit balances, keyed by the month the credits belong to and
+  // deducted as bookings are made this session. Keyed by month because a booking
+  // draws from the pool of the month it FALLS IN: booking next month's room today
+  // must not touch this month's allowance, and must not be charged as cash just
+  // because this month is spent. Months absent here are resolved from the stored
+  // pools; a month never drawn on holds its full allowance. A drop-in has no pool
+  // in any month, whatever is stored — credits come with a membership.
+  const [pools, setPools] = useState({})
+  const poolFor = (mk) => (pools[mk] != null ? Number(pools[mk]) : spendablePoolFor(company, leases, mk))
 
   const dayStr = format(day, 'yyyy-MM-dd')
   // Cancelled bookings free their slot — never draw them (a cancel would
@@ -198,12 +200,12 @@ export default function PortalCalendar({ resources, allBookings, member, company
 
       {amend && (
         <AmendModal
-          booking={amend} resources={resources} bookings={bookings} company={company} remaining={remaining}
+          booking={amend} resources={resources} bookings={bookings} company={company} poolFor={poolFor}
           leases={leases} settings={settings} allSpaces={allSpaces ?? resources}
           onClose={() => setAmend(null)}
-          onSaved={(updated, newRemaining) => {
+          onSaved={(updated, poolUpdates) => {
             setBookings((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
-            if (newRemaining != null) setRemaining(newRemaining)
+            if (poolUpdates) setPools((prev) => ({ ...prev, ...poolUpdates }))
             setAmend(null)
           }}
         />
@@ -220,10 +222,10 @@ export default function PortalCalendar({ resources, allBookings, member, company
         />
       ) : modal && (
         <BookingModal
-          slot={modal} resources={resources} bookings={bookings} member={member} company={company} remaining={remaining}
+          slot={modal} resources={resources} bookings={bookings} member={member} company={company} poolFor={poolFor}
           leases={leases} settings={settings} allSpaces={allSpaces ?? resources}
           onClose={() => setModal(null)}
-          onBooked={(created, newRemaining) => { setBookings((prev) => [...prev, ...created]); if (newRemaining != null) setRemaining(newRemaining); setModal(null) }}
+          onBooked={(created, poolUpdates) => { setBookings((prev) => [...prev, ...created]); if (poolUpdates) setPools((prev) => ({ ...prev, ...poolUpdates })); setModal(null) }}
         />
       )}
     </>
@@ -266,7 +268,7 @@ async function notifyOps(bookingId, kind, occurrences = 1) {
   } catch { /* notifications are best-effort */ }
 }
 
-function BookingModal({ slot, resources, bookings, member, company, remaining, leases, settings, allSpaces, onClose, onBooked }) {
+function BookingModal({ slot, resources, bookings, member, company, poolFor, leases, settings, allSpaces, onClose, onBooked }) {
   const [f, setF] = useState({ resourceId: slot.resourceId, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, title: '', repeat: 'none', occurrences: 4, attendees: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -289,8 +291,10 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
   // Credits burn at the LIST rate, so this is not totalCost/CREDIT_VALUE once
   // the member discount is live — the discount is off the cash, not the pool.
   const totalCredits = isPerk ? 0 : Math.round(creditsForBooking(room, hrs) * count * 100) / 100
-  // Balance is the COMPANY's monthly allowance pool — nil for a drop-in.
-  const balance = remaining != null ? Number(remaining) : spendableCredits(company, leases)
+  // Balance is the COMPANY's pool for the month being booked into — nil for a
+  // drop-in. A repeat series can cross a month boundary; this quotes the first
+  // occurrence's month, which is the slot the member is looking at.
+  const balance = poolFor(bookingMonthKey(f.date))
 
   function occurrenceDates() {
     const base = new Date(f.date + 'T00:00:00')
@@ -371,51 +375,82 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
       return setError('Those times are already booked. Please choose another slot.')
     }
 
-    // Perk bookings are FREE (no credits, no fee). Otherwise deduct the company's
-    // credit allowance per booking; any overage becomes a month-end Booking Fee.
-    let bal = remaining != null ? Number(remaining) : spendableCredits(company, leases)
-    let shortfallCredits = 0
+    // Perk bookings are FREE (no credits, no fee). Otherwise deduct the credit
+    // allowance of the month EACH booking falls in — a weekly series can cross a
+    // month boundary, and each month's pool is its own — and raise a month-end
+    // Booking Fee per booking that overruns its own month's pool.
+    const nextPools = {}
+    const shortfallByBooking = new Map()
     if (isPerk) {
       created.forEach((b) => { b.creditsUsed = 0; b.paidBy = 'included' })
     } else {
       const perCredits = creditsForBooking(room, hrs)
       created.forEach((b) => {
+        const mk = bookingMonthKey(b.date)
+        const bal = nextPools[mk] != null ? nextPools[mk] : poolFor(mk)
         const used = Math.max(0, Math.min(bal, perCredits))
-        bal = Math.round((bal - used) * 100) / 100
-        shortfallCredits = Math.round((shortfallCredits + Math.max(0, perCredits - used)) * 100) / 100
+        nextPools[mk] = round2(bal - used)
+        const short = round2(Math.max(0, perCredits - used))
+        if (short > 0) shortfallByBooking.set(b.id, short)
         b.creditsUsed = used
-        b.paidBy = perCredits - used > 0 ? (used > 0 ? 'part_credits' : 'fee') : 'credits'
+        b.paidBy = short > 0 ? (used > 0 ? 'part_credits' : 'fee') : 'credits'
       })
     }
 
     setSaving(true)
     const nowIso = new Date().toISOString()
+
+    // Build the fees FIRST so each booking carries its feeId before the bookings
+    // upsert is queued — stamping it afterwards would depend on the payload not
+    // being serialized until await, which is not a guarantee worth resting on.
+    //
+    // One fee per booking that overran ITS OWN month's pool — not one for the
+    // series. A series spanning two months can overrun in one and be covered in
+    // the other, and a single lumped fee could only ever name one date.
+    const feeWrites = []
+    if (!isPerk && company?.id) {
+      const feeRoom = resources.find((r) => r.id === f.resourceId)
+      const today = new Date().toISOString().split('T')[0]
+      created.forEach((b, i) => {
+        const short = shortfallByBooking.get(b.id)
+        if (!short) return
+        const feeId = `f_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`
+        b.feeId = feeId
+        feeWrites.push(supabase.from('fees').upsert({
+          id: feeId,
+          data: {
+            id: feeId,
+            name: bookingFeeName({
+              roomName: feeRoom?.unitNumber, rate: bookingRate(feeRoom, company?.id, leases),
+              date: b.date, startTime: b.startTime, endTime: b.endTime,
+              usedCredits: b.creditsUsed || 0,
+            }),
+            type: 'Booking Fee', memberId: member?.id ?? null, companyId: company.id,
+            bookingId: b.id,
+            // The BOOKING's date, not today's: the fee belongs to the period the
+            // room was used in, so it lands on that month's bill rather than
+            // whichever one happens to be raised next.
+            date: b.date,
+            price: payableForCredits(short, feeRoom, company?.id, leases),
+            status: 'Not Paid', notes: `Portal booking · ${short} credits over allowance`,
+            createdAt: today,
+          },
+          updated_at: nowIso,
+        }))
+      })
+    }
+
     const writes = [
       supabase.from('bookings').upsert(created.map((b) => ({ id: b.id, data: b, updated_at: nowIso }))),
+      ...feeWrites,
     ]
     if (!isPerk && company?.id) {
-      const mk = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+      // Every month the series touched, each keyed to its own pool.
       // update, not upsert: members have UPDATE-only RLS on tenants (an upsert
       // is checked as an INSERT first and gets rejected).
-      writes.push(supabase.from('tenants').update({ data: { ...company, creditsRemaining: bal, creditsPeriod: mk }, updated_at: nowIso }).eq('id', company.id))
-    }
-    if (!isPerk && shortfallCredits > 0 && company?.id) {
-      const feeId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-      const feeRoom = resources.find((r) => r.id === f.resourceId)
-      const fee = {
-        id: feeId,
-        name: bookingFeeName({
-          roomName: feeRoom?.unitNumber, rate: bookingRate(feeRoom, company?.id, leases),
-          date: created[0]?.date, startTime: f.startTime, endTime: f.endTime,
-          usedCredits: created.reduce((s, b) => s + (b.creditsUsed || 0), 0),
-        }),
-        type: 'Booking Fee', memberId: member?.id ?? null, companyId: company.id,
-        date: new Date().toISOString().split('T')[0],
-        price: payableForCredits(shortfallCredits, feeRoom, company?.id, leases),
-        status: 'Not Paid', notes: `Portal booking · ${shortfallCredits} credits over allowance`,
-        createdAt: new Date().toISOString().split('T')[0],
-      }
-      writes.push(supabase.from('fees').upsert({ id: feeId, data: fee, updated_at: nowIso }))
+      const data = Object.entries(nextPools).reduce(
+        (co, [mk, left]) => ({ ...co, ...creditPoolPatch(co, mk, left) }), { ...company })
+      writes.push(supabase.from('tenants').update({ data, updated_at: nowIso }).eq('id', company.id))
     }
     const results = await Promise.all(writes)
     setSaving(false)
@@ -426,7 +461,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
     if (created[0]?.attendees?.length) notifyAttendees(created[0].id, 'invite', created.length)
     if (created[0]) notifyOps(created[0].id, 'new', created.length)
     queueRoomAccess()
-    onBooked(created, bal)
+    onBooked(created, nextPools)
   }
 
   return (
@@ -532,7 +567,7 @@ function BookingModal({ slot, resources, bookings, member, company, remaining, l
 // spend deducted; only NET overage beyond what was already fee'd raises a new
 // Booking Fee) and the new time re-queues door access automatically.
 // Cancelling refunds the credits that were drawn from the pool.
-function AmendModal({ booking, resources, bookings, company, remaining, leases, settings, allSpaces, onClose, onSaved }) {
+function AmendModal({ booking, resources, bookings, company, poolFor, leases, settings, allSpaces, onClose, onSaved }) {
   const b = booking
   const [f, setF] = useState({ date: b.date, startTime: b.startTime, endTime: b.endTime, attendees: (b.attendees ?? []).join(', ') })
   const [saving, setSaving] = useState(false)
@@ -560,17 +595,30 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
   // and neither does a booking that's already been used (see saveChanges' guard).
   const isMember = hasActiveMembership(company?.id, leases)
   const alreadyUsed = bookingWasUsed(b)
-  const pool = (isMember && !alreadyUsed) ? round2c(Number(remaining ?? 0) + oldUsed) : 0
-  const newUsed = Math.max(0, Math.min(pool, newNeed))
-  const newPool = round2c(pool - newUsed)
+  // An amend can move a booking ACROSS a month boundary, so the refund goes back
+  // to the month it was booked in and the new draw comes out of the month it is
+  // moving to. When both are the same month that collapses to one pool, as before.
+  const oldMk = bookingMonthKey(b.date)
+  const newMk = bookingMonthKey(f.date)
+  const refund = (isMember && !alreadyUsed) ? oldUsed : 0
+  const oldPoolAfterRefund = round2c(poolFor(oldMk) + refund)
+  // Same month: the refund is already in the pool being drawn from. Different
+  // month: draw from the destination month's own pool, untouched by the refund.
+  const drawPool = (isMember && !alreadyUsed)
+    ? (newMk === oldMk ? oldPoolAfterRefund : poolFor(newMk))
+    : 0
+  const newUsed = Math.max(0, Math.min(drawPool, newNeed))
+  const newPool = round2c(drawPool - newUsed)
   const extraFee = Math.max(0, round2c((newNeed - newUsed) - oldShort))
-  const monthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
   const nowIso = () => new Date().toISOString()
 
-  async function persist(updated, poolAfter, feeWrite) {
+  // poolUpdates: { [monthKey]: remaining } — every pool this change touched.
+  async function persist(updated, poolUpdates, feeWrite) {
     const writes = [supabase.from('bookings').update({ data: updated, updated_at: nowIso() }).eq('id', b.id)]
-    if (company?.id) {
-      writes.push(supabase.from('tenants').update({ data: { ...company, creditsRemaining: poolAfter, creditsPeriod: monthKey }, updated_at: nowIso() }).eq('id', company.id))
+    if (company?.id && poolUpdates && Object.keys(poolUpdates).length) {
+      const data = Object.entries(poolUpdates).reduce(
+        (co, [mk, left]) => ({ ...co, ...creditPoolPatch(co, mk, left) }), { ...company })
+      writes.push(supabase.from('tenants').update({ data, updated_at: nowIso() }).eq('id', company.id))
     }
     if (feeWrite) writes.push(feeWrite)
     const results = await Promise.all(writes)
@@ -646,20 +694,27 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
         id: feeId,
         name: bookingFeeName({ roomName: room?.unitNumber, rate, date: f.date, startTime: f.startTime, endTime: f.endTime, usedCredits: newUsed }),
         type: 'Booking Fee', memberId: b.memberId ?? null, companyId: company.id,
-        date: new Date().toISOString().split('T')[0],
+        bookingId: b.id,
+        // The booking's new date, not today's — it belongs to the period the room
+        // is actually used in.
+        date: f.date,
         price: payableForCredits(extraFee, room, company?.id, leases), status: 'Not Paid',
         notes: `Amended portal booking · ${extraFee} extra credits over allowance`,
         createdAt: new Date().toISOString().split('T')[0],
       }, updated_at: nowIso() })
     }
-    const poolAfter = isPerk ? Number(remaining ?? 0) : newPool
-    const err = await persist(updated, poolAfter, feeWrite)
+    // A cross-month move settles two pools: the old month gets the refund back,
+    // the new month carries the draw.
+    const poolUpdates = isPerk
+      ? (refund > 0 ? { [oldMk]: oldPoolAfterRefund } : {})
+      : (newMk === oldMk ? { [newMk]: newPool } : { [oldMk]: oldPoolAfterRefund, [newMk]: newPool })
+    const err = await persist(updated, poolUpdates, feeWrite)
     setSaving(false)
     if (err) return setError(err.message)
     if (attendees.length) notifyAttendees(b.id, 'update')
     notifyOps(b.id, 'amended')
     queueRoomAccess()
-    onSaved(updated, poolAfter)
+    onSaved(updated, poolUpdates)
   }
 
   // Cancelling always frees the slot. The refund is what's gated: once the room
@@ -675,13 +730,17 @@ function AmendModal({ booking, resources, bookings, company, remaining, leases, 
     const updated = used
       ? { ...b, status: 'Cancelled', cancelledAt: nowIso(), chargedAfterEntry: true }
       : { ...b, status: 'Cancelled', cancelledAt: nowIso(), creditsUsed: 0 }
-    const poolAfter = used ? Number(remaining ?? 0) : round2c(Number(remaining ?? 0) + oldUsed)
-    const err = await persist(updated, poolAfter, null)
+    // The refund goes back to the pool of the month the booking was FOR, which
+    // for a booking made late in the prior month is not the current one.
+    const poolUpdates = (used || !isMember || oldUsed <= 0)
+      ? {}
+      : { [oldMk]: round2c(poolFor(oldMk) + oldUsed) }
+    const err = await persist(updated, poolUpdates, null)
     setSaving(false)
     if (err) return setError(err.message)
     if ((b.attendees ?? []).length) notifyAttendees(b.id, 'cancelled')
     notifyOps(b.id, 'cancelled')
-    onSaved(updated, poolAfter)
+    onSaved(updated, poolUpdates)
   }
 
   return (

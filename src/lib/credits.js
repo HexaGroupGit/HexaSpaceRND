@@ -111,6 +111,84 @@ export function spendableCredits(company, leases) {
   return creditBalance(company)
 }
 
+// ── Per-month credit pools ──────────────────────────────────────────────────
+// The allowance is granted per CALENDAR MONTH, so a booking must be priced
+// against the pool of the month it FALLS IN — not the month it was made in.
+//
+// A single stored pool (`creditsRemaining` + `creditsPeriod`) cannot express two
+// months at once, so booking forward silently drew from the current month while
+// the target month's allowance sat untouched. Top bridge booked Central for
+// 1 Sept on 31 Aug: August was exhausted, so 1.5h that September's 15 credits
+// covered in full was charged as $84 cash and swept onto the August bill, while
+// her September pool still read 10 of 15. `creditPools` keys the pool by month
+// so each month is drawn down independently, whenever the booking is made.
+//
+// The legacy pair is still written for the CURRENT month (see creditPoolPatch),
+// so every existing reader — company profile, dashboards, the monthly reset in
+// useStore — keeps working untouched.
+
+/** How many credits a month starts with. */
+export const monthlyAllowanceOf = (company) =>
+  Number(company?.monthlyAllowance ?? company?.creditsRemaining ?? 0)
+
+/**
+ * The stored pool for ONE month, as recorded. A month with no record has never
+ * been drawn on, so it holds its full allowance.
+ *
+ * Like creditBalance this is the RAW figure and says nothing about entitlement —
+ * price off spendablePoolFor instead.
+ *
+ * Known limit: a month that was never touched cannot be told apart from one
+ * whose record predates `creditPools`, so back-dating a booking into a month
+ * that closed before this shipped reads as a fresh allowance. Forward and
+ * current-month bookings — every automated path — are exact.
+ */
+export function creditPoolFor(company, monthKey) {
+  const pools = company?.creditPools
+  const stored = pools && typeof pools === 'object' ? Number(pools[monthKey]) : NaN
+  if (Number.isFinite(stored)) return stored
+  // Legacy single pool: it belongs to whichever month creditsPeriod names.
+  if (company?.creditsPeriod === monthKey) return Number(company?.creditsRemaining ?? 0)
+  return monthlyAllowanceOf(company)
+}
+
+/**
+ * Credits spendable on a booking in `monthKey`. Fails CLOSED exactly as
+ * spendableCredits does: a drop-in has no pool in any month, whatever is stored.
+ */
+export function spendablePoolFor(company, leases, monthKey) {
+  if (isDropIn(company?.id, leases)) return 0
+  return creditPoolFor(company, monthKey)
+}
+
+/** The month a booking draws from — its own date, never today's. */
+export const bookingMonthKey = (date) =>
+  String(date ?? '').slice(0, 7) || creditMonthKey()
+
+/**
+ * The tenant fields to write after drawing `remaining` credits in `monthKey`.
+ * Spread over the company row: `{ ...company, ...creditPoolPatch(...) }`.
+ *
+ * Keeps the legacy pair in step for the current month so no existing reader
+ * changes behaviour, and prunes pools more than a year old so the row does not
+ * grow without bound.
+ */
+export function creditPoolPatch(company, monthKey, remaining) {
+  const cutoff = (() => {
+    const d = new Date()
+    d.setFullYear(d.getFullYear() - 1)
+    return creditMonthKey(d)
+  })()
+  const kept = Object.fromEntries(Object.entries(company?.creditPools ?? {})
+    .filter(([k]) => k >= cutoff || k === monthKey))
+  const patch = { creditPools: { ...kept, [monthKey]: round2(remaining) } }
+  if (monthKey === creditMonthKey()) {
+    patch.creditsRemaining = round2(remaining)
+    patch.creditsPeriod = monthKey
+  }
+  return patch
+}
+
 // Members get 30% off the listed meeting-room hourly rate. room.hourlyRate is
 // the STANDARD/EXTERNAL rate; any booking attached to a member/company is
 // priced at 70% of it. This single helper feeds every CASH pricing path (the

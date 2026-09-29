@@ -4,7 +4,7 @@ import { Link, useOutletContext } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, X, Users, Clock, CalendarClock } from 'lucide-react'
 import { format, addDays } from 'date-fns'
 import { DatePicker } from './ui/date-picker.jsx'
-import { bookingFeeName, afterHoursConfig, spendableCredits, hasActiveMembership, creditMonthKey } from '../lib/credits.js'
+import { bookingFeeName, afterHoursConfig, spendablePoolFor, bookingMonthKey, creditPoolPatch, hasActiveMembership } from '../lib/credits.js'
 import { bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
 import { to12h, durationLabel, addMinutes } from '../lib/tourInvite.js'
@@ -71,15 +71,24 @@ export default function Calendar() {
     const tenant = tenants.find((t) => t.id === companyId)
 
     // Start from the current balance, refund the old spend, drop its overage fee.
-    // Drop-ins have no pool (spendableCredits → 0), and the refund of a credit
+    // Drop-ins have no pool (spendablePoolFor → 0), and the refund of a credit
     // that was wrongly granted before must not hand them one back either — so the
     // refund only applies to a company that actually holds a membership.
     // A booking that's already been used (door opened, or its window started)
     // keeps its charge: cancelling it frees the room but doesn't undo the spend.
     const isMember = hasActiveMembership(companyId, leases)
     const alreadyUsed = bookingWasUsed(oldB)
-    let available = spendableCredits(tenant, leases)
-    if (isMember && !alreadyUsed && oldB?.creditsUsed) available = round2(available + oldB.creditsUsed)
+    // Pools are keyed by the month each booking FALLS IN, not the month we happen
+    // to be editing in. A booking moved across a month boundary refunds one
+    // month's pool and draws from another's, and a booking made for next month
+    // never touches this month's allowance.
+    const pools = {}
+    const poolOf = (mk) => (pools[mk] != null ? pools[mk] : spendablePoolFor(tenant, leases, mk))
+    const setPool = (mk, v) => { pools[mk] = round2(v) }
+    const oldMk = oldB?.date ? bookingMonthKey(oldB.date) : null
+    if (isMember && !alreadyUsed && oldB?.creditsUsed && oldMk) {
+      setPool(oldMk, poolOf(oldMk) + oldB.creditsUsed)
+    }
     if (oldB?.feeId && !alreadyUsed) deleteFee?.(oldB.feeId)
 
     let creditsUsed = 0, paidBy = 'free', feeAmount = 0, feeId = null
@@ -107,9 +116,12 @@ export default function Calendar() {
         const need = creditsForBooking(room, hrs)
         if (need <= 0) paidBy = 'free'
         else {
+          // Draw on the pool of the month this booking falls in.
+          const newMk = bookingMonthKey(next.date)
+          const available = poolOf(newMk)
           creditsUsed = Math.max(0, Math.min(available, need))
           const shortfall = round2(Math.max(0, need - available))
-          available = round2(available - creditsUsed)
+          setPool(newMk, available - creditsUsed)
           if (shortfall > 0) {
             feeAmount = payableForCredits(shortfall, room, companyId, leases)
             const fee = addFee?.({
@@ -126,10 +138,20 @@ export default function Calendar() {
       }
     }
 
-    // Persist the company's new balance once (absolute value). Stamp the period
-    // too — without it a company whose creditsPeriod is stale reads its full
-    // monthlyAllowance again on the next booking and never actually spends down.
-    if (companyId && tenant && isMember) updateTenant?.(companyId, { creditsRemaining: available, creditsPeriod: creditMonthKey() })
+    // Persist every pool this edit touched (absolute values). creditPoolPatch
+    // keeps the legacy creditsRemaining/creditsPeriod pair in step whenever the
+    // current month is among them, so the company profile and dashboards are
+    // unchanged; an untouched month needs no stamp because creditPoolFor reads a
+    // month with no record as holding its full allowance.
+    if (companyId && tenant && isMember && Object.keys(pools).length) {
+      const co = Object.entries(pools).reduce(
+        (acc, [mk, left]) => ({ ...acc, ...creditPoolPatch(acc, mk, left) }), { ...tenant })
+      updateTenant?.(companyId, {
+        creditPools: co.creditPools,
+        creditsRemaining: co.creditsRemaining,
+        creditsPeriod: co.creditsPeriod,
+      })
+    }
     return { creditsUsed, paidBy, feeAmount, feeId }
   }
 
@@ -375,7 +397,9 @@ function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, lease
   // Credits are counted at the list rate, so they don't track `cost` 1:1.
   const cost = f.free ? 0 : round2(hrs * bookingRate(room, companyId, leases))
   const credits = f.free ? 0 : creditsForBooking(room, hrs)
-  const bal = spendableCredits(company, leases)
+  // The pool of the month being booked into — what reconcile will actually draw
+  // on. Quoting the current month here would mis-state a forward booking.
+  const bal = spendablePoolFor(company, leases, bookingMonthKey(f.date))
 
   function pickCompany(e) {
     const companyId = e.target.value

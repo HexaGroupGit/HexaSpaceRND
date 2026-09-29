@@ -28,7 +28,7 @@ import {
   resolveBondRefundCopy, bondRefundEmailHtml,
   provisionSaltoAccess, revokeSaltoAccess,
 } from '../lib/onboarding.js'
-import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, bookingFeeName, billingEmailFor, spendableCredits, creditMonthKey } from '../lib/credits.js'
+import { CREDIT_VALUE, computeMonthlyAllowance, effectiveAllowance, round2, bookingFeeName, billingEmailFor, spendablePoolFor, bookingMonthKey, creditPoolPatch } from '../lib/credits.js'
 import { creditsAllowed } from '../lib/studio.js'
 import { bookingRate, creditsForBooking, payableForCredits } from '../lib/dropIn.js'
 import { configureFunctionPricing } from '../lib/functionBooking.js'
@@ -1067,7 +1067,18 @@ export function useStore() {
       if (tenant.creditsPeriod === monthKey) return
       const computed = computeMonthlyAllowance(tenant.id, leases, spaces)
       const allowance = effectiveAllowance(tenant, computed)
-      updateTenant(tenant.id, { creditsRemaining: allowance, monthlyAllowance: allowance, creditsPeriod: monthKey })
+      // Seed this month's pool with the allowance — but never overwrite a pool
+      // this month already has: bookings made for this month BEFORE it started
+      // (the whole point of the month-keyed pools) have already drawn on it, and
+      // resetting here would hand those credits back for free.
+      const pools = tenant.creditPools ?? {}
+      const thisMonth = Number.isFinite(Number(pools[monthKey])) ? Number(pools[monthKey]) : allowance
+      updateTenant(tenant.id, {
+        creditsRemaining: thisMonth,
+        monthlyAllowance: allowance,
+        creditsPeriod: monthKey,
+        creditPools: { ...pools, [monthKey]: thisMonth },
+      })
     })
 
     // Space status is resolved per SPACE, not per lease. Writing it inside the
@@ -1330,14 +1341,16 @@ export function useStore() {
           item.feeId = fee?.id ?? null
         }
       } else if (tenant && need > 0) {
-        // Monthly pool with rollover, mirroring the portal calendar.
-        const mk = creditMonthKey()
-        const available = spendableCredits(tenant, leases)
+        // Draw on the pool of the month the booking FALLS IN, mirroring the portal
+        // calendar — not the month it happens to be entered in, or a booking made
+        // for next month spends this month's allowance and is charged as cash.
+        const mk = bookingMonthKey(item.date)
+        const available = spendablePoolFor(tenant, leases, mk)
         const used = Math.max(0, Math.min(available, need))
         const shortfall = round2(need - used)
         item.creditsUsed = used
         item.paidBy = shortfall > 0 ? (used > 0 ? 'part_credits' : 'fee') : 'credits'
-        updateTenant(item.companyId, { creditsRemaining: round2(available - used), creditsPeriod: mk })
+        updateTenant(item.companyId, creditPoolPatch(tenant, mk, round2(available - used)))
         if (shortfall > 0) {
           const fee = addFee({
             name: bookingFeeName({ roomName: room?.unitNumber, rate, date: item.date, startTime: item.startTime, endTime: item.endTime, usedCredits: used }),

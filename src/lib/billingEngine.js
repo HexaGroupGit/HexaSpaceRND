@@ -262,12 +262,23 @@ export function attachUnbilledFees(built, fees) {
   const invoices = built.map((inv) => {
     const tf = byTenant[inv.tenantId]
     if (!tf?.length) return inv
-    delete byTenant[inv.tenantId]   // first invoice of the run takes them all
+    // A fee dated AFTER this bill's period belongs to a later bill. Booking fees
+    // now carry the booking's own date, so without this a member who books next
+    // month's room today would see next month's booking on this month's invoice —
+    // which is how Top bridge's 01/09 booking landed on the 1–31 Aug bill.
+    // Anything not taken here stays queued for the run that covers its date.
+    const due = inv.periodEnd ? tf.filter((f) => !f.date || f.date <= inv.periodEnd) : tf
+    if (!due.length) return inv
+    const taken = new Set(due.map((f) => f.id))
+    const left = tf.filter((f) => !taken.has(f.id))
+    // First invoice of the run takes everything it's entitled to; the rest waits.
+    if (left.length) byTenant[inv.tenantId] = left
+    else delete byTenant[inv.tenantId]
     return {
       ...inv,
       lineItems: [
         ...(inv.lineItems ?? []),
-        ...tf.map((f) => ({
+        ...due.map((f) => ({
           id: `li_fee_${f.id}`,
           description: `${f.name}${f.date && f.type !== 'Booking Fee' ? ` (${f.date})` : ''}`,
           revenueAccount: 'Meeting Room & Booking Fees',

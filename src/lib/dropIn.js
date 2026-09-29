@@ -5,7 +5,7 @@
 // either sat unpaid or (with no company record at all) was never raised — the
 // room went out free. Drop-ins now add a card and are charged before the booking
 // exists.
-import { memberRoomRate, spendableCredits, hasActiveMembership, isDropIn, CREDIT_VALUE, creditsForCost, round2 } from './credits.js'
+import { memberRoomRate, spendableCredits, spendablePoolFor, bookingMonthKey, hasActiveMembership, isDropIn, CREDIT_VALUE, creditsForCost, round2 } from './credits.js'
 
 // The membership test itself lives in credits.js so the credit model can apply
 // it without importing this module; re-exported here for existing callers.
@@ -72,15 +72,22 @@ export function payableForCredits(credits, room, companyId, leases) {
  * Price a booking for whoever is making it. Credits are a membership benefit, so
  * a drop-in has none to draw on (spendableCredits) and pays the whole room hire
  * up front. Amounts in dollars ex GST; `credits` in credit units.
+ *
+ * Pass `date` (the booking's own date) so the allowance is drawn from the month
+ * the booking FALLS IN rather than the month it is being made in. Without it the
+ * caller gets the current month's pool, which charges cash for a forward booking
+ * whenever this month is spent even though the target month is untouched.
  */
-export function priceBooking({ room, hours, company, leases, isPerk = false }) {
+export function priceBooking({ room, hours, company, leases, isPerk = false, date }) {
   const rate = bookingRate(room, company?.id, leases)
   const cost = isPerk ? 0 : round2(rate * hours)
   // Credits are drawn at the LIST rate even when the cash rate is discounted,
   // so `needed` is NOT cost/CREDIT_VALUE for a member — see creditRate.
   const listCost = isPerk ? 0 : round2(creditRate(room) * hours)
   const needed = isPerk ? 0 : creditsForCost(listCost)
-  const balance = spendableCredits(company, leases)
+  const balance = date
+    ? spendablePoolFor(company, leases, bookingMonthKey(date))
+    : spendableCredits(company, leases)
   const creditsUsed = isPerk ? 0 : Math.max(0, Math.min(balance, needed))
   const shortfallCredits = isPerk ? 0 : round2(needed - creditsUsed)
   const payNow = isPerk ? 0 : payableForCredits(shortfallCredits, room, company?.id, leases)

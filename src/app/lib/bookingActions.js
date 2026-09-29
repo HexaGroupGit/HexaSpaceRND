@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase.js'
-import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow, spendableCredits, hasActiveMembership } from '../../lib/credits.js'
+import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, round2, companyCanAfterHours, resourceBookingWindow, spendableCredits, spendablePoolFor, bookingMonthKey, creditPoolPatch, hasActiveMembership } from '../../lib/credits.js'
 import { blockingResourceIds } from '../../lib/roomConflicts.js'
 import { priceBooking, requiresUpfrontPayment, bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../../lib/dropIn.js'
 import { isRequestGated } from '../../lib/studio.js'
@@ -44,10 +44,9 @@ export async function assertSlotFree({ resourceId, date, startTime, endTime, spa
   if (clash) throw new Error('That time was just taken — please choose another slot.')
 }
 
-const monthKey = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
+// Apply one month's pool to a company row. Credits belong to the month the
+// booking FALLS IN, never the month it is made in — see creditPoolPatch.
+const withPool = (company, mk, remaining) => ({ ...company, ...creditPoolPatch(company, mk, remaining) })
 
 export const ROOM_LEAD_MIN = 15 // door/key goes live this many minutes before start
 
@@ -97,8 +96,11 @@ export async function cancelBooking({ booking, company, leases }) {
     // cancelled for scheduling, charged as if it ran.
     ? { ...booking, status: 'Cancelled', cancelledAt: nowIso, chargedAfterEntry: true }
     : { ...booking, status: 'Cancelled', cancelledAt: nowIso, creditsUsed: 0 }
-  const newBal = Math.round((spendableCredits(company, leases) + refund) * 100) / 100
-  const updatedCompany = company?.id ? { ...company, creditsRemaining: newBal, creditsPeriod: monthKey() } : company
+  // Refund into the pool of the month the booking was FOR — for a booking made
+  // late in the previous month that is not the current month's pool.
+  const mk = bookingMonthKey(booking.date)
+  const newBal = round2(spendablePoolFor(company, leases, mk) + refund)
+  const updatedCompany = company?.id ? withPool(company, mk, newBal) : company
 
   const writes = [supabase.from('bookings').upsert({ id: booking.id, data: updated, updated_at: nowIso })]
   if (company?.id && refund > 0) {
@@ -170,11 +172,17 @@ export async function amendBooking({ booking, room, date, startTime, endTime, me
   const perCredits = isPerk ? 0 : creditsForBooking(room, hrs)
   // Refund the old credits first, then re-charge the new window from that pool.
   // Drop-ins have no pool, so nothing to refund into and nothing to draw down.
+  // An amend can move a booking across a month boundary, so the refund returns to
+  // the month it was booked in and the new draw comes from the month it moves to.
+  // Same month and the two collapse into one pool, exactly as before.
+  const oldMk = bookingMonthKey(booking.date)
+  const newMk = bookingMonthKey(date)
   const oldUsed = hasActiveMembership(company?.id, leases) ? Number(booking.creditsUsed ?? 0) : 0
-  const basePool = Math.round((spendableCredits(company, leases) + oldUsed) * 100) / 100
+  const oldPoolAfterRefund = round2(spendablePoolFor(company, leases, oldMk) + oldUsed)
+  const basePool = newMk === oldMk ? oldPoolAfterRefund : spendablePoolFor(company, leases, newMk)
   const used = isPerk ? 0 : Math.max(0, Math.min(basePool, perCredits))
-  const newBal = isPerk ? basePool : Math.round((basePool - used) * 100) / 100
-  const shortfall = isPerk ? 0 : Math.round((perCredits - used) * 100) / 100
+  const newBal = isPerk ? basePool : round2(basePool - used)
+  const shortfall = isPerk ? 0 : round2(perCredits - used)
 
   const nowIso = new Date().toISOString()
   // Moving a staffed studio session returns it to Pending — an operator was
@@ -191,8 +199,12 @@ export async function amendBooking({ booking, room, date, startTime, endTime, me
     // Time changed → re-queue the door-access grant for the new window.
     roomAccessSentAt: null, roomAccessRemovedAt: null,
   }
+  // A cross-month move settles two pools: the old month takes the refund back,
+  // the new month carries the draw.
   const updatedCompany = (!isPerk && company?.id)
-    ? { ...company, creditsRemaining: newBal, creditsPeriod: monthKey() }
+    ? (newMk === oldMk
+        ? withPool(company, newMk, newBal)
+        : withPool(withPool(company, oldMk, oldPoolAfterRefund), newMk, newBal))
     : company
 
   const writes = [supabase.from('bookings').upsert({ id: booking.id, data: updated, updated_at: nowIso })]
@@ -206,7 +218,10 @@ export async function amendBooking({ booking, room, date, startTime, endTime, me
       id: feeId,
       name: bookingFeeName({ roomName: room.unitNumber, rate, date, startTime, endTime, usedCredits: used }),
       type: 'Booking Fee', memberId: member?.id ?? null, companyId: company.id,
-      date: new Date().toISOString().split('T')[0],
+      bookingId: booking.id,
+      // The booking's date, not today's — the charge belongs to the period the
+      // room is used in, so it bills on that month rather than the next run.
+      date,
       price: payableForCredits(shortfall, room, company?.id, leases),
       status: 'Not Paid', notes: `Amended booking · ${shortfall} credits over allowance`,
       createdAt: new Date().toISOString().split('T')[0],
@@ -283,7 +298,8 @@ export async function createBooking({ room, date, startTime, endTime, title, mem
   // Drop-ins pay the list rate on the spot via /api/bookings/pay-and-book. Refuse
   // them here rather than writing a booking whose shortfall becomes a month-end
   // fee nobody collects — with no company record at all, no fee was even raised.
-  const quote = priceBooking({ room, hours: hrs, company, leases, isPerk })
+  // `date` makes the quote draw on the month the booking falls in, not today's.
+  const quote = priceBooking({ room, hours: hrs, company, leases, isPerk, date })
   if (requiresUpfrontPayment({ company, leases, isPerk, payNow: quote.payNow })) {
     throw new Error('This booking needs paying up front — add a card and confirm to pay.')
   }
@@ -309,8 +325,9 @@ export async function createBooking({ room, date, startTime, endTime, title, mem
   }
 
   const nowIso = new Date().toISOString()
+  // Draw on the pool of the month the booking falls in, not the month it is made.
   const updatedCompany = (!isPerk && company?.id)
-    ? { ...company, creditsRemaining: newBal, creditsPeriod: monthKey() }
+    ? withPool(company, bookingMonthKey(date), newBal)
     : company
 
   const writes = [supabase.from('bookings').upsert({ id: booking.id, data: booking, updated_at: nowIso })]
@@ -328,7 +345,10 @@ export async function createBooking({ room, date, startTime, endTime, title, mem
         roomName: room.unitNumber, rate, date, startTime, endTime, usedCredits: used,
       }),
       type: 'Booking Fee', memberId: member?.id ?? null, companyId: company.id,
-      date: new Date().toISOString().split('T')[0],
+      bookingId: booking.id,
+      // The booking's date, not today's — the charge belongs to the period the
+      // room is used in, so it bills on that month rather than the next run.
+      date,
       price: quote.payNow,
       status: 'Not Paid', notes: `Portal booking · ${shortfall} credits over allowance`,
       createdAt: new Date().toISOString().split('T')[0],
