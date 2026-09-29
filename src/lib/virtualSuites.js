@@ -174,12 +174,38 @@ export function virtualSuiteContract(space, leases = [], spaces = null) {
 // it is there for migrated OfficeRND VOs that have no space record at all, and
 // the import left unsigned pendings quoting numbers that live members already
 // hold — reading those as claims would contest half the floor.
+// Signature states that count as executed. Duplicated from onboarding.js rather
+// than imported: that module already imports virtualSuiteLabel from here, and
+// importing back would make the cycle.
+const SIGNED = ['e_signed', 'manually_signed']
+
+/**
+ * Does this contract represent an ONGOING tenancy — the only kind that holds a
+ * registered address?
+ *
+ * 'active' counts whatever its signature field says. Most OfficeRND-migrated
+ * contracts carry no signature record at all (19 with no field, 16 marked
+ * not_signed) and they are real, paying members; demanding a signature would
+ * strip the lock from 14 live suites.
+ *
+ * 'pending' counts only once SIGNED. An unsigned pending is a draft out for
+ * signature that may never complete, and a superseded one holds its suite
+ * forever otherwise: Scrutex's CON-250 sat out_for_signature on Suite 414 while
+ * the contract they actually signed, CON-264, held Suite 429 — so they showed
+ * as holding two registered addresses.
+ */
+export function isOngoingTenancy(lease) {
+  if (!lease) return false
+  if (lease.status === 'active') return true
+  return lease.status === 'pending' && SIGNED.includes(lease.signatureStatus)
+}
+
 export function virtualSuiteClaims(space, leases = [], spaces = null) {
   // No id, no claims — but an EMPTY result here means "cannot tell", not "free".
   // Callers that gate a destructive action on this must treat an unidentified
   // space as held; see the `unidentified` check in AssignableResourceTab.
   if (!space?.id) return []
-  const live = leases.filter((l) => ['active', 'pending'].includes(l?.status) && !l?.offboardedAt)
+  const live = leases.filter((l) => isOngoingTenancy(l) && !l?.offboardedAt)
   const byPointer = live
     .map((l) => ({ l, r: l.spaceId === space.id ? 1 : (l.items ?? []).some((i) => i?.spaceId === space.id) ? 2 : 0 }))
     .filter((x) => x.r > 0)

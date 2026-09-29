@@ -1476,7 +1476,16 @@ export function useStore() {
   }, [])
 
   const deleteSpace = useCallback((id) => {
-    setSpaces((prev) => prev.filter((s) => s.id !== id))
+    // Deleting a space was the one destructive action here that left no trace —
+    // a virtual suite is a member's registered address, so losing one silently
+    // is not something to find out by counting rows. Also refuse an id-less
+    // call: `s.id !== undefined` would drop every space whose blob lost its id.
+    if (id == null) { console.warn('deleteSpace called without an id — ignored'); return }
+    setSpaces((prev) => {
+      const gone = prev.find((s) => s.id === id)
+      if (gone) logAudit('delete', 'space', id, `${gone.unitNumber ?? id}${gone.type ? ` (${gone.type})` : ''}`)
+      return prev.filter((s) => s.id !== id)
+    })
     deleteRow('spaces', id)
   }, [])
 
