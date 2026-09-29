@@ -14,7 +14,10 @@ import { stepMonthly } from '../lib/leasePricing.js'
 import { leaseInclusions } from '../lib/voInclusions.js'
 import { resolvePrimaryContact } from '../lib/leaseContact.js'
 import { sendLeaseForSigning } from '../lib/esign.js'
-import { requiresCardOnFile, portalWelcomeInvitePayload, gettingStartedEmailHtml } from '../lib/onboarding.js'
+import {
+  requiresCardOnFile, portalWelcomeInvitePayload, gettingStartedEmailHtml,
+  openingInvoiceMismatch, openingInvoiceRepairable,
+} from '../lib/onboarding.js'
 import { fillTermsVars } from '../lib/termsVars.js'
 
 const SIG_STATUS = {
@@ -44,9 +47,13 @@ function getStageBadges(lease) {
 }
 
 export default function ContractDetail({
-  lease, tenant, space, spaces = [], templates = [], allLeases = [], settings, members = [],
+  lease, tenant, space, spaces = [], templates = [], allLeases = [], invoices = [], settings, members = [],
   onEdit, onBack, onRenew, onDelete, onUpdateLease,
 }) {
+  // The opening invoice is priced when the e-sign goes out. Editing the start
+  // date afterwards re-prices nothing, so the two can silently disagree and the
+  // difference is never billed — say so here rather than let it pass unseen.
+  const openingGap = openingInvoiceMismatch(lease, invoices)
   const unitFor = (spaceId) =>
     spaces.find((sp) => sp.id === spaceId)?.unitNumber
       ?? (spaceId && spaceId === lease.spaceId ? space?.unitNumber : null)
@@ -1123,6 +1130,33 @@ export default function ContractDetail({
           {/* ── Grid View ── */}
           {view === 'grid' && (
           <div className="p-5 space-y-5">
+
+            {/* ── Opening invoice vs start date ── */}
+            {openingGap && (
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-4">
+                <p className="text-sm font-semibold text-amber-900">
+                  {openingGap.kind === 'unbilled'
+                    ? 'Opening invoice starts after this contract does'
+                    : 'Opening invoice starts before this contract does'}
+                </p>
+                <div className="mt-1 text-xs text-amber-800 space-y-0.5">
+                  <p>Contract commences <span className="font-medium">{format(parseISO(openingGap.startDate), 'dd/MM/yyyy')}</span>, but {openingGap.invoice.number} bills from <span className="font-medium">{format(parseISO(openingGap.coversFrom), 'dd/MM/yyyy')}</span>.</p>
+                  <p>
+                    {openingGap.kind === 'unbilled'
+                      ? 'The time between the two has never been billed and the monthly run will not go back for it.'
+                      : 'The contract was billed from before it started.'}
+                  </p>
+                  <p className="text-amber-700">
+                    The opening invoice is priced once, when the e-signature is sent. Changing the start date afterwards does not re-price it.
+                  </p>
+                </div>
+                <p className="mt-2 text-xs text-amber-800">
+                  {openingInvoiceRepairable(openingGap.invoice)
+                    ? <>{openingGap.invoice.number} is still unpaid, unsent and not in Xero — void it and re-raise it for the correct period.</>
+                    : <>{openingGap.invoice.number} has already been sent, paid or pushed to Xero, so it cannot simply be reissued — settle the difference on the next invoice or with a credit note.</>}
+                </p>
+              </div>
+            )}
 
             {/* ── Notice to Vacate banner ── */}
             {lease.noticeGiven && (

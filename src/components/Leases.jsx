@@ -288,6 +288,7 @@ export default function Leases() {
         members={members}
         templates={templates}
         allLeases={leases}
+        invoices={invoices}
         settings={settings}
         onEdit={() => handleEdit(lease)}
         onBack={() => { setMode('list'); setSelectedLease(null) }}

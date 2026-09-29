@@ -106,6 +106,56 @@ export function openingRentFree(lease, today = new Date()) {
   return elapsed.length > 0 && elapsed.every((r) => r.total === 0)
 }
 
+/**
+ * A contract whose opening invoice no longer matches its start date.
+ *
+ * The opening invoice is raised ONCE — when the e-sign is sent — priced off the
+ * start date as it stands at that moment (raiseSigningInvoices in useStore).
+ * Editing the start date afterwards re-prices nothing and raises nothing more,
+ * because that function bails as soon as any non-deposit invoice exists, and the
+ * monthly run never retro-bills a month already past. Backdate a contract after
+ * its e-sign went out and the earlier time is silently never billed; push it
+ * forward and it was billed too early. Top Bridge's CON-1756-Park lost September
+ * 2026 exactly this way: drafted to start 1 Oct, invoiced for October, then
+ * backdated to 1 Sep six minutes later.
+ *
+ * Deliberately judged ONLY against the invoice this platform raised at signing
+ * (`source: 'signing'`, carrying this leaseId). A migrated invoice often has no
+ * leaseId at all, so "nothing covers this month" is meaningless for an older
+ * contract — asking that question generally invents gaps for most of the book.
+ *
+ * Returns null when they agree, else { kind, invoice, startDate, coversFrom }
+ * where kind is 'unbilled' (time before the invoiced period) or 'early'.
+ */
+export function openingInvoiceMismatch(lease, invoices) {
+  if (!lease?.startDate || isEnded(lease)) return null
+  if (lease.paidInFull) return null // prepaid — billed up front, not per period
+  const opening = (invoices ?? []).find((i) =>
+    i.source === 'signing' && i.leaseId === lease.id && i.status !== 'voided' &&
+    !['deposit', 'bond_refund'].includes(i.invoiceType))
+  if (!opening?.periodStart) return null
+  const startDate = String(lease.startDate).slice(0, 10)
+  const coversFrom = String(opening.periodStart).slice(0, 10)
+  if (coversFrom === startDate) return null
+  return {
+    kind: coversFrom > startDate ? 'unbilled' : 'early',
+    invoice: opening, startDate, coversFrom,
+  }
+}
+
+/**
+ * Can that opening invoice simply be re-priced? Only while it is still ours to
+ * change — unpaid, never sent, and not already pushed to Xero, where a reissue
+ * would leave a stale copy behind (a Xero void is permanent).
+ */
+export function openingInvoiceRepairable(invoice) {
+  if (!invoice) return false
+  return invoice.status === 'pending' &&
+    invoice.sentStatus !== 'sent' &&
+    !invoice.xeroInvoiceId &&
+    !(invoice.payments ?? []).length
+}
+
 // The access gate: contract signed, deposit paid (if one is owed), and the first
 // recurring invoice paid. Returns false until every required payment has landed.
 export function accessGateMet(lease, invoices, tenant, today = new Date()) {
