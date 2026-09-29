@@ -64,6 +64,11 @@ HOW TO WRITE A TASK
   this week; normal = the default; low = nice to have.
 · sourceNote: when you transcribed this out of something they typed, quote the
   fragment it came from. Leave empty for tasks you raised from the briefing.
+· requestedBy: the person who asked for it, when they name one — "Jess wants the
+  Xero push done" or "Ray asked me to chase the lift key" is requestedBy "Jess" /
+  "Ray". The name only, no title or verb. Leave it empty when they are just
+  listing their own work, and ALWAYS empty for tasks you raised from the briefing:
+  nobody asked for those, the portal state did. Never guess at a name.
 
 USING THE BRIEFING
 Every message carries a fresh snapshot of the portal in <portal_briefing>. It is
@@ -103,8 +108,9 @@ const tools = [
               dueDate: { type: 'string', description: 'YYYY-MM-DD, or "" when no date is stated or implied.' },
               link: { type: 'string', description: `Portal page this is done on, or "". One of: ${LINKS.join(' ')}` },
               sourceNote: { type: 'string', description: 'The fragment of the admin\'s message this came from, or "".' },
+              requestedBy: { type: 'string', description: 'Name of the staff member who asked for this, or "" when nobody was named.' },
             },
-            required: ['title', 'detail', 'priority', 'category', 'dueDate', 'link', 'sourceNote'],
+            required: ['title', 'detail', 'priority', 'category', 'dueDate', 'link', 'sourceNote', 'requestedBy'],
             additionalProperties: false,
           },
         },
@@ -145,6 +151,7 @@ function draftTask(raw) {
     dueDate: /^\d{4}-\d{2}-\d{2}$/.test(raw.dueDate ?? '') ? raw.dueDate : '',
     link: LINKS.includes(raw.link) ? raw.link : '',
     sourceNote: str(raw.sourceNote, 600),
+    requestedBy: str(raw.requestedBy, 80),
   }
 }
 

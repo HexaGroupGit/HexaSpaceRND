@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import {
-  Sparkles, Plus, X, Trash2, Pencil, ArrowUpRight,
+  Sparkles, Plus, X, Trash2, Pencil, ArrowUpRight, UserRound,
   CheckCircle2, Circle, ChevronDown, ChevronRight, RotateCcw, AlertCircle,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
-import { melbourneToday } from '../lib/studio.js'
+import { melbourneToday, melbourneStamp } from '../lib/studio.js'
 import {
   PRIORITIES, PRIORITY_STYLE, CATEGORIES, TASK_LINKS,
   newTask, sortTasks, sortDone, linkLabel,
@@ -16,9 +16,15 @@ import AssistantChat from './AssistantChat.jsx'
 
 const EMPTY_FORM = {
   title: '', detail: '', priority: 'normal', category: 'admin', dueDate: '', link: '',
+  requestedBy: '',
 }
 
 const dmy = (iso) => { try { return format(parseISO(iso), 'dd/MM/yyyy') } catch { return iso } }
+
+// dueDate is a plain Melbourne date, so dmy() formats it directly. completedAt is
+// an INSTANT stamped in UTC — it has to be read back in Melbourne or a task
+// ticked at 9am reads as yesterday's work, which defeats the point of the stamp.
+const stamp = (instant) => (instant ? melbourneStamp(instant) : '')
 
 export default function Assistant() {
   const store = useOutletContext()
@@ -76,6 +82,7 @@ export default function Assistant() {
     setForm({
       title: task.title ?? '', detail: task.detail ?? '', priority: task.priority ?? 'normal',
       category: task.category ?? 'admin', dueDate: task.dueDate ?? '', link: task.link ?? '',
+      requestedBy: task.requestedBy ?? '',
     })
     setShowForm(true)
   }
@@ -212,6 +219,11 @@ export default function Assistant() {
                             {linkLabel(task.link)}
                           </button>
                         )}
+                        {task.requestedBy && (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <UserRound size={11} /> Asked by {task.requestedBy}
+                          </span>
+                        )}
                         {task.source === 'assistant' && (
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Sparkles size={11} /> assistant
@@ -248,10 +260,15 @@ export default function Assistant() {
                       <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-green-600" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-muted-foreground line-through">{task.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {task.completedAt ? `Done ${dmy(String(task.completedAt).slice(0, 10))}` : 'Done'}
+                        <p className="text-xs text-foreground/70 mt-0.5">
+                          {stamp(task.completedAt) ? `Done ${stamp(task.completedAt)}` : 'Done'}
                           {task.completedBy ? ` · ${task.completedBy}` : ''}
                         </p>
+                        {task.requestedBy && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Asked by {task.requestedBy}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button onClick={() => reopenTask(task)} title="Move back to to-do"
@@ -286,6 +303,11 @@ export default function Assistant() {
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Detail</label>
                 <textarea rows={3} value={form.detail} onChange={(e) => setForm({ ...form, detail: e.target.value })}
                   placeholder="Context, or what done looks like" className={`${input} resize-none`} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Asked by</label>
+                <input value={form.requestedBy} onChange={(e) => setForm({ ...form, requestedBy: e.target.value })}
+                  placeholder="The staff member who gave you this — blank if it's your own" className={input} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

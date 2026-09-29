@@ -245,6 +245,30 @@ export function melbourneNowTime() {
   })
 }
 
+/**
+ * A stored instant (an ISO timestamp) as its Melbourne-local date, YYYY-MM-DD.
+ *
+ * Instants are stamped in UTC (`new Date().toISOString()`), so slicing the first
+ * ten characters off one reports YESTERDAY for anything that happened before
+ * 10/11am Melbourne. Anywhere a stamp is compared against a Melbourne date, or
+ * shown to someone as "the day this happened", it has to come through here.
+ */
+export function melbourneDateOf(instant) {
+  const d = new Date(instant ?? '')
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: MELBOURNE })
+}
+
+/** A stored instant as Melbourne day + time: "Tue, 29/09/2026, 9:41 am". */
+export function melbourneStamp(instant) {
+  const d = new Date(instant ?? '')
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString('en-AU', {
+    timeZone: MELBOURNE,
+    weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+}
+
 /** Is this date a weekday? Parsed as a plain local date, no timezone shift. */
 export function isWeekday(dateStr) {
   const dow = new Date(`${dateStr}T00:00:00`).getDay()

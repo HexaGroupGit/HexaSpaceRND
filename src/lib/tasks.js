@@ -4,12 +4,17 @@
 // portal page it gets done on. Tasks come from two places — typed in by hand,
 // or transcribed by the assistant out of a rough brain-dump or out of the live
 // portal state (overdue invoices, expiring contracts, unanswered requests).
+//
+// A task is also the RECORD that the work happened: `requestedBy` is the staff
+// member who asked for it, and `completedAt`/`completedBy` is who ticked it and
+// when. Those two ends are what makes the board answerable to whoever handed the
+// job over — so the stamp is a real instant, read back in Melbourne time.
 // The shape is deliberately flat so the AI can emit it straight from a tool
 // call and the store can write it to Supabase (tasks-schema.sql) unchanged.
 
 import { differenceInDays, parseISO } from 'date-fns'
 import { calcAmountDue } from './billing.js'
-import { melbourneToday, pendingStudioRequests } from './studio.js'
+import { melbourneToday, melbourneDateOf, pendingStudioRequests } from './studio.js'
 import { moveOutDate } from './officeAvailability.js'
 
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent']
@@ -91,6 +96,10 @@ export function newTask(partial = {}, { createdBy = '' } = {}) {
     link: safeLink(partial.link),
     source: partial.source === 'assistant' ? 'assistant' : 'manual',
     sourceNote: String(partial.sourceNote ?? '').trim().slice(0, 600),
+    // Who handed this over — a staff first name, usually. Free text: staff are
+    // not portal records, and a picker would mean maintaining a roster to type
+    // one name into a task.
+    requestedBy: String(partial.requestedBy ?? '').trim().slice(0, 80),
     status: partial.status === 'done' ? 'done' : 'open',
     createdAt: partial.createdAt || new Date().toISOString(),
     createdBy,
@@ -219,11 +228,15 @@ export function buildBriefing(store = {}, today = melbourneToday()) {
     // Tasks already on the board — so the assistant adds what's missing instead
     // of re-raising the same ticket every time you open the chat.
     openTasks: sortTasks(openTasks, today).slice(0, 40).map((t) => ({
-      id: t.id, title: t.title, priority: t.priority, category: t.category, dueDate: t.dueDate,
+      id: t.id, title: t.title, priority: t.priority, category: t.category,
+      dueDate: t.dueDate, requestedBy: t.requestedBy ?? '',
     })),
     openTaskCount: openTasks.length,
+    // completedAt is a UTC instant; read it as a Melbourne day or everything
+    // ticked before ~10am counts against yesterday.
     doneLast7Days: tasks.filter((t) =>
-      t.status === 'done' && t.completedAt && (daysFrom(String(t.completedAt).slice(0, 10), today) ?? -99) >= -7).length,
+      t.status === 'done' && t.completedAt
+      && (daysFrom(melbourneDateOf(t.completedAt), today) ?? -99) >= -7).length,
     money: {
       overdueCount: overdue.length,
       overdueTotal: Math.round(overdue.reduce((s, i) => s + i.amountDue, 0)),
