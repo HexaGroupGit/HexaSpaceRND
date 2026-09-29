@@ -102,8 +102,15 @@ export function buildMonthlyInvoiceForLease(lease, monthStart, { invoices = [], 
   // leasePricing.js), so the invoice line must NOT apply a discount again —
   // unitPrice below is the final charged amount.
   const discountPct = 0
-  const spaceById = Object.fromEntries((spaces ?? []).map((s) => [s.id, s]))
-  const itemIds = (lease.items?.length ? lease.items : [{ spaceId: lease.spaceId }]).map((it) => it.spaceId)
+  // Keyed only on spaces that HAVE an id. A space whose blob lost its id maps
+  // to the key "undefined", and a lease with no spaceId then looks up exactly
+  // that key and adopts whichever id-less space landed there — that is how
+  // Proud Cactus, a Flexible Desk membership holding no space at all, had two
+  // issued invoices named "Dedicated Desk 9". Nothing errors; the invoice just
+  // describes someone else's unit.
+  const spaceById = Object.fromEntries((spaces ?? []).filter((s) => s?.id != null).map((s) => [s.id, s]))
+  const itemIds = (lease.items?.length ? lease.items : [{ spaceId: lease.spaceId }])
+    .map((it) => it.spaceId).filter((id) => id != null)
   const isParking = (id) => /_park_|parking/i.test(String(id ?? ''))
   const unitNames = (ids) => ids.map((id) => spaceById[id]?.unitNumber).filter(Boolean).join(', ')
   // A virtual office now carries a space (its allocated suite), so name the

@@ -37,10 +37,17 @@ export default function AssignableResourceTab({ ctx, config }) {
   // recompute when the data behind them actually changes.
   const items = useMemo(() => {
     const list = spaces.filter((s) => s.type === type)
-    // Car park bays read best in bay-number order: 201, 202 … 432.
-    if (isParking) list.sort((a, b) => String(a.unitNumber).localeCompare(String(b.unitNumber), undefined, { numeric: true }))
-    return list
-  }, [spaces, type, isParking])
+    // Every resource reads in number order, lowest first: bays 201 … 432,
+    // Suite 406 … 603, Desk 1 … 12. Sorted on the number itself rather than
+    // through localeCompare's numeric collation, so the order cannot depend on
+    // the browser's locale, and with an explicit tiebreak so it is stable.
+    const num = (s) => {
+      const m = String(s?.unitNumber ?? '').match(/\d+/)
+      return m ? Number(m[0]) : Number.POSITIVE_INFINITY
+    }
+    return list.sort((a, b) =>
+      num(a) - num(b) || String(a.unitNumber ?? '').localeCompare(String(b.unitNumber ?? '')))
+  }, [spaces, type])
   // Match full or partial registrations regardless of case, spaces or hyphens.
   const plateKey = normalisePlate(plateSearch).replace(/[\s-]+/g, '')
   const filteredItems = isParking && plateSearch.trim()
@@ -322,7 +329,7 @@ export default function AssignableResourceTab({ ctx, config }) {
               const unidentified = !s.id
               const locked = !!h?.locked || unidentified
               return (
-                <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/50">
+                <tr key={s.id ?? `unit-${s.unitNumber}`} className="border-b border-border last:border-0 hover:bg-muted/50">
                   <td className="px-4 py-3">
                     <div className="font-medium text-foreground">{s.unitNumber}</div>
                     {s.size && <div className="text-xs text-muted-foreground">{s.size}</div>}
