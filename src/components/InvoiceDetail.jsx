@@ -951,7 +951,14 @@ function EditInvoiceModal({ invoice, taxRate, onClose, onSave }) {
     lineItems: (invoice.lineItems ?? []).map((l) => ({ ...l })),
   })
   const up = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
-  const setLine = (i, k, v) => setF((p) => ({ ...p, lineItems: p.lineItems.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)) }))
+  // Typing a description marks the line as hand-written, so lineDescription
+  // stops reformatting it from the unit and period and the text actually shows.
+  const setLine = (i, k, v) => setF((p) => ({
+    ...p,
+    lineItems: p.lineItems.map((l, idx) => (idx === i
+      ? { ...l, [k]: v, ...(k === 'description' ? { descriptionEdited: true } : {}) }
+      : l)),
+  }))
   const removeLine = (i) => setF((p) => ({ ...p, lineItems: p.lineItems.filter((_, idx) => idx !== i) }))
   const addLine = () => setF((p) => ({ ...p, lineItems: [...p.lineItems, { id: `li_${Date.now()}_${p.lineItems.length}`, description: '', revenueAccount: 'Membership Fees', unitPrice: 0, qty: 1, discountPct: 0 }] }))
 

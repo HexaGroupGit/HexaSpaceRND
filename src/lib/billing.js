@@ -77,11 +77,18 @@ export function suiteDescription(lease, space, inv) {
 
 /**
  * Description to display for a line item. Reformats the recurring rent line
- * ("Membership Fees") to the Level/Suite/period format; leaves deposits and
- * other lines (or lines with no resolvable unit) as their stored text.
+ * ("Membership Fees") to the Level/Suite/period format so that editing an
+ * invoice's period rewrites its rent line; leaves deposits and other lines (or
+ * lines with no resolvable unit) as their stored text.
+ *
+ * A line whose text someone TYPED is never reformatted. Without that check the
+ * derivation silently discarded the edit — and only here: the server-side PDF
+ * (api/_invoicePdf.js) and the Stripe checkout line read `description` straight
+ * from the record, so an edited line showed the typed text on the emailed
+ * invoice and the old derived text on screen. They now agree.
  */
 export function lineDescription(line, lease, space, inv) {
-  if (line?.revenueAccount === 'Membership Fees') {
+  if (line?.revenueAccount === 'Membership Fees' && !line?.descriptionEdited) {
     const d = suiteDescription(lease, space, inv)
     if (d) return d
   }

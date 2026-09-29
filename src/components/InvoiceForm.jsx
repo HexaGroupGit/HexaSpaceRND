@@ -193,7 +193,14 @@ export default function InvoiceForm({ invoices, tenants, leases, spaces, setting
     setForm((f) => ({
       ...f,
       lineItems: f.lineItems.map((l) =>
-        l.id === id ? { ...l, [field]: ['description', 'revenueAccount'].includes(field) ? value : Number(value) } : l
+        l.id === id
+          ? {
+              ...l,
+              [field]: ['description', 'revenueAccount'].includes(field) ? value : Number(value),
+              // Hand-written text is never reformatted from the unit and period.
+              ...(field === 'description' ? { descriptionEdited: true } : {}),
+            }
+          : l
       ),
     }))
   }
