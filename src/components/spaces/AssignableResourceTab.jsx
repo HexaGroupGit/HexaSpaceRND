@@ -139,6 +139,7 @@ export default function AssignableResourceTab({ ctx, config }) {
   }
 
   function doAssign() {
+    if (!assignFor?.id) { alert(unidentifiedMsg(assignFor)); setAssignFor(null); return }
     const m = members.find((x) => x.id === assignMember)
     // A live contract owns its suite: re-pointing it by hand would leave the
     // signed agreement, the directory and the mail board naming three
@@ -161,11 +162,22 @@ export default function AssignableResourceTab({ ctx, config }) {
     setAssignFor(null)
   }
 
+  // A space whose stored blob lost its `id` cannot be identified: spaces load
+  // with select('data'), so the row key never reaches us, and every lookup that
+  // decides whether a contract holds it is keyed on that id. An empty result
+  // then means "cannot tell", NOT "held by nobody" — so these fail CLOSED.
+  // 27 virtual suites were in exactly that state on 29 Sep 2026, every one of
+  // them a live member's registered address, all of them freely unassignable.
+  const unidentifiedMsg = (s) =>
+    `${s?.unitNumber ?? 'This space'} has no stored id, so we cannot tell which contract holds it. `
+    + 'Nothing has been changed. Run scripts/_oneoff-repair-space-ids.mjs to repair it.'
+
   // Unassigning a virtual suite takes away the address the member registered
   // with ASIC, so it is refused outright while a contract holds it and
   // confirmed when it doesn't. (The number itself is never recycled — see
   // takenSuiteNumbers — so releasing a suite only frees it for its own holder.)
   function unassign(s) {
+    if (!s?.id) { alert(unidentifiedMsg(s)); return }
     const held = contractOf(s)
     if (held) {
       alert(`${s.unitNumber} is held by contract ${held.contractNumber ?? held.id}${held.companyName ? ` (${held.companyName})` : ''}. Terminate or move that contract to release the suite.`)
@@ -193,6 +205,7 @@ export default function AssignableResourceTab({ ctx, config }) {
   }
 
   function remove(s) {
+    if (!s?.id) { alert(unidentifiedMsg(s)); return }
     const held = contractOf(s)
     if (held) {
       alert(`${s.unitNumber} is held by contract ${held.contractNumber ?? held.id}. Deleting it would orphan that contract — terminate the contract first.`)
@@ -306,7 +319,8 @@ export default function AssignableResourceTab({ ctx, config }) {
                 ? { name: h.member?.name ?? h.lease.memberName ?? '—', company: h.tenant?.businessName ?? h.lease.companyName ?? '' }
                 : assignmentFor(s, members, tenants)
               const contract = h?.lease ?? (a ? null : contractOf(s))
-              const locked = !!h?.locked
+              const unidentified = !s.id
+              const locked = !!h?.locked || unidentified
               return (
                 <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/50">
                   <td className="px-4 py-3">
@@ -377,7 +391,11 @@ export default function AssignableResourceTab({ ctx, config }) {
                   <td className="px-4 py-3"><StatusPill status={s.status} /></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      {locked ? (
+                      {unidentified ? (
+                        <span title="This space has no stored id — it cannot be matched to a contract, so it is held until repaired" className="flex items-center gap-1 text-xs text-amber-700 border border-amber-300 bg-amber-50 px-2.5 py-1.5 rounded-md">
+                          <Lock size={12} aria-hidden="true" /> Needs repair
+                        </span>
+                      ) : locked ? (
                         <span title={`Held by contract ${h.lease.contractNumber ?? h.lease.id} — release it there`} className="flex items-center gap-1 text-xs text-muted-foreground border border-border px-2.5 py-1.5 rounded-md">
                           <Lock size={12} aria-hidden="true" /> On contract
                         </span>

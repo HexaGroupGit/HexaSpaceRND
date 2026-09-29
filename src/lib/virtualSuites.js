@@ -175,6 +175,9 @@ export function virtualSuiteContract(space, leases = [], spaces = null) {
 // the import left unsigned pendings quoting numbers that live members already
 // hold — reading those as claims would contest half the floor.
 export function virtualSuiteClaims(space, leases = [], spaces = null) {
+  // No id, no claims — but an EMPTY result here means "cannot tell", not "free".
+  // Callers that gate a destructive action on this must treat an unidentified
+  // space as held; see the `unidentified` check in AssignableResourceTab.
   if (!space?.id) return []
   const live = leases.filter((l) => ['active', 'pending'].includes(l?.status) && !l?.offboardedAt)
   const byPointer = live

@@ -1461,6 +1461,12 @@ export function useStore() {
   }, [])
 
   const updateSpace = useCallback((id, updates) => {
+    // A space whose stored blob lost its `id` loads as `id: undefined` (spaces
+    // are read with select('data'), so the row key never reaches the app). Left
+    // unguarded, `s.id === id` then matches EVERY such space and one edit
+    // rewrites all of them at once — 27 virtual suites were in that state on
+    // 29 Sep 2026. Refuse rather than fan out.
+    if (id == null) { console.warn('updateSpace called without an id — ignored'); return }
     setSpaces((prev) => {
       const next = prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
       const updated = next.find((s) => s.id === id)
