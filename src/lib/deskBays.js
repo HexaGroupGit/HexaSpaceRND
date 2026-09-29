@@ -34,10 +34,11 @@ export const DESK_POSITIONS = POD_X.flatMap((x, pod) =>
     ],
   })))
 
-// What a newly set-up desk starts at. The two desks currently on contracts sit
-// at $332.50 and $400 — this is the standing rate, and any desk can be repriced
-// in Spaces → Dedicated Desks.
-export const DESK_RATE = 400
+// The asking rate a newly set-up desk starts at. This is the LIST price the
+// Spaces tab and the floor plan quote — a live contract keeps whatever it was
+// signed at (billingEngine prices from the lease's schedule, never from here),
+// which is why the two desks on contracts still run at $332.50 and $400.
+export const DESK_RATE = 650
 
 // Typed `desk` but NOT a desk on the floor: Flexible Access is a membership
 // product with no seat of its own, so it must never claim a position.
