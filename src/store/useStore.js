@@ -37,6 +37,7 @@ import { invoiceCoversLease } from '../lib/billingEngine.js'
 import { holdsSpace } from '../lib/spaceHold.js'
 import { allocateVirtualSuite } from '../lib/virtualSuites.js'
 import { PARKING_BAYS, RETIRED_PARKING_IDS, parkingBaySpace, missingParkingBays, retiredParkingSpaces } from '../lib/parkingBays.js'
+import { deskSpace, missingDeskPositions } from '../lib/deskBays.js'
 
 // All spaces a lease occupies (primary + any bundled items, e.g. parking).
 function leaseSpaceIds(lease) {
@@ -1495,6 +1496,17 @@ export function useStore() {
     }
   }, [])
 
+  // Dedicated desks on the Level 4 plan (lib/deskBays.js): create any position
+  // Spaces doesn't have yet. Nothing is removed — a desk that is no longer let
+  // is still a desk on the floor, so it stays and simply reads as available.
+  const setUpDesks = useCallback(() => {
+    const created = missingDeskPositions(spacesRef.current).map(deskSpace)
+    if (!created.length) return { created: 0 }
+    setSpaces((prev) => [...prev, ...created.filter((s) => !prev.some((p) => p.id === s.id))])
+    seedTable('spaces', created)
+    return { created: created.length }
+  }, [])
+
   // ── Leases ────────────────────────────────────────────────────────────────
   const addLease = useCallback((lease) => {
     const item = { ...lease, id: `l${Date.now()}`, createdAt: new Date().toISOString().split('T')[0] }
@@ -2557,7 +2569,7 @@ export function useStore() {
     members, addMember, updateMember, deleteMember,
     fees, addFee, updateFee, deleteFee,
     bookings, addBooking, updateBooking, deleteBooking,
-    spaces, addSpace, updateSpace, deleteSpace, setUpParkingBays,
+    spaces, addSpace, updateSpace, deleteSpace, setUpParkingBays, setUpDesks,
     leases, addLease, updateLease, deleteLease, provisionAndOnboardLease,
     templates, addTemplate, updateTemplate, deleteTemplate,
     sops, addSop, updateSop, deleteSop,

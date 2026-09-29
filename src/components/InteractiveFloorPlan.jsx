@@ -1,21 +1,27 @@
 import SearchSelect from './SearchSelect.jsx'
 import { useState, useRef, Fragment } from 'react'
 import { format, parseISO, isValid, differenceInDays } from 'date-fns'
-import { X, MapPin, Crosshair, ZoomIn, ZoomOut, Maximize2, Presentation, Car } from 'lucide-react'
+import { X, MapPin, Crosshair, ZoomIn, ZoomOut, Maximize2, Presentation, Car, Armchair } from 'lucide-react'
 import { moveOutDate, memberOptions, assignmentFor, contractFor, floorLabel, money } from './spaces/shared.jsx'
 import {
   PARKING_PLANS, PARKING_BAYS, PARKING_RATE, PARKING_INCLUDED_LABEL, spaceForBay, missingParkingBays,
   retiredParkingSpaces, parkingSetupPrompt, parkingSetupSummary, normalisePlate,
 } from '../lib/parkingBays.js'
+import {
+  DESK_POSITIONS, spaceForDesk, missingDeskPositions, deskSetupPrompt, deskSetupSummary,
+} from '../lib/deskBays.js'
 
 // Image-based interactive floorplan: your real plan as the backdrop, with each
 // space pinned on it as a status-coloured marker. Positions persist on the space
 // record as `pos: { x, y }` (percent of image). Drop the plan image at the `src`
 // path below (a friendly placeholder shows until you do).
 //
-// Car park plans work differently: every numbered bay has a fixed box on its
-// level's image (lib/parkingBays.js), drawn as a tile carrying the bay number.
-// Click a bay to allocate it to a member; shift-click to pick several at once.
+// Some things aren't pinned by hand — they have a fixed, traced position on the
+// plan and are drawn as TILES carrying their number: car park bays on a parking
+// level (lib/parkingBays.js) and the dedicated desks along Level 4
+// (lib/deskBays.js). Click a tile to allocate it to a member; shift-click to
+// pick several at once. Both kinds share one selection and one allocate panel —
+// the only parking-specific bits are the number plate and "included in licence".
 const FLOORPLANS = [
   { id: 'hexa-l2', floor: 'l2', label: 'Level 2', src: '/floorplans/hexa-l2.png', location: 'whitehorse', description: '830 Whitehorse Road, Box Hill VIC 3128' },
   { id: 'hexa-l4', floor: 'l4', label: 'Level 4', src: '/floorplans/hexa-l4.png', location: 'whitehorse', description: '830 Whitehorse Road, Box Hill VIC 3128' },
@@ -32,7 +38,7 @@ function statusDot(state) {
   return 'bg-green-500 text-white border-green-600'
 }
 
-// Car park bay tiles, in the same palette as the office markers.
+// Fixed-position tiles (bays, desks), in the same palette as the office markers.
 const BAY_STYLE = {
   occupied: 'bg-gray-900 text-white border-black hover:bg-gray-700',
   ending:   'bg-amber-400 text-amber-950 border-amber-600 hover:bg-amber-300',
@@ -59,15 +65,15 @@ function roomTitle(s) {
   return `${s.unitNumber} meeting room${bits.length ? ' — ' + bits.join(' · ') : ''}`
 }
 
-export default function InteractiveFloorPlan({ spaces, leases, tenants, members = [], updateSpace, setUpParkingBays, onNewContract }) {
+export default function InteractiveFloorPlan({ spaces, leases, tenants, members = [], updateSpace, setUpParkingBays, setUpDesks, onNewContract }) {
   const [planId, setPlanId] = useState(FLOORPLANS[0].id)
   const [zoom, setZoom] = useState(1)
   const [placingId, setPlacingId] = useState(null) // space currently being pinned
   const [selectedId, setSelectedId] = useState(null)
   const [imgError, setImgError] = useState(false)
   const [showRooms, setShowRooms] = useState(true) // meeting-room name labels
-  const [bayPick, setBayPick] = useState([]) // bay numbers selected on a car park plan
-  const [assignTo, setAssignTo] = useState('') // member the selected bays go to
+  const [bayPick, setBayPick] = useState([]) // tile numbers selected on this plan
+  const [assignTo, setAssignTo] = useState('') // member the selected tiles go to
   const [setupNote, setSetupNote] = useState('')
   const imgWrapRef = useRef(null)
 
@@ -131,10 +137,10 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
     if (contract || space.status === 'reserved') return 'reserved'
     return 'vacant'
   }
-  const bayRow = (bay) => {
-    const space = spaceForBay(bay, spaces)
+  const tileRow = (tile) => {
+    const space = tile.findSpace(spaces)
     const contract = space ? contractFor(space, leases) : null
-    return { bay, space, contract, state: bayState(space, contract) }
+    return { tile, space, contract, state: bayState(space, contract) }
   }
   const holderOf = ({ space, contract }) => {
     if (!space) return null
@@ -147,15 +153,33 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
     }
   }
 
-  const planBays = isParking ? PARKING_BAYS.filter((b) => b.floor === plan.floor).map(bayRow) : []
-  const setupPrompt = isParking ? parkingSetupPrompt(missingParkingBays(spaces).length, retiredParkingSpaces(spaces, leases).length) : ''
-  const picked = bayPick.map((n) => planBays.find((r) => r.bay.number === n)).filter(Boolean)
-  // Bays a member can take: set up, and not already sold on a contract.
+  // What this plan draws as tiles. A parking level draws its bays; Level 4 also
+  // draws the dedicated desks that run under the offices. Each definition knows
+  // how to find its own Spaces record, so the rest of the tile code is shared.
+  const tileDefs = isParking
+    ? PARKING_BAYS.filter((b) => b.floor === plan.floor).map((b) => ({
+        kind: 'parking', number: b.number, box: b.box, noun: 'bay',
+        title: `Bay ${b.number}`, detail: `${b.ref} · Lot ${b.lot}`,
+        findSpace: (all) => spaceForBay(b, all),
+      }))
+    : DESK_POSITIONS.filter((d) => d.floor === plan.floor).map((d) => ({
+        kind: 'desk', number: d.number, box: d.box, noun: 'desk',
+        title: `Dedicated Desk ${d.number}`, detail: `Pod ${d.pod} · ${d.seat} seat`,
+        findSpace: (all) => spaceForDesk(d, all),
+      }))
+  const planTiles = tileDefs.map(tileRow)
+  const hasTiles = planTiles.length > 0
+  const setupPrompt = isParking
+    ? parkingSetupPrompt(missingParkingBays(spaces).length, retiredParkingSpaces(spaces, leases).length)
+    : deskSetupPrompt(missingDeskPositions(spaces).filter((d) => d.floor === plan.floor).length)
+  const picked = bayPick.map((n) => planTiles.find((r) => r.tile.number === n)).filter(Boolean)
+  // Tiles a member can take: set up, and not already sold on a contract.
   const allocatable = picked.filter((r) => r.space && !r.contract)
   const memberHeld = picked.filter((r) => r.space?.assignedMemberId)
   const onContract = picked.filter((r) => r.contract).length
   const notSetUp = picked.filter((r) => !r.space).length
-  const memberOpts = isParking ? memberOptions(members, tenants) : []
+  const memberOpts = hasTiles ? memberOptions(members, tenants) : []
+  const tileNoun = picked[0]?.tile.noun ?? 'bay'
 
   function switchPlan(id) {
     setPlanId(id); setSelectedId(null); setPlacingId(null); setBayPick([]); setAssignTo('')
@@ -193,7 +217,8 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
   }
 
   function runSetup() {
-    if (setUpParkingBays) setSetupNote(parkingSetupSummary(setUpParkingBays()))
+    if (isParking) { if (setUpParkingBays) setSetupNote(parkingSetupSummary(setUpParkingBays())) }
+    else if (setUpDesks) setSetupNote(deskSetupSummary(setUpDesks()))
   }
 
   function savePlate(space, value) {
@@ -255,16 +280,16 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
 
         {setupPrompt && (
           <div className="mb-3 flex items-center gap-2 text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-md px-3 py-2">
-            <Car size={15} className="shrink-0" />
-            <span>{setupPrompt} — update Spaces to match the car park plans.</span>
-            {setUpParkingBays && (
+            {isParking ? <Car size={15} className="shrink-0" /> : <Armchair size={15} className="shrink-0" />}
+            <span>{setupPrompt} — update Spaces to match the {isParking ? 'car park plans' : 'Level 4 plan'}.</span>
+            {(isParking ? setUpParkingBays : setUpDesks) && (
               <button onClick={runSetup} className="ml-auto shrink-0 text-xs font-semibold bg-amber-900 text-white px-2.5 py-1.5 rounded-md hover:bg-amber-800">
-                Update bays
+                {isParking ? 'Update bays' : 'Add desks'}
               </button>
             )}
           </div>
         )}
-        {isParking && setupNote && (
+        {setupNote && (
           <div className="mb-3 flex items-center gap-2 text-sm bg-green-50 border border-green-200 text-green-800 rounded-md px-3 py-2">
             {setupNote}
             <button onClick={() => setSetupNote('')} className="ml-auto text-green-600 hover:text-green-900"><X size={14} /></button>
@@ -288,9 +313,11 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
               <div
                 ref={imgWrapRef}
                 className={`relative ${placingId ? 'cursor-crosshair' : ''}`}
-                // Bay numbers size with the plan, not the window.
-                style={isParking ? { containerType: 'inline-size' } : undefined}
-                onClick={isParking ? () => setBayPick([]) : handleImageClick}
+                // Tile numbers size with the plan, not the window.
+                style={hasTiles ? { containerType: 'inline-size' } : undefined}
+                // Pinning wins while it's armed; otherwise a click on bare plan
+                // clears the tile selection.
+                onClick={(e) => { if (placingId) handleImageClick(e); else if (hasTiles) setBayPick([]) }}
               >
                 <img src={plan.src} alt={plan.label} className="w-full h-auto block select-none" draggable={false}
                   onError={() => setImgError(true)} onLoad={() => setImgError(false)} />
@@ -311,21 +338,24 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
                     </button>
                   )
                 })}
-                {planBays.map((r) => {
-                  const [left, top, width, height] = r.bay.box
+                {planTiles.map((r) => {
+                  const [left, top, width, height] = r.tile.box
                   const holder = holderOf(r)
                   return (
                     <button
-                      key={r.bay.number}
+                      key={r.tile.number}
                       type="button"
-                      onClick={(e) => clickBay(e, r.bay.number)}
-                      title={`Bay ${r.bay.number} · ${r.bay.ref} · Lot ${r.bay.lot} — ${holder ? holder.name : BAY_LABEL[r.state]}${r.space?.numberPlate ? ` · ${r.space.numberPlate}` : ''}`}
+                      onClick={(e) => clickBay(e, r.tile.number)}
+                      title={`${r.tile.title} · ${r.tile.detail} — ${holder ? holder.name : BAY_LABEL[r.state]}${r.space?.numberPlate ? ` · ${r.space.numberPlate}` : ''}`}
                       className={`absolute flex items-center justify-center border rounded-[3px] font-bold leading-none tabular-nums shadow-sm transition-colors ${BAY_STYLE[r.state]} ${
-                        bayPick.includes(r.bay.number) ? 'ring-2 ring-blue-500 ring-offset-1 z-10' : ''
+                        bayPick.includes(r.tile.number) ? 'ring-2 ring-blue-500 ring-offset-1 z-10' : ''
                       }`}
-                      style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`, fontSize: 'clamp(7px, 0.8cqw, 16px)' }}
+                      // A desk tile is half the width of a bay, so its number
+                      // needs the smaller type to stay inside the seat.
+                      style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`,
+                        fontSize: r.tile.kind === 'desk' ? 'clamp(5px, 0.55cqw, 11px)' : 'clamp(7px, 0.8cqw, 16px)' }}
                     >
-                      {r.bay.number}
+                      {r.tile.number}
                     </button>
                   )
                 })}
@@ -335,21 +365,23 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
         </div>
 
         {/* Legend + unplaced */}
-        {isParking ? (
-          <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-xs text-muted-foreground">
-            {['occupied', 'ending', 'reserved', 'vacant'].map((k) => (
-              <span key={k} className="flex items-center gap-1.5">
-                <span className={`w-3 h-3 rounded-sm border inline-block ${BAY_STYLE[k]}`} /> {BAY_LABEL[k]}
-              </span>
-            ))}
-            <span className="ml-auto">Click a bay to allocate it · shift-click to select several</span>
-          </div>
-        ) : (
+        {!isParking && (
           <div className="flex gap-5 mt-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-gray-900 inline-block" /> Occupied</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-400 inline-block" /> Lease ending ≤3 months</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> Vacant</span>
             {showRooms && <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-indigo-600 inline-block" /> Meeting room</span>}
+          </div>
+        )}
+        {hasTiles && (
+          <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-xs text-muted-foreground">
+            {!isParking && <span className="font-semibold text-foreground">Dedicated desks</span>}
+            {['occupied', 'ending', 'reserved', 'vacant'].map((k) => (
+              <span key={k} className="flex items-center gap-1.5">
+                <span className={`w-3 h-3 rounded-sm border inline-block ${BAY_STYLE[k]}`} /> {BAY_LABEL[k]}
+              </span>
+            ))}
+            <span className="ml-auto">Click a {isParking ? 'bay' : 'desk'} to allocate it · shift-click to select several</span>
           </div>
         )}
 
@@ -382,17 +414,17 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
         )}
       </div>
 
-      {/* Car park allocation panel */}
-      {isParking && picked.length > 0 && (
+      {/* Allocation panel — car park bays and dedicated desks alike */}
+      {picked.length > 0 && (
         <div className="w-64 shrink-0 bg-card border border-border rounded-xl p-4 sticky top-4 self-start">
           <div className="flex items-start justify-between mb-3">
             <div>
               <div className="font-bold text-foreground text-base">
-                {picked.length === 1 ? `Bay ${picked[0].bay.number}` : `${picked.length} bays selected`}
+                {picked.length === 1 ? picked[0].tile.title : `${picked.length} ${tileNoun}s selected`}
               </div>
               {picked.length === 1 && (
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  {floorLabel(picked[0].bay.floor)} · {picked[0].bay.ref} · Lot {picked[0].bay.lot}
+                  {floorLabel(plan.floor)} · {picked[0].tile.detail}
                 </div>
               )}
             </div>
@@ -403,8 +435,8 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
             {picked.map((r) => {
               const holder = holderOf(r)
               return (
-                <div key={r.bay.number} className="flex items-center gap-2 text-sm">
-                  <span className={`w-10 shrink-0 text-center text-[11px] font-bold rounded-[3px] border py-0.5 ${BAY_STYLE[r.state]}`}>{r.bay.number}</span>
+                <div key={r.tile.number} className="flex items-center gap-2 text-sm">
+                  <span className={`w-10 shrink-0 text-center text-[11px] font-bold rounded-[3px] border py-0.5 ${BAY_STYLE[r.state]}`}>{r.tile.number}</span>
                   <span className="min-w-0 flex-1 truncate">
                     {holder
                       ? <><span className="text-foreground">{holder.name}</span>{holder.company && <span className="text-muted-foreground"> · {holder.company}</span>}</>
@@ -426,6 +458,8 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
                   <span className="text-muted-foreground">Monthly</span>
                   <span className="font-semibold text-foreground">{sp.includedInContract ? PARKING_INCLUDED_LABEL : money(sp.monthlyRate ?? sp.rate)}</span>
                 </div>
+                {!isParking && <p className="text-muted-foreground">Repriced in Spaces → Dedicated Desks.</p>}
+                {isParking && (<>
                 <label className="flex items-center gap-2 text-foreground cursor-pointer">
                   <input type="checkbox" checked={!!sp.includedInContract} onChange={(e) => setIncluded(sp, e.target.checked)} />
                   Included in licence — no separate charge
@@ -441,6 +475,7 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
                     className="w-full border border-input rounded-md px-2 py-1.5 text-sm uppercase tracking-wider bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   />
                 </label>
+                </>)}
               </div>
             )
           })()}
@@ -460,26 +495,26 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
                 disabled={!assignTo}
                 className="w-full bg-primary text-primary-foreground text-xs font-semibold py-2 rounded hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {`${allocatable.every((r) => r.space.assignedMemberId) ? 'Reassign' : 'Allocate'} ${allocatable.length === 1 ? 'bay' : `${allocatable.length} bays`}`}
+                {`${allocatable.every((r) => r.space.assignedMemberId) ? 'Reassign' : 'Allocate'} ${allocatable.length === 1 ? tileNoun : `${allocatable.length} ${tileNoun}s`}`}
               </button>
             </div>
           )}
           {memberHeld.length > 0 && (
             <button onClick={unassign} className="w-full mt-2 text-xs text-muted-foreground hover:text-red-600 border border-input rounded py-1.5">
-              {picked.length === 1 ? 'Unassign bay' : `Unassign ${memberHeld.length} bay${memberHeld.length === 1 ? '' : 's'}`}
+              {picked.length === 1 ? `Unassign ${tileNoun}` : `Unassign ${memberHeld.length} ${tileNoun}${memberHeld.length === 1 ? '' : 's'}`}
             </button>
           )}
           {onContract > 0 && (
             <p className="text-xs text-muted-foreground mt-3">
-              {picked.length === 1 ? 'This bay is on a contract' : `${onContract} of these bays ${onContract === 1 ? 'is' : 'are'} on a contract`} — change {onContract === 1 ? 'it' : 'them'} from the contract.
+              {picked.length === 1 ? `This ${tileNoun} is on a contract` : `${onContract} of these ${tileNoun}s ${onContract === 1 ? 'is' : 'are'} on a contract`} — change {onContract === 1 ? 'it' : 'them'} from the contract.
             </p>
           )}
           {notSetUp > 0 && (
             <p className="text-xs text-amber-700 mt-3">
-              {picked.length === 1 ? 'This bay isn’t' : `${notSetUp} of these bays aren’t`} set up yet — use “Update bays” above.
+              {picked.length === 1 ? `This ${tileNoun} isn’t` : `${notSetUp} of these ${tileNoun}s aren’t`} set up yet — use “{isParking ? 'Update bays' : 'Add desks'}” above.
             </p>
           )}
-          {picked.length === 1 && <p className="text-[11px] text-muted-foreground mt-3">Shift-click more bays to allocate several at once.</p>}
+          {picked.length === 1 && <p className="text-[11px] text-muted-foreground mt-3">Shift-click more {tileNoun}s to allocate several at once.</p>}
         </div>
       )}
 
