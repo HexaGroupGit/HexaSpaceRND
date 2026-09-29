@@ -10,6 +10,7 @@ import {
 import {
   DESK_POSITIONS, spaceForDesk, missingDeskPositions, deskSetupPrompt, deskSetupSummary,
 } from '../lib/deskBays.js'
+import { officeBoxFor } from '../lib/officeBoxes.js'
 
 // Image-based interactive floorplan: your real plan as the backdrop, with each
 // space pinned on it as a status-coloured marker. Positions persist on the space
@@ -46,6 +47,15 @@ const BAY_STYLE = {
   vacant:   'bg-green-500 text-white border-green-700 hover:bg-green-600',
   missing:  'bg-white text-gray-500 border-dashed border-gray-400 hover:bg-gray-50',
 }
+// An office box covers a whole room, so it is washed rather than filled — the
+// walls, desks and room name underneath have to stay readable. The bay/desk
+// tiles are small enough to be solid; these are not.
+const OFFICE_BOX_STYLE = {
+  occupied: 'bg-gray-900/20 border-gray-900 hover:bg-gray-900/30',
+  ending:   'bg-amber-400/25 border-amber-600 hover:bg-amber-400/40',
+  vacant:   'bg-green-500/20 border-green-600 hover:bg-green-500/30',
+}
+
 const BAY_LABEL = {
   occupied: 'Allocated',
   ending: 'Allocated · ends ≤3 months',
@@ -86,10 +96,22 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
   )
   const isRoom = (s) => s.type === 'meeting'
   const visible = planSpaces.filter((s) => showRooms || !isRoom(s))
+  // An office that was traced for the proposal plan draws as its real footprint
+  // instead of a pin. Anything without a tracing — a suite added since, or one
+  // the mapper never covered — falls back to the hand-placed marker, so nothing
+  // disappears off the plan just because it hasn't been traced yet.
+  const officeBox = (s) => (s.type === 'office' && s.floor === plan.floor ? officeBoxFor(plan.floor, s.unitNumber) : null)
+  const boxedOffices = visible.map((s) => ({ space: s, box: officeBox(s) })).filter((o) => o.box)
+  const boxedIds = new Set(boxedOffices.map((o) => o.space.id))
   // pinned to THIS floor
-  const placed = visible.filter((s) => s.pos && typeof s.pos.x === 'number' && s.floor === plan.floor)
-  // not yet pinned anywhere — can be dropped onto any floor
-  const unplaced = visible.filter((s) => !s.pos || typeof s.pos.x !== 'number')
+  const placed = visible.filter((s) => !boxedIds.has(s.id) && s.pos && typeof s.pos.x === 'number' && s.floor === plan.floor)
+  // Not pinned anywhere and not traced on its own floor either — only these
+  // still need dropping onto a plan by hand. Checked against the space's OWN
+  // floor, so a traced Level 2 suite isn't offered for pinning while you happen
+  // to be looking at Level 4.
+  const tracedOnOwnFloor = (s) => s.type === 'office' && Boolean(officeBoxFor(s.floor, s.unitNumber))
+  const unplaced = visible.filter((s) =>
+    !boxedIds.has(s.id) && !tracedOnOwnFloor(s) && (!s.pos || typeof s.pos.x !== 'number'))
 
   const getActiveLease = (spaceId) => leases.find((l) => l.spaceId === spaceId && l.status === 'active')
   const getTenant = (spaceId) => {
@@ -313,14 +335,42 @@ export default function InteractiveFloorPlan({ spaces, leases, tenants, members 
               <div
                 ref={imgWrapRef}
                 className={`relative ${placingId ? 'cursor-crosshair' : ''}`}
-                // Tile numbers size with the plan, not the window.
-                style={hasTiles ? { containerType: 'inline-size' } : undefined}
+                // Tile and office-box labels size with the plan, not the window.
+                style={hasTiles || boxedOffices.length ? { containerType: 'inline-size' } : undefined}
                 // Pinning wins while it's armed; otherwise a click on bare plan
                 // clears the tile selection.
-                onClick={(e) => { if (placingId) handleImageClick(e); else if (hasTiles) setBayPick([]) }}
+                onClick={(e) => {
+                  if (placingId) { handleImageClick(e); return }
+                  if (hasTiles) setBayPick([])
+                  if (boxedOffices.length) setSelectedId(null)
+                }}
               >
                 <img src={plan.src} alt={plan.label} className="w-full h-auto block select-none" draggable={false}
                   onError={() => setImgError(true)} onLoad={() => setImgError(false)} />
+                {boxedOffices.map(({ space: s, box }) => {
+                  const [left, top, width, height] = box
+                  const state = spaceState(s)
+                  const tenant = getTenant(s.id)
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setSelectedId((p) => (p === s.id ? null : s.id)) }}
+                      title={`${s.unitNumber}${tenant ? ' — ' + tenant.businessName : ''}`}
+                      className={`absolute border-2 rounded-[3px] flex items-center justify-center transition-colors ${OFFICE_BOX_STYLE[state]} ${
+                        selectedId === s.id ? 'ring-2 ring-blue-500 ring-offset-1 z-10' : ''
+                      }`}
+                      style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` }}
+                    >
+                      <span
+                        className={`px-1.5 py-0.5 rounded border font-bold leading-none whitespace-nowrap shadow-sm ${BAY_STYLE[state]}`}
+                        style={{ fontSize: 'clamp(7px, 0.62cqw, 13px)' }}
+                      >
+                        {s.unitNumber}
+                      </span>
+                    </button>
+                  )
+                })}
                 {placed.map((s) => {
                   const room = isRoom(s)
                   const tenant = room ? null : getTenant(s.id)
