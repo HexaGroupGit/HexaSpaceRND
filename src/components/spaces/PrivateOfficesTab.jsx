@@ -94,8 +94,9 @@ export default function PrivateOfficesTab({ ctx }) {
     setEditId(undefined)
   }
 
-  // Every office in one flat list, ordered by floor then suite number.
-  const floorRank = (f) => { const i = OFFICE_FLOORS.indexOf(f); return i === -1 ? 99 : i }
+  // Every office in one flat list, lowest first: floor (L2, L4, L5) then suite
+  // number. Floor first because L2 suites are numbered floor-locally (28–30).
+  const floorRank = (f) => { const n = parseInt(String(f ?? '').replace(/\D/g, ''), 10); return isNaN(n) ? 99 : n }
   const suiteNum = (o) => { const n = parseInt(String(o.unitNumber).replace(/\D/g, ''), 10); return isNaN(n) ? 9999 : n }
   const sorted = [...offices]
     .filter((o) => levelFilter === 'all' || (o.floor || '') === levelFilter)

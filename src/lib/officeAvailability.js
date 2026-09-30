@@ -1,3 +1,5 @@
+import { holdsSpace } from './spaceHold.js'
+
 // Which offices (and parking bays) we can offer right now — shared by the CRM
 // lead proposal and the member upgrade offer so the two pickers can never drift.
 //
@@ -31,9 +33,13 @@ const byUnit = (a, b) =>
 // Occupied means "somebody's stuff is in it" — a tagged occupant OR a live
 // contract holding it. Both signals matter: imports set the tag without a
 // lease, and a just-accepted proposal sets a lease before anyone moves in.
+// "Live" is holdsSpace, not a raw status test: an OfficeRND-import contract
+// parked at 'pending' with a term that ended years ago holds nothing, and
+// counting it hid L4 Office 7 from the proposal picker (CON-103, ended
+// 31/05/2025) after the real tenant had left.
 export function officeHasOccupant(space, leases = []) {
   return !!(space.occupantTenantId || space.occupantName ||
-    leases.some((l) => l.spaceId === space.id && (l.status === 'active' || l.status === 'pending')))
+    leases.some((l) => l.spaceId === space.id && holdsSpace(l)))
 }
 
 // Offices we can put on a proposal: vacant now, plus occupied ones whose
