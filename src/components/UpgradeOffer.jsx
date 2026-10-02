@@ -113,6 +113,7 @@ export default function UpgradeOffer({ lease, tenant, spaces = [], leases = [], 
     validityDays,
     lead: { name: contact.name, businessName: tenant?.businessName || lease.companyName || '' },
     settings,
+    spaces,
     dateStr: format(new Date(), 'd MMMM yyyy'),
     compress: compressPdf,
     upgradeFrom: currentSpace || lease.resource

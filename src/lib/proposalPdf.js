@@ -12,6 +12,7 @@
 import { jsPDF } from 'jspdf'
 import html2canvas from 'html2canvas'
 import { FLOORS, highlightFor } from './floorplans.js'
+import { resolvePriceList, planCredits, roomRateRows, fromRate } from './brochurePricing.js'
 
 const PAGE_W = 1280, PAGE_H = 720   // 13.333in × 7.5in at 96dpi
 const BG = '#EFEDF2'
@@ -19,6 +20,26 @@ const PHOTO = '/proposal/'
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 const money = (n) => Number(n || 0).toLocaleString('en-AU')
+// Per-page cents (printing) keep their two decimals: $0.30, not $0.3.
+const cents = (n) => Number(n || 0).toFixed(2)
+
+// Every price on these pages comes from here — Settings → Price List for the
+// plans, Spaces for the room rates, credits.js for credits (see brochurePricing.js).
+// Nothing in the page templates below is a typed-in price.
+function pricing(settings, spaces) {
+  return { P: resolvePriceList(settings), rooms: roomRateRows(spaces), credits: planCredits() }
+}
+const parkingLine = (P) => `Onsite parking available ($${money(P.parking)}/mo)`
+const printingLine = (P) => `Printing facilities ($${money(P.printingMonthly)}/mo · $${cents(P.printBW)} B&amp;W · $${cents(P.printColour)} colour)`
+
+const ROOM_TABLE_HEAD = `<thead><tr>
+          <th style="text-align:left;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Room</th>
+          <th style="text-align:center;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Capacity</th>
+          <th style="text-align:center;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Credits / Hr</th>
+          <th style="text-align:right;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">$ / Hr</th>
+        </tr></thead>`
+const roomTableBody = (rooms) => rooms.map((r) =>
+  `<tr><td class="rc">${esc(r.room)}</td><td class="cc">${esc(r.capacity)}</td><td class="cc">${esc(r.credits)}</td><td class="rr">$${money(r.rate)}</td></tr>`).join('')
 // Full-bleed cover image as a background div (html2canvas renders background-size
 // far more reliably than <img object-fit:cover>).
 const bgFill = (src, pos = 'center') => `<div style="position:absolute;inset:0;background-image:url('${src}');background-size:cover;background-position:${pos};"></div>`
@@ -124,7 +145,8 @@ function theSpacePage() {
   </div>${FOOT}</div>`
 }
 
-function waysToWorkPage() {
+function waysToWorkPage({ P, rooms }) {
+  const roomFrom = fromRate(rooms)
   const card = (img, title, price, unit, body) => `<div style="flex:1;min-width:0;">
     <div style="position:relative;height:1.7in;overflow:hidden;">${bgFill(PHOTO + img)}</div>
     <div class="label" style="margin-top:12px;">${title}</div>
@@ -135,11 +157,11 @@ function waysToWorkPage() {
     <div class="eyebrow">Ways to Work</div>
     <div class="display" style="font-size:50px;margin-top:14px;">Flexible on your terms.</div>
     <div style="display:flex;gap:20px;margin-top:.5in;">
-      ${card('private-office.jpg', 'Private Offices', '$700', '/desk · mo', 'Furnished, lockable suites for teams large and small.')}
-      ${card('dedicated-desk.jpg', 'Dedicated Desks', '$500', '/mo', 'A permanent spot with lockable storage &amp; 24/7 access.')}
-      ${card('flexible-desk.jpg', 'Flexible Memberships', '$300', '/mo', 'Coworking access that flexes with your week.')}
-      ${card('meeting-room.jpg', 'Virtual Offices', '$75', '/mo', 'A prestigious address, mail handling &amp; call service.')}
-      ${card('room-east.jpg', 'Meeting Rooms', '$20', '/hr', 'Eight rooms, 2–40 guests, booked online.')}
+      ${card('private-office.jpg', 'Private Offices', `$${money(P.privateOfficeFrom)}`, '/desk · mo', 'Furnished, lockable suites for teams large and small.')}
+      ${card('dedicated-desk.jpg', 'Dedicated Desks', `$${money(P.dedicatedDesk)}`, '/mo', 'A permanent spot with lockable storage &amp; 24/7 access.')}
+      ${card('flexible-desk.jpg', 'Flexible Memberships', `$${money(P.flexible)}`, '/mo', 'Coworking access that flexes with your week.')}
+      ${card('meeting-room.jpg', 'Virtual Offices', `$${money(Math.min(P.voAddress, P.voPlus))}`, '/mo', 'A prestigious address, mail handling &amp; call service.')}
+      ${roomFrom != null ? card('room-east.jpg', 'Meeting Rooms', `$${money(roomFrom)}`, '/hr', 'Eight rooms, 2–40 guests, booked online.') : ''}
     </div>
   </div>${FOOT}</div>`
 }
@@ -205,7 +227,7 @@ function comparisonPage(from, offices, changeoverDate) {
   </div>${FOOT}</div>`
 }
 
-function offerPage(offices, coverMsg) {
+function offerPage(offices, coverMsg, { P }) {
   return `<div class="page"><div class="pad">
     <div class="eyebrow">Available Suites</div>
     <div class="display" style="font-size:50px;margin-top:14px;">We'd like to offer you.</div>
@@ -213,7 +235,7 @@ function offerPage(offices, coverMsg) {
     <div style="display:flex;flex-wrap:wrap;gap:30px 34px;margin-top:${coverMsg ? '.3in' : '.5in'};">
       ${offices.map(offerCard).join('')}
     </div>
-    <div class="kicker" style="position:absolute;left:.8in;bottom:.95in;font-size:11px;">Option to rent an assigned car park at $200 pcm, per bay (ex GST).</div>
+    <div class="kicker" style="position:absolute;left:.8in;bottom:.95in;font-size:11px;">Option to rent an assigned car park at $${money(P.parking)} pcm, per bay (ex GST).</div>
   </div>${FOOT}</div>`
 }
 
@@ -248,8 +270,7 @@ function floorPage(floor, offices) {
   </div>${FOOT}</div>`
 }
 
-function meetingRoomsPage() {
-  const tr = (r, cap, cr, price) => `<tr><td class="rc">${r}</td><td class="cc">${cap}</td><td class="cc">${cr}</td><td class="rr">${price}</td></tr>`
+function meetingRoomsPage({ rooms, credits }) {
   return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
     <div style="width:44%;">
       <div class="eyebrow">Meeting Rooms &amp; Studios</div>
@@ -259,34 +280,22 @@ function meetingRoomsPage() {
     </div>
     <div style="width:56%;">
       <table style="width:100%;border-collapse:collapse;font-family:'HxBody';font-size:11px;">
-        <thead><tr>
-          <th style="text-align:left;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Room</th>
-          <th style="text-align:center;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Capacity</th>
-          <th style="text-align:center;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Credits / Hr</th>
-          <th style="text-align:right;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">$ / Hr</th>
-        </tr></thead>
-        <tbody>
-          ${tr('Sky · Earth (Consulting)', '4', '1', '$20')}
-          ${tr('North · South · West', '8', '4', '$80')}
-          ${tr('East (Chinese Tearoom)', '8', '6', '$120')}
-          ${tr('Central (Boardroom)', '12', '7', '$140')}
-          ${tr('Large Boardroom', '26', '11', '$220')}
-          ${tr('Media Studio', '—', '5', '$100')}
-        </tbody>
+        ${ROOM_TABLE_HEAD}
+        <tbody>${roomTableBody(rooms)}</tbody>
       </table>
-      <div class="label" style="margin-top:26px;color:var(--soft);">Monthly credits by plan</div>
+      <div class="label" style="margin-top:26px;color:var(--soft);">Monthly credits by plan · 1 credit = $${money(credits.creditValue)}</div>
       <ul class="bullets" style="margin-top:10px;">
-        <li>Flexible — 4 credits ($80 value)</li>
-        <li>Dedicated Desk — 8 credits ($160 value)</li>
-        <li>Private Office — 10 credits per desk ($800 value)</li>
+        <li>Flexible — ${credits.flexible.credits} credits ($${money(credits.flexible.value)} value)</li>
+        <li>Dedicated Desk — ${credits.dedicated.credits} credits ($${money(credits.dedicated.value)} value)</li>
+        <li>Private Office — ${credits.officePerDesk.credits} credits per desk ($${money(credits.officePerDesk.value)} value)</li>
       </ul>
       <p class="body" style="font-size:9px;color:var(--soft);margin-top:14px;">Credits reset on the 1st of each month. Additional bookings receive 30% off.</p>
     </div>
   </div>${FOOT}</div>`
 }
 
-function inclusionsPage() {
-  const items = ['24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', '30% discount on meeting-room rates', 'Unlimited 4-pax consulting room use', 'Prestige business address · Box Hill', 'Mail collection &amp; delivery', 'Clients greeted by reception', 'Community event invitations', 'Onsite parking available ($200/mo)', 'Printing facilities ($30/mo · $0.30 B&amp;W · $0.60 colour)']
+function inclusionsPage({ P }) {
+  const items = ['24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', '30% discount on meeting-room rates', 'Unlimited 4-pax consulting room use', 'Prestige business address · Box Hill', 'Mail collection &amp; delivery', 'Clients greeted by reception', 'Community event invitations', parkingLine(P), printingLine(P)]
   return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
     <div style="width:48%;">
       <div class="eyebrow">Everything Included</div>
@@ -417,8 +426,9 @@ async function renderPagesToPdf(pagesHtml, { compress = false } = {}) {
 }
 
 // `compress`: true → lighter, email-friendly file; false → full quality.
-export async function buildProposalPdf({ offices = [], coverMsg = '', validityDays = 14, lead = {}, settings = {}, dateStr = '', compress = false, upgradeFrom = null, changeoverDate = '' }) {
+export async function buildProposalPdf({ offices = [], coverMsg = '', validityDays = 14, lead = {}, settings = {}, spaces = [], dateStr = '', compress = false, upgradeFrom = null, changeoverDate = '' }) {
   const ctx = makeCtx(lead, settings, dateStr)
+  const pr = pricing(settings, spaces)
 
   // Group chosen offices by floor (Level 2 → 4 → 5) for the plan pages.
   const byFloor = {}
@@ -429,14 +439,14 @@ export async function buildProposalPdf({ offices = [], coverMsg = '', validityDa
     coverPage(ctx, upgradeFrom ? 'Upgrade Proposal' : 'Workspace Proposal'),
     statementPage(),
     theSpacePage(),
-    waysToWorkPage(),
+    waysToWorkPage(pr),
     // An existing member already knows the building — what they need to see is
     // the step up from the suite they're in, so it leads the personalised pages.
     ...(upgradeFrom ? [comparisonPage(upgradeFrom, offices, changeoverDate)] : []),
-    offerPage(offices, coverMsg),                        // page 5 — personalised
+    offerPage(offices, coverMsg, pr),                    // page 5 — personalised
     ...floorOrder.map((f) => floorPage(f, byFloor[f])),  // where the suite is
-    meetingRoomsPage(),
-    inclusionsPage(),
+    meetingRoomsPage(pr),
+    inclusionsPage(pr),
     advantagePage(),
     communityPage(),
     closingPage(ctx),
@@ -449,15 +459,16 @@ export async function buildProposalPdf({ offices = [], coverMsg = '', validityDa
 // For leads who aren't sure what they want — reuses the static brochure pages
 // (Ways to Work has headline pricing for every plan; Meeting Rooms has the rate
 // table). No personalised offer/floor-plan pages, so it needs no office input.
-export async function buildOverviewBrochurePdf({ lead = {}, settings = {}, dateStr = '', compress = false } = {}) {
+export async function buildOverviewBrochurePdf({ lead = {}, settings = {}, spaces = [], dateStr = '', compress = false } = {}) {
   const ctx = makeCtx(lead, settings, dateStr)
+  const pr = pricing(settings, spaces)
   const pagesHtml = [
     coverPage(ctx, 'Workspace Overview'),
     statementPage(),
     theSpacePage(),
-    waysToWorkPage(),     // all five plans, headline pricing
-    meetingRoomsPage(),   // per-room hourly rate table + plan credits
-    inclusionsPage(),
+    waysToWorkPage(pr),   // all five plans, headline pricing
+    meetingRoomsPage(pr), // per-room hourly rate table + plan credits
+    inclusionsPage(pr),
     advantagePage(),
     communityPage(),
     closingPage(ctx),
@@ -477,8 +488,8 @@ const DESK = {
     offerDesc: 'A permanent, reserved desk in our shared studio — set up the way you like it, ready whenever you are. Room to focus, a community to plug into, and every amenity of the centre included.',
     benefitsA: (n) => ['Your own reserved desk · 24/7 access', 'Lockable pedestal storage', 'Unlimited internet — 1000/1000 Mbps', `${n} monthly meeting-room credits`, 'Unlimited 4-pax consulting room use', '30% off meeting rooms thereafter'],
     benefitsB: ['Prestige business address · Box Hill', 'Mail collection &amp; delivery', 'Clients greeted by reception', 'Printing facilities', 'Barista coffee, tea &amp; filtered water', 'Community events &amp; networking'],
-    inclusions: ['24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', '30% discount on meeting-room rates', 'Unlimited 4-pax consulting room use', 'Prestige business address · Box Hill', 'Mail collection &amp; delivery', 'Clients greeted by reception', 'Community event invitations', 'Onsite parking available ($200/mo)', 'Printing facilities ($30/mo · $0.30 B&amp;W · $0.60 colour)'],
-    credits: 8, creditValue: 160,
+    inclusions: (P) => ['24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', '30% discount on meeting-room rates', 'Unlimited 4-pax consulting room use', 'Prestige business address · Box Hill', 'Mail collection &amp; delivery', 'Clients greeted by reception', 'Community event invitations', parkingLine(P), printingLine(P)],
+    creditPlan: 'dedicated', // credits + value come from credits.js
     offerPhotoTop: 'dd-3188.jpg', offerPhotoBot: 'dd-3159.jpg',
   },
   flexi: {
@@ -491,8 +502,8 @@ const DESK = {
     offerDesc: 'Hot-desk access to our shared studio — grab any available desk and plug straight in. All the amenity and community of the centre, on a membership that flexes with your week.',
     benefitsA: (n) => ['Hot-desk access · any available desk', '24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', `${n} monthly meeting-room credits`, 'Unlimited 4-pax consulting room use', '30% off meeting rooms thereafter'],
     benefitsB: ['Day-locker storage', 'Clients greeted by reception', 'Printing facilities', 'Barista coffee, tea &amp; filtered water', 'Community events &amp; networking', 'Business address available'],
-    inclusions: ['24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', '30% discount on meeting-room rates', 'Unlimited 4-pax consulting room use', 'Any available desk in the shared studio', 'Day-locker storage', 'Clients greeted by reception', 'Community event invitations', 'Onsite parking available ($200/mo)', 'Printing facilities ($30/mo · $0.30 B&amp;W · $0.60 colour)'],
-    credits: 4, creditValue: 80,
+    inclusions: (P) => ['24/7 secure access', 'Unlimited internet — 1000/1000 Mbps', '30% discount on meeting-room rates', 'Unlimited 4-pax consulting room use', 'Any available desk in the shared studio', 'Day-locker storage', 'Clients greeted by reception', 'Community event invitations', parkingLine(P), printingLine(P)],
+    creditPlan: 'flexible',
     offerPhotoTop: 'dd-3188.jpg', offerPhotoBot: 'flexible-desk.jpg',
   },
 }
@@ -591,12 +602,12 @@ function deskOfferPage(cfg, offer, coverMsg) {
   </div>${FOOT}</div>`
 }
 
-function deskInclusionsPage(cfg) {
+function deskInclusionsPage(cfg, { P }) {
   return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
     <div style="width:48%;">
       <div class="eyebrow">Everything Included</div>
       <div class="display" style="font-size:46px;margin-top:12px;">No hidden extras.</div>
-      <ul class="bullets" style="margin-top:24px;">${cfg.inclusions.map((i) => `<li>${i}</li>`).join('')}</ul>
+      <ul class="bullets" style="margin-top:24px;">${cfg.inclusions(P).map((i) => `<li>${i}</li>`).join('')}</ul>
     </div>
     <div style="width:52%;display:flex;flex-direction:column;gap:.28in;">
       <div style="position:relative;height:3.4in;overflow:hidden;">${bgFill(PHOTO + 'lounge.jpg')}</div>
@@ -605,8 +616,7 @@ function deskInclusionsPage(cfg) {
   </div>${FOOT}</div>`
 }
 
-function deskMeetingPage(cfg) {
-  const tr = (r, cap, cr, price) => `<tr><td class="rc">${r}</td><td class="cc">${cap}</td><td class="cc">${cr}</td><td class="rr">${price}</td></tr>`
+function deskMeetingPage(cfg, { rooms, credits }) {
   return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
     <div style="width:44%;">
       <div class="eyebrow">Meeting Rooms &amp; Studios</div>
@@ -616,24 +626,12 @@ function deskMeetingPage(cfg) {
     </div>
     <div style="width:56%;">
       <table style="width:100%;border-collapse:collapse;font-family:'HxBody';font-size:11px;">
-        <thead><tr>
-          <th style="text-align:left;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Room</th>
-          <th style="text-align:center;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Capacity</th>
-          <th style="text-align:center;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">Credits / Hr</th>
-          <th style="text-align:right;padding:11px 6px;border-bottom:1.5px solid var(--ink);" class="label">$ / Hr</th>
-        </tr></thead>
-        <tbody>
-          ${tr('Sky · Earth (Consulting)', '4', '1', '$20')}
-          ${tr('North · South · West', '8', '4', '$80')}
-          ${tr('East (Chinese Tearoom)', '8', '6', '$120')}
-          ${tr('Central (Boardroom)', '12', '7', '$140')}
-          ${tr('Large Boardroom', '26', '11', '$220')}
-          ${tr('Media Studio', '—', '5', '$100')}
-        </tbody>
+        ${ROOM_TABLE_HEAD}
+        <tbody>${roomTableBody(rooms)}</tbody>
       </table>
       <div class="label" style="margin-top:26px;color:var(--soft);">How credits work</div>
       <ul class="bullets" style="margin-top:10px;">
-        <li>1 credit = $10 of room time</li>
+        <li>1 credit = $${money(credits.creditValue)} of room time</li>
         <li>${esc(cfg.kind)} — ${cfg.credits} credits included ($${cfg.creditValue} value)</li>
         <li>Extra credit packs available on 6-month terms</li>
       </ul>
@@ -740,7 +738,7 @@ function voAddressPage() {
   </div>${FOOT}</div>`
 }
 
-function voPackagesPage(offer) {
+function voPackagesPage(offer, { P }) {
   const chosen = offer?.type === 'virtual' ? (offer.typeLabel || '') : ''
   const isPlus = /plus/i.test(chosen)
   const isBase = chosen && !isPlus
@@ -757,7 +755,7 @@ function voPackagesPage(offer) {
           <div class="label" style="color:var(--olive);">Virtual Office</div>${baseTag}
         </div>
         <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px;">
-          <div class="display" style="font-size:52px;line-height:1.05;">$75</div>
+          <div class="display" style="font-size:52px;line-height:1.05;">$${money(P.voAddress)}</div>
           <div class="label" style="color:var(--soft);font-size:8.5px;">/ month +GST</div>
         </div>
         <div class="body" style="font-size:9.5px;color:var(--soft);margin-top:8px;">Minimum 12-month term</div>
@@ -777,7 +775,7 @@ function voPackagesPage(offer) {
         <div class="eyebrow" style="position:absolute;top:.42in;right:.44in;color:#cfd69a;">${isPlus ? 'Your selection' : 'Most popular'}</div>
         <div class="label" style="color:#cfd69a;">Virtual Office Plus</div>
         <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px;">
-          <div class="display" style="font-size:52px;color:#fff;line-height:1.05;">$150</div>
+          <div class="display" style="font-size:52px;color:#fff;line-height:1.05;">$${money(P.voPlus)}</div>
           <div class="label" style="color:#a9a7ac;font-size:8.5px;">/ month +GST</div>
         </div>
         <div class="body" style="font-size:9.5px;color:#a9a7ac;margin-top:8px;">Everything in Virtual Office, plus —</div>
@@ -840,13 +838,14 @@ function voAmenitiesPage() {
 }
 
 // Build the Virtual Office brochure PDF (both tiers; the offered tier is flagged).
-export async function buildVirtualBrochurePdf({ offer = {}, coverMsg = '', lead = {}, settings = {}, dateStr = '', compress = false }) {
+export async function buildVirtualBrochurePdf({ offer = {}, coverMsg = '', lead = {}, settings = {}, spaces = [], dateStr = '', compress = false }) {
   const ctx = makeCtx(lead, settings, dateStr)
+  const pr = pricing(settings, spaces)
   const pagesHtml = [
     voCoverPage(ctx),
     voStatementPage(),
     voAddressPage(),
-    voPackagesPage(offer),
+    voPackagesPage(offer, pr),
     voReceptionPage(),
     voAmenitiesPage(),
     communityPage(),
@@ -857,16 +856,19 @@ export async function buildVirtualBrochurePdf({ offer = {}, coverMsg = '', lead 
 
 // Build a Dedicated/Flexible Desk brochure PDF. `type` ∈ {'dedicated','flexi'};
 // `offer` comes from the membership proposal (price, termLabel, freeMonths).
-export async function buildDeskBrochurePdf({ type = 'dedicated', offer = {}, coverMsg = '', lead = {}, settings = {}, dateStr = '', compress = false }) {
-  const cfg = DESK[type] || DESK.dedicated
+export async function buildDeskBrochurePdf({ type = 'dedicated', offer = {}, coverMsg = '', lead = {}, settings = {}, spaces = [], dateStr = '', compress = false }) {
+  const pr = pricing(settings, spaces)
+  const base = DESK[type] || DESK.dedicated
+  const plan = pr.credits[base.creditPlan]
+  const cfg = { ...base, credits: plan.credits, creditValue: plan.value }
   const ctx = makeCtx(lead, settings, dateStr)
   const pagesHtml = [
     deskCoverPage(cfg, ctx),
     deskStatementPage(cfg),
     deskSpacePage(cfg),
     deskOfferPage(cfg, offer, coverMsg),
-    deskInclusionsPage(cfg),
-    deskMeetingPage(cfg),
+    deskInclusionsPage(cfg, pr),
+    deskMeetingPage(cfg, pr),
     deskAdvantagePage(cfg),
     communityPage(),
     deskClosingPage(ctx),

@@ -7,6 +7,8 @@ import { XERO_ACCOUNTS, DEFAULT_XERO_ACCOUNTS } from './spaces/shared.jsx'
 import { xeroStatus, connectXero, disconnectXero, xeroSync } from '../lib/xero.js'
 import { PERK_TIER_DEFAULTS, PERK_TIER_ORDER, AFTER_HOURS_DEFAULTS } from '../lib/credits.js'
 import { tourConfig, TOUR_DEFAULTS } from '../lib/tourInvite.js'
+import { PRICE_LIST_FIELDS, resolvePriceList, planCredits, roomRateRows } from '../lib/brochurePricing.js'
+import { VO_PACKAGES } from '../lib/virtualSuites.js'
 
 const MENU = [
   {
@@ -21,6 +23,7 @@ const MENU = [
     section: 'Operations',
     items: [
       { key: 'contracts', label: 'Contracts' },
+      { key: 'price-list', label: 'Price List' },
       { key: 'room-perks', label: 'Room Perks' },
       { key: 'after-hours', label: 'After-hours' },
       { key: 'tours', label: 'Tours' },
@@ -939,6 +942,101 @@ function BillingRulesSection({ settings, updateSettings }) {
 }
 
 // ── Room Perks ────────────────────────────────────────────────────────────────
+// ── Price list (Operations) ──────────────────────────────────────────────────
+// The prices every brochure and proposal PDF prints, and the proposal form
+// pre-fills. Room rates and credits are shown, not edited, here: they are the
+// numbers bookings are actually charged at, so they live where those are set.
+function PriceListSection({ settings, updateSettings, spaces }) {
+  const [form, setForm] = useState(() => {
+    const P = resolvePriceList(settings)
+    return Object.fromEntries(PRICE_LIST_FIELDS.map((f) => [f.key, String(P[f.key])]))
+  })
+  const [saved, setSaved] = useState(false)
+  const rooms = roomRateRows(spaces)
+  const credits = planCredits()
+
+  function save() {
+    const priceList = {}
+    for (const f of PRICE_LIST_FIELDS) {
+      const n = Number(form[f.key])
+      if (form[f.key] !== '' && Number.isFinite(n) && n >= 0) priceList[f.key] = n
+    }
+    updateSettings({ priceList })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  const money = (n) => `$${Number(n).toLocaleString('en-AU')}`
+
+  return (
+    <div>
+      <h1 className="text-xl font-bold text-foreground mb-1">Price List</h1>
+      <p className="text-sm text-muted-foreground mb-6">What every brochure and proposal PDF prints, and what the proposal form pre-fills. Change a price here and the next PDF you generate uses it. Prices are ex GST.</p>
+
+      <div className="mb-6 border border-border rounded-md p-4">
+        <div className="text-sm font-semibold text-foreground mb-3">Plans</div>
+        {PRICE_LIST_FIELDS.map((f) => (
+          <FormRow key={f.key} label={f.label}>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">$</span>
+              <input
+                type="number" min={0} step={f.step ?? 1}
+                value={form[f.key]}
+                onChange={(e) => setForm((p) => ({ ...p, [f.key]: e.target.value }))}
+                className="w-28 border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs text-muted-foreground">{f.unit}</span>
+            </div>
+          </FormRow>
+        ))}
+        <SaveButton onClick={save} saved={saved} />
+      </div>
+
+      <div className="mb-6 border border-border rounded-md p-4">
+        <div className="text-sm font-semibold text-foreground mb-1">Virtual Office</div>
+        <p className="text-xs text-muted-foreground mb-3">Fixed in code: the price also decides which inclusions the signed VO agreement prints, so it can't be changed here without the agreement drifting.</p>
+        <div className="text-sm text-foreground">Virtual Office {money(VO_PACKAGES.address)} / month · Virtual Office Plus {money(VO_PACKAGES.plus)} / month</div>
+      </div>
+
+      <div className="mb-6 border border-border rounded-md p-4">
+        <div className="text-sm font-semibold text-foreground mb-1">Meeting rooms</div>
+        <p className="text-xs text-muted-foreground mb-3">Read from each room's hourly rate in Spaces — the rate bookings are charged at. Change a rate there and the brochure follows. Rooms with no rate are left off.</p>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-muted-foreground border-b border-border">
+              <th className="py-1.5 font-medium">Room</th>
+              <th className="py-1.5 font-medium text-center">Capacity</th>
+              <th className="py-1.5 font-medium text-center">Credits / hr</th>
+              <th className="py-1.5 font-medium text-right">$ / hr</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rooms.map((r) => (
+              <tr key={r.room} className="border-b border-border last:border-0">
+                <td className="py-1.5 text-foreground">{r.room}</td>
+                <td className="py-1.5 text-center text-muted-foreground">{r.capacity}</td>
+                <td className="py-1.5 text-center text-muted-foreground">{r.credits}</td>
+                <td className="py-1.5 text-right text-foreground">{money(r.rate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mb-6 border border-border rounded-md p-4">
+        <div className="text-sm font-semibold text-foreground mb-1">Meeting-room credits</div>
+        <p className="text-xs text-muted-foreground mb-3">What the booking engine actually grants and draws down.</p>
+        <div className="text-sm text-foreground space-y-1">
+          <div>1 credit = {money(credits.creditValue)} of room time</div>
+          <div>Flexible — {credits.flexible.credits} credits ({money(credits.flexible.value)})</div>
+          <div>Dedicated Desk — {credits.dedicated.credits} credits ({money(credits.dedicated.value)})</div>
+          <div>Private Office — {credits.officePerDesk.credits} credits per desk ({money(credits.officePerDesk.value)})</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function RoomPerksSection({ settings, updateSettings }) {
   const cur = settings.officePerks?.tiers ?? {}
   const [form, setForm] = useState(() => {
@@ -2207,6 +2305,7 @@ export default function Settings() {
     'admin-users': <AdminUsersSection settings={settings} updateSettings={updateSettings} />,
     'emails': <EmailsSection settings={settings} updateSettings={updateSettings} />,
     'contracts': <ContractsSection settings={settings} updateSettings={updateSettings} />,
+    'price-list': <PriceListSection settings={settings} updateSettings={updateSettings} spaces={spaces} />,
     'room-perks': <RoomPerksSection settings={settings} updateSettings={updateSettings} />,
     'after-hours': <AfterHoursSection settings={settings} updateSettings={updateSettings} />,
     'tours': <ToursSection settings={settings} updateSettings={updateSettings} />,

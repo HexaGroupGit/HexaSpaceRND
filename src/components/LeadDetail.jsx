@@ -12,6 +12,7 @@ import TourBookingModal from './TourBookingModal.jsx'
 import { tourWhenLabel, durationLabel } from '../lib/tourInvite.js'
 import { isWaitingLead, waitingListUpdates } from '../lib/waitingList.js'
 import { VO_PACKAGES } from '../lib/virtualSuites.js'
+import { resolvePriceList } from '../lib/brochurePricing.js'
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: User },
@@ -248,8 +249,9 @@ export default function LeadDetail({ lead, store, onClose }) {
     setPropType(t)
     setProposalResult('')
     if (t === 'virtual') setM({ price: VIRTUAL_PACKAGES.plus.price, term: '12mo', newClient: true, pkg: 'plus' })
-    else if (t === 'dedicated') setM({ price: 500, term: 'mtm', newClient: true })
-    else if (t === 'flexi') setM({ price: 350, term: 'mtm', newClient: true })
+    // Pre-filled from Settings → Price List, the same figure the brochure prints.
+    else if (t === 'dedicated') setM({ price: resolvePriceList(settings).dedicatedDesk, term: 'mtm', newClient: true })
+    else if (t === 'flexi') setM({ price: resolvePriceList(settings).flexible, term: 'mtm', newClient: true })
   }
   const mOffer = () => computeMembershipOffer(propType, Number(m.price) || 0, m.term, m.newClient, m.pkg)
 
@@ -261,7 +263,7 @@ export default function LeadDetail({ lead, store, onClose }) {
   // brochure attached; Private Office uses the full suite proposal instead.
   const isDeskType = (t) => t === 'dedicated' || t === 'flexi'
   const hasBrochure = (t) => t === 'dedicated' || t === 'flexi' || t === 'virtual'
-  const brochureArgs = (offer) => ({ offer, coverMsg: proposalMsg.trim(), lead, settings, dateStr: format(new Date(), 'd MMMM yyyy'), compress: compressPdf })
+  const brochureArgs = (offer) => ({ offer, coverMsg: proposalMsg.trim(), lead, settings, spaces, dateStr: format(new Date(), 'd MMMM yyyy'), compress: compressPdf })
   const buildMembershipBrochure = (offer) => propType === 'virtual'
     ? buildVirtualBrochurePdf(brochureArgs(offer))
     : buildDeskBrochurePdf({ type: propType, ...brochureArgs(offer) })
@@ -278,7 +280,7 @@ export default function LeadDetail({ lead, store, onClose }) {
 
   // General overview brochure — all products + pricing, no suite selection. For
   // leads who aren't sure what they want. Just an info send: no proposal record.
-  const overviewArgs = () => ({ lead, settings, dateStr: format(new Date(), 'd MMMM yyyy'), compress: compressPdf })
+  const overviewArgs = () => ({ lead, settings, spaces, dateStr: format(new Date(), 'd MMMM yyyy'), compress: compressPdf })
   const overviewFilename = () => `Hexa_Space_Overview_${(lead.businessName || lead.name || 'lead').replace(/\s+/g, '_')}.pdf`
   const defaultOverviewBody = () => {
     const first = (lead.name || '').trim().split(/\s+/)[0]
@@ -346,7 +348,7 @@ export default function LeadDetail({ lead, store, onClose }) {
 
   // Map a picked office into the shape the branded PDF builder expects.
   const toOffice = (o) => ({ unit: o.space.unitNumber, floor: o.space.floor, pax: o.space.pax, price: o.price, note: o.note })
-  const proposalArgs = (sel) => ({ offices: sel.map(toOffice), coverMsg: proposalMsg.trim(), validityDays, lead, settings, dateStr: format(new Date(), 'd MMMM yyyy'), compress: compressPdf })
+  const proposalArgs = (sel) => ({ offices: sel.map(toOffice), coverMsg: proposalMsg.trim(), validityDays, lead, settings, spaces, dateStr: format(new Date(), 'd MMMM yyyy'), compress: compressPdf })
 
   async function downloadProposal() {
     const sel = selectedList()

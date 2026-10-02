@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase.js'
 import { markThreadRead, ReadReceipt } from '../lib/readReceipts.jsx'
 import { computeMonthlyAllowance, effectiveAllowance, spendableCredits } from '../lib/credits.js'
 import { VO_PACKAGES } from '../lib/virtualSuites.js'
+import { resolvePriceList } from '../lib/brochurePricing.js'
 
 const SIG_BADGE = {
   manually_signed:   { label: 'Signed',       cls: 'bg-green-100 text-green-700' },
@@ -870,6 +871,7 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
     {showMembership && (
       <MembershipModal
         tenant={tenant}
+        settings={settings}
         members={companyMembers}
         onClose={() => setShowMembership(false)}
         onSave={(data) => {
@@ -1019,16 +1021,21 @@ function CreditsCard({ tenant, computed, effAllowance, remaining, updateTenant }
 }
 
 // ── Add a membership (desk / office / virtual) — stored as a lease so it bills ──
-const MEMBERSHIP_PLANS = [
-  { key: 'Flexible Desk',  price: 300 },
-  { key: 'Dedicated Desk', price: 600 },
-  { key: 'Private Office', price: 0 },
-  { key: 'Virtual Office', price: VO_PACKAGES.plus },
-]
+// Default prices are Settings → Price List's, the same figures the brochure quotes.
+const membershipPlans = (settings) => {
+  const P = resolvePriceList(settings)
+  return [
+    { key: 'Flexible Desk',  price: P.flexible },
+    { key: 'Dedicated Desk', price: P.dedicatedDesk },
+    { key: 'Private Office', price: 0 },
+    { key: 'Virtual Office', price: VO_PACKAGES.plus },
+  ]
+}
 
-function MembershipModal({ tenant, members, onClose, onSave }) {
+function MembershipModal({ tenant, members, settings, onClose, onSave }) {
   const today = new Date().toISOString().slice(0, 10)
-  const [form, setForm] = useState({ plan: 'Dedicated Desk', memberId: '', price: 600, startDate: today, endDate: '' })
+  const MEMBERSHIP_PLANS = membershipPlans(settings)
+  const [form, setForm] = useState({ plan: 'Dedicated Desk', memberId: '', price: resolvePriceList(settings).dedicatedDesk, startDate: today, endDate: '' })
   const ic = 'w-full border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40'
 
   function pickPlan(plan) {
