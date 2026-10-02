@@ -156,9 +156,31 @@ export function openingInvoiceRepairable(invoice) {
     !(invoice.payments ?? []).length
 }
 
+// Is the company already a tenant here — onboarded on another contract that
+// still holds its space? Then a new contract is an add-on (a parking bay, a
+// second office, a VO), not a first move-in.
+export function isExistingTenant(lease, leases = []) {
+  return (leases ?? []).some((l) =>
+    l.id !== lease?.id && l.tenantId && l.tenantId === lease?.tenantId && l.onboardedAt && holdsSpace(l))
+}
+
+// Every space on the contract is a parking bay — no office, desk or suite.
+// Such a contract gets no welcome / getting-started email: the address, Wi-Fi
+// and directory listing are an office member's, not a car bay's.
+export function isParkingOnlyLease(lease, spaces = []) {
+  const ids = [lease?.spaceId, ...((lease?.items ?? []).map((i) => i.spaceId))].filter(Boolean)
+  return ids.length > 0 && ids.every((id) => (spaces ?? []).find((s) => s.id === id)?.type === 'parking')
+}
+
 // The access gate: contract signed, deposit paid (if one is owed), and the first
 // recurring invoice paid. Returns false until every required payment has landed.
-export function accessGateMet(lease, invoices, tenant, today = new Date()) {
+//
+// Except for an existing tenant (pass `leases` to enable it): their add-on goes
+// live as soon as both parties have signed — they are already paying us, and
+// holding a bay "under offer" until the next combined rent invoice clears read
+// as a bug (AJ LEE bay 418, Top Bridge bay 210, Sep 2026). A brand-new tenant
+// still waits for the money.
+export function accessGateMet(lease, invoices, tenant, today = new Date(), leases = null) {
   if (!isSigned(lease) || isEnded(lease)) return false
   // A contract that no longer holds its space never clears the gate. isEnded
   // only covers 'expired'/'terminated' — holdsSpace also rules out 'cancelled'
@@ -175,19 +197,21 @@ export function accessGateMet(lease, invoices, tenant, today = new Date()) {
   // countersign, so it would open the gate before any money landed.
   if (lease.onboardedAt) return true
 
-  const depositOwed = depositDue(lease) > 0
-  if (depositOwed) {
-    const dep = depositInvoice(lease, invoices)
-    if (!dep || dep.status !== 'paid') return false
-  }
+  if (!isExistingTenant(lease, leases)) {
+    const depositOwed = depositDue(lease) > 0
+    if (depositOwed) {
+      const dep = depositInvoice(lease, invoices)
+      if (!dep || dep.status !== 'paid') return false
+    }
 
-  const first = firstRecurringInvoice(lease, invoices)
-  if (first) {
-    if (first.status !== 'paid') return false
-  } else if (!openingRentFree(lease, today)) {
-    // No recurring invoice yet and rent IS owed for an elapsed month — the bill
-    // run simply hasn't caught up. Keep waiting rather than handing over keys.
-    return false
+    const first = firstRecurringInvoice(lease, invoices)
+    if (first) {
+      if (first.status !== 'paid') return false
+    } else if (!openingRentFree(lease, today)) {
+      // No recurring invoice yet and rent IS owed for an elapsed month — the bill
+      // run simply hasn't caught up. Keep waiting rather than handing over keys.
+      return false
+    }
   }
 
   // Card-on-file memberships (VO/desk): the signed payment authority requires
@@ -204,11 +228,11 @@ export function accessGateMet(lease, invoices, tenant, today = new Date()) {
 //   gate not met     → reserved (contract exists / awaiting payment)
 //   gate met, before start date → reserved (held until commencement)
 //   gate met, on/after start date → occupied
-export function desiredSpaceStatus(lease, invoices, today = new Date()) {
+export function desiredSpaceStatus(lease, invoices, today = new Date(), leases = null) {
   if (isEnded(lease)) return 'vacant'
   // Quick-assignments (no gate) occupy immediately.
   if (!requiresAccessGate(lease)) return 'occupied'
-  if (!accessGateMet(lease, invoices, null, today)) return 'reserved'
+  if (!accessGateMet(lease, invoices, null, today, leases)) return 'reserved'
   const start = lease?.startDate ? new Date(lease.startDate) : null
   if (start && start > today) return 'reserved'
   return 'occupied'
@@ -216,8 +240,8 @@ export function desiredSpaceStatus(lease, invoices, today = new Date()) {
 
 // Should onboarding (portal invite + how-tos + Salto access) fire for this lease?
 // Fires once the gate is met and it has not been onboarded yet.
-export function shouldOnboard(lease, invoices, tenant) {
-  return accessGateMet(lease, invoices, tenant) && !lease?.onboardedAt
+export function shouldOnboard(lease, invoices, tenant, leases = null) {
+  return accessGateMet(lease, invoices, tenant, new Date(), leases) && !lease?.onboardedAt
 }
 
 // The gate can clear long after commencement: an opening invoice marked paid

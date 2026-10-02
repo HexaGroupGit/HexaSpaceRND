@@ -21,7 +21,7 @@ import {
   DEFAULT_FUNCTION_FINAL_SUBJECT, DEFAULT_FUNCTION_FINAL_HTML,
 } from '../lib/functionEmails.js'
 import {
-  accessGateMet, desiredSpaceStatus, shouldOnboard, welcomeIsStale, welcomeAlreadySent, requiresAccessGate, depositAmount,
+  accessGateMet, desiredSpaceStatus, shouldOnboard, isExistingTenant, isParkingOnlyLease, welcomeIsStale, welcomeAlreadySent, requiresAccessGate, depositAmount,
   exitVirtualOfficeTerm, exitVirtualOfficeApplies, isOfficeMove,
   onboardingEmailHtml, resolveOnboardingCopy, renderOnboardingTemplate,
   DEFAULT_ONBOARDING_EMAIL_SUBJECT, DEFAULT_ONBOARDING_EMAIL_HTML,
@@ -1104,13 +1104,13 @@ export function useStore() {
       // multi-office contract holds/occupies all its offices, not just the primary.
       // A contract that no longer holds the space (ended, cancelled, or a legacy
       // 'pending' whose term has passed) claims 'vacant' — see spaceHold.js.
-      const desired = holdsSpace(lease) ? desiredSpaceStatus(lease, invoices) : 'vacant'
+      const desired = holdsSpace(lease) ? desiredSpaceStatus(lease, invoices, new Date(), leases) : 'vacant'
       leaseSpaceIds(lease).forEach((sid) => {
         const prior = spaceClaims.get(sid)
         if (prior === undefined || STATUS_RANK[desired] > STATUS_RANK[prior]) spaceClaims.set(sid, desired)
       })
       const gateTenant = tenants.find((t) => t.id === lease.tenantId)
-      if (shouldOnboard(lease, invoices, gateTenant)) {
+      if (shouldOnboard(lease, invoices, gateTenant, leases)) {
         // "Was the space already occupied" is a proxy for "they moved in long
         // ago" — and it breaks the moment a lease is moved to a different space,
         // because the NEW space isn't occupied yet. That re-onboards a
@@ -1129,7 +1129,8 @@ export function useStore() {
           l.id !== lease.id && l.tenantId === lease.tenantId && l.onboardedAt)
         // Occupied by someone else entirely is a data conflict, not a move-in.
         const sameOccupant = !space?.occupantTenantId || space.occupantTenantId === lease.tenantId
-        if (alreadyATenant || (alreadyOccupied && sameOccupant)) {
+        // A car bay alone gets no welcome — that email is an office member's.
+        if (alreadyATenant || isParkingOnlyLease(lease, spaces) || (alreadyOccupied && sameOccupant)) {
           // Pre-existing move-in — suppress retroactive onboarding (no email/invite).
           updateLease(lease.id, { onboardedAt: lease.activatedAt ?? new Date().toISOString() })
         } else {
@@ -1580,11 +1581,11 @@ export function useStore() {
     const lease = leasesRef.current.find((l) => l.id === leaseId)
     if (!lease || lease.onboardedAt) return
     const tenant = tenantsRef.current.find((t) => t.id === lease.tenantId)
-    if (!accessGateMet(lease, invoicesRef.current, tenant)) return
+    if (!accessGateMet(lease, invoicesRef.current, tenant, new Date(), leasesRef.current)) return
     const space = spacesRef.current.find((s) => s.id === lease.spaceId)
     const alreadyOccupied = space?.status === 'occupied'
     // Flip every line item's space (multi-office contracts), not just the primary.
-    const desired = desiredSpaceStatus(lease, invoicesRef.current)
+    const desired = desiredSpaceStatus(lease, invoicesRef.current, new Date(), leasesRef.current)
     leaseSpaceIds(lease).forEach((sid) => {
       const sp = spacesRef.current.find((s) => s.id === sid)
       if (!sp) return
@@ -1598,7 +1599,11 @@ export function useStore() {
     })
     // If the space was already occupied, this tenant is already moved in — stamp
     // onboardedAt to suppress a retroactive welcome rather than re-sending it.
-    if (alreadyOccupied) { updateLease(leaseId, { onboardedAt: lease.activatedAt ?? new Date().toISOString() }); return }
+    // Same for an existing tenant's add-on, and for a parking-only contract (no
+    // welcome for a car bay).
+    if (alreadyOccupied || isExistingTenant(lease, leasesRef.current) || isParkingOnlyLease(lease, spacesRef.current)) {
+      updateLease(leaseId, { onboardedAt: lease.activatedAt ?? new Date().toISOString() }); return
+    }
     onboardLease({ lease, tenant, space, members: membersRef.current, settings: settingsRef.current, templates: templatesRef.current, updateLease, updateMember })
   }, [updateSpace, updateLease, updateMember])
 

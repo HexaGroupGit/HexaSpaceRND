@@ -30,7 +30,7 @@ import { buildDirectoryBoard } from '../src/lib/directoryAuto.js'
 import { sendResendEmail, billingEmailFor } from './_email.js'
 import { brandFrame, bKicker, bH1, bH2, bP, bSmall, bPanel, bBtn, SANS, INK, MUTE } from './_brand.js'
 import {
-  requiresAccessGate, accessGateMet, shouldOnboard, welcomeIsStale, WELCOME_STALE_DAYS, welcomeAlreadySent, requiresCardOnFile,
+  requiresAccessGate, accessGateMet, shouldOnboard, isParkingOnlyLease, welcomeIsStale, WELCOME_STALE_DAYS, welcomeAlreadySent, requiresCardOnFile,
   renderOnboardingTemplate, resolveOnboardingCopy, onboardingEmailHtml,
 } from '../src/lib/onboarding.js'
 import { invitePortalUser } from './_invite.js'
@@ -180,7 +180,7 @@ export default async function handler(req, res) {
     const flippedLeaseIds = new Set()
     for (const lease of leases) {
       if (lease.status !== 'active') continue
-      if (!requiresAccessGate(lease) || !accessGateMet(lease, invoices, tenants.find((t) => t.id === lease.tenantId))) continue
+      if (!requiresAccessGate(lease) || !accessGateMet(lease, invoices, tenants.find((t) => t.id === lease.tenantId), today, leases)) continue
       if (lease.startDate && lease.startDate > todayISO) continue
       const space = spaces.find((s) => s.id === lease.spaceId)
       if (!space || space.status !== 'reserved') continue
@@ -196,7 +196,7 @@ export default async function handler(req, res) {
     // ── 2. Onboarding catch-up (gate met, never onboarded) ──────────────────
     for (const lease of leases) {
       const tenant = tenants.find((t) => t.id === lease.tenantId)
-      if (!shouldOnboard(lease, invoices, tenant)) continue
+      if (!shouldOnboard(lease, invoices, tenant, leases)) continue
       const space = spaces.find((s) => s.id === lease.spaceId)
       const label = `${tenant?.businessName ?? lease.tenantId} (${lease.contractNumber ?? lease.id})`
       try {
@@ -215,7 +215,8 @@ export default async function handler(req, res) {
         const alreadyATenant = leases.some((l) =>
           l.id !== lease.id && l.tenantId === lease.tenantId && l.onboardedAt)
         const sameOccupant = !space?.occupantTenantId || space.occupantTenantId === lease.tenantId
-        if (alreadyATenant
+        // A car bay alone gets no welcome — that email is an office member's.
+        if (alreadyATenant || isParkingOnlyLease(lease, spaces)
           || (space?.status === 'occupied' && !flippedLeaseIds.has(lease.id) && sameOccupant)) {
           const stamp = { onboardedAt: lease.activatedAt ?? new Date().toISOString() }
           await saveRow('leases', lease.id, { ...lease, ...stamp })

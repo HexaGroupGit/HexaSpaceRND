@@ -16,7 +16,7 @@ import { resolvePrimaryContact } from '../lib/leaseContact.js'
 import { sendLeaseForSigning } from '../lib/esign.js'
 import {
   requiresCardOnFile, portalWelcomeInvitePayload, gettingStartedEmailHtml,
-  openingInvoiceMismatch, openingInvoiceRepairable,
+  openingInvoiceMismatch, openingInvoiceRepairable, isParkingOnlyLease,
 } from '../lib/onboarding.js'
 import { fillTermsVars } from '../lib/termsVars.js'
 
@@ -173,9 +173,10 @@ export default function ContractDetail({
         }).eq('token', tokenMatch[1])
         if (error) throw error
       }
-      // Both parties have now signed → activate the contract. The space is only
-      // taken up (reserved → occupied) once the deposit + first invoice are paid
-      // and the commencement date is reached (handled by the store reconcile).
+      // Both parties have now signed → activate the contract. A new tenant's
+      // space is only taken up (reserved → occupied) once the deposit + first
+      // invoice are paid; an existing tenant's add-on goes live on signature.
+      // Either way it waits for the commencement date (store reconcile).
       if (onUpdateLease) onUpdateLease(lease.id, { signatureStatus: 'e_signed', signedAt: now, signerName: lease.tenantSignerName ?? tenant?.contactName, status: 'active', activatedAt: now })
       setESignData((prev) => ({ ...prev, status: 'fully_signed', licensor_signature_data: signatureData, licensor_signer_name: licensorName, licensor_signed_at: now }))
       setShowCountersignModal(false)
@@ -211,6 +212,9 @@ export default function ContractDetail({
   // from the top bar. The directory link is token-gated per lease.
   async function sendGettingStarted({ force = false } = {}) {
     if (lease.gettingStartedSentAt && !force) return
+    // Address, Wi-Fi and directory listing are an office member's — a car bay
+    // alone doesn't get it automatically (the Resend button still can).
+    if (!force && isParkingOnlyLease(lease, spaces)) return
     const email = primaryContact?.email || tenant?.email
     if (!email) return
     let welcomeToken = lease.welcomeToken
