@@ -5,6 +5,7 @@ import { discountedPrice, discountPct } from '../lib/leasePricing.js'
 import { holdsSpace } from '../lib/spaceHold.js'
 import { SPACE_TABS, floorLabel } from './spaces/shared.jsx'
 import { PARKING_INCLUDED_LABEL } from '../lib/parkingBays.js'
+import { NON_POSITION_DESK_IDS } from '../lib/deskBays.js'
 
 const FORM_SECTIONS = [
   { id: 'company', label: 'Company Information' },
@@ -15,9 +16,11 @@ const FORM_SECTIONS = [
 ]
 
 const CONTRACT_TYPES = ['New', 'Renewal', 'Transfer', 'Amendment', 'Month-to-month']
+const DEDICATED_DESK_DOC = 'Dedicated Desk Membership Agreement'
 const DOCUMENT_TYPES = [
   'License Agreement',
   'Virtual Office Membership Agreement',
+  DEDICATED_DESK_DOC,
   'Membership Agreement Month-to-month',
   'Service Agreement',
 ]
@@ -27,6 +30,7 @@ const DOCUMENT_TYPES = [
 const DOC_TYPE_SPACES = {
   'License Agreement': ['office', 'parking'], // private offices
   'Virtual Office Membership Agreement': ['virtual', 'parking'],
+  [DEDICATED_DESK_DOC]: ['desk', 'parking'], // a numbered desk — never the Flexible Access product
   'Membership Agreement Month-to-month': ['desk', 'parking'], // flexible or dedicated desk
 }
 
@@ -419,6 +423,9 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
       contractNumber: form.contractNumber,
       contractType: form.contractType,
       documentType: form.documentType,
+      // Classifies the contract for Memberships, credits and the card rule
+      // without relying on the desk's name.
+      ...(form.documentType === DEDICATED_DESK_DOC ? { membershipType: 'Dedicated Desk', planName: 'Dedicated Desk' } : {}),
       // Explicit card decision: default follows the document type (VO/desk
       // require it) but stores whatever the tick-box shows so the agreement,
       // signing page and onboarding gate all agree.
@@ -697,6 +704,13 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                               if (s.type === 'virtual') {
                                 if (s.assignedCompanyId || s.occupantTenantId) return false
                                 return !leases.some((l) => l.spaceId === s.id && holdsSpace(l))
+                              }
+                              // Desks: free and not on a live contract. A dedicated
+                              // desk agreement offers only numbered desks — Flexible
+                              // Access is a membership product with no seat.
+                              if (s.type === 'desk') {
+                                if (form.documentType === DEDICATED_DESK_DOC && NON_POSITION_DESK_IDS.includes(s.id)) return false
+                                if (leases.some((l) => [l.spaceId, ...(l.items ?? []).map((i) => i.spaceId)].includes(s.id) && holdsSpace(l))) return false
                               }
                               return s.status === 'vacant'
                             }))}

@@ -68,7 +68,9 @@ export default function AssignableResourceTab({ ctx, config }) {
     [isVirtual, items, leases, tenants, members, spaces], // eslint-disable-line react-hooks/exhaustive-deps
   )
   const holdingOf = (s) => holdings.get(s?.id) ?? null
-  const contractOf = (s) => (isVirtual ? holdingOf(s)?.lease ?? null : isParking ? contractFor(s, leases) : null)
+  // Desks too: a desk sold on a membership with no member picked is still that
+  // company's — it used to read "Unassigned · Occupied" (Flexible Access, CON-66).
+  const contractOf = (s) => (isVirtual ? holdingOf(s)?.lease ?? null : (isParking || type === 'desk') ? contractFor(s, leases) : null)
   const assigned = items.filter((s) => s.assignedMemberId || contractOf(s)).length
   const memberOpts = memberOptions(members, tenants)
   const editHolding = editId ? holdingOf({ id: editId }) : null

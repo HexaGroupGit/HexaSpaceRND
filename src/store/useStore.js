@@ -1184,6 +1184,16 @@ export function useStore() {
         }
         return
       }
+      // A desk or office marked taken that no contract names and nobody is
+      // tagged to is a leftover — the contract that held it moved elsewhere
+      // before releaseDroppedSpaces existed (Desk 1 → Desk 5, Sep 2026).
+      // Scoped to desks/offices: car bays are legitimately let by hand.
+      if (['desk', 'office'].includes(s.type) && s.status !== 'vacant' &&
+        !s.occupantTenantId && !s.occupantName && !s.assignedMemberId && !s.assignedCompanyId &&
+        !spaceLeases.some((l) => holdsSpace(l))) {
+        updateSpace(s.id, { status: 'vacant' })
+        return
+      }
       // No active lease: heal an orphaned occupant left behind by an ended contract.
       if (!s.occupantTenantId && !s.occupantName) return
       const hasLive = spaceLeases.some((l) => holdsSpace(l))
@@ -1558,11 +1568,25 @@ export function useStore() {
   const updateLease = useCallback((id, updates) => {
     let endedLeaseId = null
     let signedLeaseId = null
+    let droppedSpaceIds = []
     const SIGNED = ['manually_signed', 'e_signed']
     setLeases((prev) => {
       const old = prev.find((l) => l.id === id)
-      const next = prev.map((l) => (l.id === id ? { ...l, ...updates } : l))
+      // Moving a contract to another space (Desk 1 → Desk 5) keeps its
+      // "resource" label in step, unless this same edit sets one — otherwise the
+      // contract goes on naming the old desk (Lydian GBS, Sep 2026).
+      const patch = { ...updates }
+      if (old && updates.spaceId && updates.spaceId !== old.spaceId && !('resource' in updates)) {
+        const was = spacesRef.current.find((s) => s.id === old.spaceId)
+        const now = spacesRef.current.find((s) => s.id === updates.spaceId)
+        if (now?.unitNumber && (!old.resource || old.resource === was?.unitNumber)) patch.resource = now.unitNumber
+      }
+      const next = prev.map((l) => (l.id === id ? { ...l, ...patch } : l))
       const updated = next.find((l) => l.id === id)
+      if (old && updated) {
+        const kept = new Set(leaseSpaceIds(updated))
+        droppedSpaceIds = leaseSpaceIds(old).filter((sid) => !kept.has(sid))
+      }
       if (updated) { syncRow('leases', id, updated); logAudit('update', 'lease', id, updated.contractNumber ?? id, Object.keys(updates).join(', ')) }
       // Detect an end-of-lease transition; the heavy lifting runs in offboardLease.
       if (updated && ['expired', 'terminated'].includes(updates.status) && !updated.offboardedAt) endedLeaseId = id
@@ -1573,7 +1597,29 @@ export function useStore() {
     // Run side-effects after state settles so the data refs are fresh.
     if (endedLeaseId) setTimeout(() => offboardLeaseRef.current?.(endedLeaseId), 0)
     if (signedLeaseId) setTimeout(() => raiseSigningInvoicesRef.current?.(signedLeaseId), 0)
+    if (droppedSpaceIds.length) setTimeout(() => releaseDroppedSpaces(id, droppedSpaceIds), 0)
   }, [])
+
+  // A space taken OFF a contract (moved to another desk, item removed) is free
+  // again — unless another live contract holds it, or it is tagged to someone
+  // else. Nothing else frees it: the load-time sweep only claims spaces that a
+  // contract names, so a dropped desk stayed "occupied" by nobody (Desk 1).
+  // Virtual suites are left alone: their number is never reissued and has its
+  // own release rules (virtualSuites.js).
+  function releaseDroppedSpaces(leaseId, spaceIds) {
+    const lease = leasesRef.current.find((l) => l.id === leaseId)
+    if (!lease) return
+    const mine = (v) => !v || v === lease.tenantId
+    spaceIds.forEach((sid) => {
+      const sp = spacesRef.current.find((s) => s.id === sid)
+      if (!sp || sp.type === 'virtual' || sp.status === 'vacant') return
+      if (leasesRef.current.some((l) => l.id !== leaseId && leaseSpaceIds(l).includes(sid) && holdsSpace(l))) return
+      if (!mine(sp.occupantTenantId) || !mine(sp.assignedCompanyId)) return
+      if (sp.assignedMemberId && sp.assignedMemberId !== lease.memberId &&
+        membersRef.current.find((m) => m.id === sp.assignedMemberId)?.companyId !== lease.tenantId) return
+      updateSpace(sid, { status: 'vacant', occupantTenantId: null, occupantName: '', assignedMemberId: null, assignedCompanyId: null })
+    })
+  }
 
   // Payment-time (and reconcile) entry point: if a lease has just cleared the
   // access gate, flip its space to the schedule-correct status and run onboarding.
