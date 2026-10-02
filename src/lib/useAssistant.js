@@ -36,6 +36,49 @@ function saveThread(email, thread) {
   try { localStorage.setItem(threadKey(email), JSON.stringify(thread.slice(-THREAD_CAP))) } catch { /* private mode */ }
 }
 
+// Images ride on the next message only. Every one is redrawn in the browser —
+// long edge capped at 1568px (the most the model uses anyway) and re-encoded as
+// JPEG — so a 12 MB phone photo goes up as a few hundred KB and four of them
+// stay well under Vercel's ~4.5 MB request limit. The thread keeps a small
+// thumbnail, never the full image: localStorage holds ~5 MB for everything.
+export const MAX_IMAGES = 4
+const MAX_EDGE = 1568
+const THUMB_EDGE = 240
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img) }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(`Couldn't read ${file.name || 'that image'}.`)) }
+    img.src = url
+  })
+}
+
+function drawJpeg(img, maxEdge, quality) {
+  const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#fff' // a transparent PNG would otherwise go black as JPEG
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/jpeg', quality)
+}
+
+async function prepareImage(file) {
+  if (!/^image\//.test(file?.type ?? '')) throw new Error(`${file?.name || 'That file'} isn't an image.`)
+  const img = await loadImage(file)
+  const dataUrl = drawJpeg(img, MAX_EDGE, 0.85)
+  return {
+    name: file.name || 'image',
+    mediaType: 'image/jpeg',
+    data: dataUrl.slice(dataUrl.indexOf(',') + 1),
+    thumb: drawJpeg(img, THUMB_EDGE, 0.7),
+  }
+}
+
 export const QUICK_PROMPTS = [
   'What should I do today?',
   'Anything overdue I should chase?',
@@ -49,6 +92,25 @@ export function useAssistantChat(store) {
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  const [images, setImages] = useState([])
+
+  // Accepts a FileList / File[] from the picker, a drop or a paste.
+  const addImages = useCallback(async (files) => {
+    const list = [...(files ?? [])].filter((f) => /^image\//.test(f?.type ?? ''))
+    if (!list.length) return
+    setError('')
+    const room = MAX_IMAGES - images.length
+    if (room <= 0) { setError(`Up to ${MAX_IMAGES} images per message.`); return }
+    try {
+      const ready = await Promise.all(list.slice(0, room).map(prepareImage))
+      setImages((prev) => [...prev, ...ready].slice(0, MAX_IMAGES))
+      if (list.length > room) setError(`Only the first ${MAX_IMAGES} images were added.`)
+    } catch (e) {
+      setError(e.message)
+    }
+  }, [images.length])
+
+  const removeImage = useCallback((i) => setImages((prev) => prev.filter((_, j) => j !== i)), [])
 
   // The signed-in email arrives a beat after mount, so the thread can only be
   // read once it's known — until then we hold an empty thread rather than show
@@ -82,21 +144,35 @@ export function useAssistantChat(store) {
 
   const send = useCallback(async (text) => {
     const content = String(text ?? '').trim()
-    if (!content || sending) return
+    const attached = images
+    if ((!content && !attached.length) || sending) return
     setError('')
     setDraft('')
+    setImages([])
 
     // The history the server sees is what was on screen BEFORE this message —
-    // the new turn is sent separately so it can't be double-counted.
-    const history = thread.map(({ role, content: c }) => ({ role, content: c }))
-    push({ role: 'user', content, at: new Date().toISOString() })
+    // the new turn is sent separately so it can't be double-counted. Earlier
+    // images are not re-sent; the turn just notes that they were there.
+    const history = thread.map(({ role, content: c, imageCount }) => ({
+      role,
+      content: [c, imageCount && `[${imageCount} image${imageCount === 1 ? '' : 's'} attached]`].filter(Boolean).join('\n'),
+    }))
+    push({
+      role: 'user', content, at: new Date().toISOString(),
+      ...(attached.length ? { imageCount: attached.length, thumbs: attached.map((im) => im.thumb) } : {}),
+    })
     setSending(true)
 
     try {
       const r = await fetch('/api/assistant-chat', {
         method: 'POST',
         headers: await authHeaders(),
-        body: JSON.stringify({ message: content, messages: history, briefing: buildBriefing(store, melbourneToday()) }),
+        body: JSON.stringify({
+          message: content,
+          images: attached.map(({ mediaType, data }) => ({ mediaType, data })),
+          messages: history,
+          briefing: buildBriefing(store, melbourneToday()),
+        }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d.error ?? 'The assistant could not answer.')
@@ -126,12 +202,12 @@ export function useAssistantChat(store) {
     } finally {
       setSending(false)
     }
-  }, [thread, sending, store, tasks, addTasks, updateTask, currentUserEmail, push])
+  }, [thread, images, sending, store, tasks, addTasks, updateTask, currentUserEmail, push])
 
   const clearThread = useCallback(() => {
     setThread([])
     broadcast([], null)
   }, [])
 
-  return { thread, draft, setDraft, send, sending, error, clearThread }
+  return { thread, draft, setDraft, send, sending, error, clearThread, images, addImages, removeImage }
 }
