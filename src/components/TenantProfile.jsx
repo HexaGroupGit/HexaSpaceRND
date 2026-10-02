@@ -28,6 +28,12 @@ const INV_STATUS = {
   voided:  { label: 'Voided',  cls: 'bg-gray-100 text-gray-500' },
 }
 
+// Plan label for a contract that carries no membershipType/planName, by the
+// type of space it holds.
+const SPACE_PLAN = {
+  parking: 'Parking', virtual: 'Virtual Office', desk: 'Dedicated Desk', office: 'Private Office',
+}
+
 function Badge({ label, cls }) {
   return <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded ${cls}`}>{label}</span>
 }
@@ -555,7 +561,9 @@ export default function TenantProfile({ tenant, leases, invoices, spaces, settin
                   <tbody>
                     {tenantLeases.map((l) => {
                       const space = spaces.find((s) => s.id === l.spaceId)
-                      const plan = l.membershipType || l.planName || 'Private Office'
+                      // No plan recorded (e.g. a CON-xxxx-Park contract) → name it
+                      // after the space it holds; a parking bay is not an office.
+                      const plan = l.membershipType || l.planName || SPACE_PLAN[space?.type] || 'Private Office'
                       const fromContract = l.contractNumber && !/^membership$/i.test(l.source || '')
                       return (
                         <tr key={l.id} className="border-b border-border last:border-0 hover:bg-muted/50 cursor-pointer" onClick={() => onSelectContract?.(l)}>
