@@ -1,11 +1,12 @@
 import SearchSelect from '../components/SearchSelect.jsx'
 import { useState } from 'react'
-import { X, Repeat, Check, User } from 'lucide-react'
+import { X, Repeat, Check, User, Info, Users } from 'lucide-react'
 import { format, addDays, addMonths } from 'date-fns'
 import { supabase } from '../lib/supabase.js'
 import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig, hasActiveMembership, spendablePoolFor, bookingMonthKey, creditPoolPatch, round2 } from '../lib/credits.js'
-import { bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../lib/dropIn.js'
+import { bookingRate, bookingWasUsed, creditsForBooking } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
+import { combinePartner, combinedLabel, combinedGroup, newCombinedGroupId, bookingCreditsNeed, payableForShortfall, feeRoomName, COMBINED_SETUP_FEE, COMBINED_SETUP_CREDITS, COMBINED_MAX_PAX, COMBINED_EXPLAINER } from '../lib/combinedRooms.js'
 import { isRequestGated, studioRequestState } from '../lib/studio.js'
 import StudioRequestModal from './StudioRequestModal.jsx'
 import { Card, DateDropdown } from './ui.jsx'
@@ -156,9 +157,10 @@ export default function PortalCalendar({ resources, allBookings, member, company
                       : mine ? 'bg-hexa-green text-paper'
                       : team ? 'bg-hexa-green/20 text-ink ring-1 ring-inset ring-hexa-green/50'
                       : 'bg-charcoal text-paper/90'
+                    const fn = b.combinedRooms ? `Function · ${b.combinedRooms}` : null
                     const label = awaiting && (mine || team) ? 'Awaiting confirmation'
-                      : mine ? (b.title || 'Your booking')
-                      : team ? (b.title || 'Team booking')
+                      : mine ? (b.title || fn || 'Your booking')
+                      : team ? (b.title || fn || 'Team booking')
                       : 'Booked'
                     // Own bookings are editable — click to amend times or cancel.
                     if (mine) {
@@ -203,8 +205,9 @@ export default function PortalCalendar({ resources, allBookings, member, company
           booking={amend} resources={resources} bookings={bookings} company={company} poolFor={poolFor}
           leases={leases} settings={settings} allSpaces={allSpaces ?? resources}
           onClose={() => setAmend(null)}
-          onSaved={(updated, poolUpdates) => {
-            setBookings((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+          onSaved={(updated, poolUpdates, alsoUpdated = []) => {
+            const byId = new Map([updated, ...alsoUpdated].map((x) => [x.id, x]))
+            setBookings((prev) => prev.map((x) => byId.get(x.id) ?? x))
             if (poolUpdates) setPools((prev) => ({ ...prev, ...poolUpdates }))
             setAmend(null)
           }}
@@ -269,28 +272,37 @@ async function notifyOps(bookingId, kind, occurrences = 1) {
 }
 
 function BookingModal({ slot, resources, bookings, member, company, poolFor, leases, settings, allSpaces, onClose, onBooked }) {
-  const [f, setF] = useState({ resourceId: slot.resourceId, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, title: '', repeat: 'none', occurrences: 4, attendees: '' })
+  const [f, setF] = useState({ resourceId: slot.resourceId, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, title: '', repeat: 'none', occurrences: 4, attendees: '', asFunction: false })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
 
   const room = resources.find((r) => r.id === f.resourceId)
-  const rate = bookingRate(room, company?.id, leases) // members 30% off, drop-ins list rate
+  const spaceById = (id) => (allSpaces ?? resources).find((s) => s.id === id)
+  // "Use as function": North + South booked together as one room for up to 30
+  // people — both rooms' hire plus a flat set-up, all payable from credits
+  // (see combinedRooms.js).
+  const partner = combinePartner(room, allSpaces ?? resources)
+  const combined = f.asFunction && !!partner
+  const booked = combined ? [room, partner] : [room]
   const hrs = Math.max(0, toDec(f.endTime) - toDec(f.startTime))
   // Office perk: private-office (suite) companies get Sky/Earth/Sun/Moon free,
   // capped per booking + per company per day. When it applies, no credits/fee.
+  // A combined function booking is always charged — the perk covers one room.
   const perk = companyPerk(company?.id, leases, allSpaces ?? resources, settings)
-  const isPerk = isPerkRoom(room, perk)
+  const isPerk = !combined && isPerkRoom(room, perk)
   const canAfterHours = companyCanAfterHours(company?.id, leases, allSpaces ?? resources, settings)
   const win = resourceBookingWindow(room, canAfterHours, settings)
   const perkHoursToday = isPerk ? perkHoursUsed({ companyId: company?.id, date: f.date, bookings, perk, spaces: allSpaces ?? resources }) : 0
   const perkLeftToday = isPerk ? Math.max(0, perk.maxHoursPerDay - perkHoursToday) : 0
-  const perCost = isPerk ? 0 : hrs * rate
+  const setupCost = combined ? COMBINED_SETUP_FEE : 0
+  const perCost = isPerk ? 0 : booked.reduce((sum, r) => sum + hrs * bookingRate(r, company?.id, leases), 0) + setupCost
   const count = f.repeat === 'none' ? 1 : Math.max(1, Math.min(12, Number(f.occurrences) || 1))
   const totalCost = perCost * count
   // Credits burn at the LIST rate, so this is not totalCost/CREDIT_VALUE once
   // the member discount is live — the discount is off the cash, not the pool.
-  const totalCredits = isPerk ? 0 : Math.round(creditsForBooking(room, hrs) * count * 100) / 100
+  const perCredits = booked.reduce((sum, r) => sum + creditsForBooking(r, hrs), 0) + (combined ? COMBINED_SETUP_CREDITS : 0)
+  const totalCredits = isPerk ? 0 : Math.round(perCredits * count * 100) / 100
   // Balance is the COMPANY's pool for the month being booked into — nil for a
   // drop-in. A repeat series can cross a month boundary; this quotes the first
   // occurrence's month, which is the slot the member is looking at.
@@ -327,7 +339,8 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
       return setError(`${room?.unitNumber || 'This room'} is included with your membership — up to ${perk.maxHoursPerBooking}h per booking. Please shorten or split it.`)
     }
     const dates = occurrenceDates()
-    const blockIds = [...new Set(blockingResourceIds(f.resourceId, allSpaces ?? resources))]
+    // A combined booking needs BOTH rooms free — a hold on either skips the date.
+    const blockIds = [...new Set(booked.flatMap((r) => blockingResourceIds(r.id, allSpaces ?? resources)))]
 
     // Re-check availability against the SERVER right before writing, rather than
     // trusting the snapshot this page loaded with. That snapshot is taken once at
@@ -357,16 +370,21 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
         if (used + hrs > perk.maxHoursPerDay) { dayCapped.push(date); continue }
         perkAddedByDate[date] = (perkAddedByDate[date] || 0) + hrs
       }
-      created.push({
+      const reference = `BKG-${Math.floor(100000 + Math.random() * 900000)}`
+      const group = combined ? { combinedGroupId: newCombinedGroupId(), combinedRooms: combinedLabel(room, partner), useAsFunction: true } : {}
+      booked.forEach((r, i) => created.push({
         id: `bk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        reference: `BKG-${Math.floor(100000 + Math.random() * 900000)}`,
-        resourceId: f.resourceId, memberId: member?.id ?? '', companyId: company?.id ?? '',
+        reference,
+        resourceId: r.id, memberId: member?.id ?? '', companyId: company?.id ?? '',
         date, startTime: f.startTime, endTime: f.endTime, title: f.title,
         memberName: member?.name || company?.contactName || '', companyName: company?.businessName || '',
-        attendees: parseEmails(f.attendees),
+        // Invitations go out once, from the first room's row.
+        attendees: i === 0 ? parseEmails(f.attendees) : [],
         status: 'Confirmed', source: 'Portal', repeat: f.repeat, createdBy: 'Member',
         createdAt: new Date().toISOString().split('T')[0],
-      })
+        // The first row of a combined booking carries the set-up charge.
+        ...group, ...(combined && i === 0 ? { setupCredits: COMBINED_SETUP_CREDITS } : {}),
+      }))
     }
     if (created.length === 0) {
       if (dayCapped.length && !skipped.length) {
@@ -384,8 +402,8 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
     if (isPerk) {
       created.forEach((b) => { b.creditsUsed = 0; b.paidBy = 'included' })
     } else {
-      const perCredits = creditsForBooking(room, hrs)
       created.forEach((b) => {
+        const perCredits = bookingCreditsNeed(b, spaceById(b.resourceId), hrs)
         const mk = bookingMonthKey(b.date)
         const bal = nextPools[mk] != null ? nextPools[mk] : poolFor(mk)
         const used = Math.max(0, Math.min(bal, perCredits))
@@ -409,9 +427,9 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
     // the other, and a single lumped fee could only ever name one date.
     const feeWrites = []
     if (!isPerk && company?.id) {
-      const feeRoom = resources.find((r) => r.id === f.resourceId)
       const today = new Date().toISOString().split('T')[0]
       created.forEach((b, i) => {
+        const feeRoom = spaceById(b.resourceId)
         const short = shortfallByBooking.get(b.id)
         if (!short) return
         const feeId = `f_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`
@@ -421,7 +439,7 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
           data: {
             id: feeId,
             name: bookingFeeName({
-              roomName: feeRoom?.unitNumber, rate: bookingRate(feeRoom, company?.id, leases),
+              roomName: feeRoomName(b, feeRoom), rate: bookingRate(feeRoom, company?.id, leases),
               date: b.date, startTime: b.startTime, endTime: b.endTime,
               usedCredits: b.creditsUsed || 0,
             }),
@@ -431,8 +449,8 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
             // room was used in, so it lands on that month's bill rather than
             // whichever one happens to be raised next.
             date: b.date,
-            price: payableForCredits(short, feeRoom, company?.id, leases),
-            status: 'Not Paid', notes: `Portal booking · ${short} credits over allowance`,
+            price: payableForShortfall(short, b, feeRoom, company?.id, leases),
+            status: 'Not Paid', notes: `Portal booking · ${short} credits over allowance${b.setupCredits ? ` · incl. ${b.setupCredits} cr function set-up` : ''}`,
             createdAt: today,
           },
           updated_at: nowIso,
@@ -458,8 +476,9 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
     if (dbErr) return setError(dbErr.message)
     if (skipped.length) setError('')
     // Email the invited attendees (covers the whole series in one invite).
-    if (created[0]?.attendees?.length) notifyAttendees(created[0].id, 'invite', created.length)
-    if (created[0]) notifyOps(created[0].id, 'new', created.length)
+    const sessions = created.length / booked.length
+    if (created[0]?.attendees?.length) notifyAttendees(created[0].id, 'invite', sessions)
+    if (created[0]) notifyOps(created[0].id, 'new', sessions)
     queueRoomAccess()
     onBooked(created, nextPools)
   }
@@ -469,8 +488,8 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
       <div className="bg-paper w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-ink/10">
           <div>
-            <p className="hx-eyebrow">Request a booking</p>
-            <h2 className="font-display font-extralight text-2xl mt-1">{room?.unitNumber}</h2>
+            <p className="hx-eyebrow">{combined ? 'Request a function booking' : 'Request a booking'}</p>
+            <h2 className="font-display font-extralight text-2xl mt-1">{combined ? combinedLabel(room, partner) : room?.unitNumber}</h2>
           </div>
           <button onClick={onClose} className="text-portal-muted hover:text-ink"><X size={18} /></button>
         </div>
@@ -481,6 +500,22 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
               {resources.map((r) => { const rr = bookingRate(r, company?.id, leases); return <option key={r.id} value={r.id}>{r.unitNumber}{rr ? ` — A$${rr}/hr` : ''}</option> })}
             </SearchSelect>
           </div>
+          {/* North + South open into one room — offered on either of the pair. */}
+          {partner && (
+            <label className={`flex items-start gap-3 border p-4 cursor-pointer transition-colors ${combined ? 'border-hexa-green bg-hexa-green/5' : 'border-ink/10 hover:bg-bone'}`}>
+              <input type="checkbox" checked={f.asFunction} onChange={(e) => setF((p) => ({ ...p, asFunction: e.target.checked }))} className="mt-0.5" />
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5">
+                  <Users size={14} className="text-hexa-green shrink-0" />
+                  <span className="font-heading uppercase tracking-nav text-[11px]">Use as function space</span>
+                  <span title={COMBINED_EXPLAINER} aria-label={COMBINED_EXPLAINER} className="text-portal-muted hover:text-ink cursor-help"><Info size={13} /></span>
+                </span>
+                <span className="hx-prose text-[12px] block mt-1">
+                  Opens {combinedLabel(room, partner)} into one room for up to {COMBINED_MAX_PAX} people. Both rooms’ hire + A${COMBINED_SETUP_FEE} set-up ({COMBINED_SETUP_CREDITS} cr){count > 1 ? ' per booking' : ''} — payable from your credits.
+                </span>
+              </span>
+            </label>
+          )}
           <div>
             <label className="hx-eyebrow block mb-1.5">Title (optional)</label>
             <input value={f.title} onChange={up('title')} className="hx-input" placeholder="e.g. Client meeting" />
@@ -542,7 +577,7 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
             </div>
           ) : (
             <div className="bg-bone border border-ink/10 p-4 text-[13px] space-y-1.5">
-              <div className="flex justify-between"><span className="hx-prose text-[13px]">{count > 1 ? `${count} bookings × ${hrs}h` : `${hrs} hour${hrs !== 1 ? 's' : ''}`}</span>
+              <div className="flex justify-between"><span className="hx-prose text-[13px]">{count > 1 ? `${count} bookings × ${hrs}h` : `${hrs} hour${hrs !== 1 ? 's' : ''}`}{combined ? ` × 2 rooms + A$${COMBINED_SETUP_FEE} set-up` : ''}</span>
                 <span className="font-heading uppercase tracking-nav text-[11px]">{totalCost ? `A$${totalCost.toLocaleString('en-AU')} · ${totalCredits} cr` : 'Free'}</span></div>
               {company && totalCost > 0 && (
                 <div className="flex justify-between"><span className="hx-prose text-[13px]">Allowance remaining</span>
@@ -582,14 +617,19 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
   const canAfterHours = companyCanAfterHours(company?.id, leases, allSpaces ?? resources, settings)
   const win = resourceBookingWindow(room, canAfterHours, settings)
 
+  // A combined (use-as-function) booking is two rows, North + South.
+  const group = combinedGroup(b, bookings).filter((x) => x.status !== 'Cancelled')
+  const siblings = group.filter((x) => x.id !== b.id)
+
   const oldHrs = Math.max(0, toDec(b.endTime) - toDec(b.startTime))
-  // Credits are counted at the list rate for everyone — see creditRate.
-  const oldNeed = creditsForBooking(room, oldHrs)
+  // Credits are counted at the list rate for everyone — see creditRate. The
+  // row carrying a function set-up needs those credits too.
+  const oldNeed = bookingCreditsNeed(b, room, oldHrs)
   const oldUsed = Number(b.creditsUsed || 0)
   const oldShort = Math.max(0, round2c(oldNeed - oldUsed))
 
   const newHrs = Math.max(0, toDec(f.endTime) - toDec(f.startTime))
-  const newNeed = creditsForBooking(room, newHrs)
+  const newNeed = bookingCreditsNeed(b, room, newHrs)
   // Refund the old spend first — but only into a pool the company is actually
   // entitled to; a drop-in's wrongly-granted credits don't come back as a balance,
   // and neither does a booking that's already been used (see saveChanges' guard).
@@ -613,8 +653,10 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
   const nowIso = () => new Date().toISOString()
 
   // poolUpdates: { [monthKey]: remaining } — every pool this change touched.
-  async function persist(updated, poolUpdates, feeWrite) {
-    const writes = [supabase.from('bookings').update({ data: updated, updated_at: nowIso() }).eq('id', b.id)]
+  // alsoUpdated: other rows of a combined booking written alongside it.
+  async function persist(updated, poolUpdates, feeWrite, alsoUpdated = []) {
+    const writes = [updated, ...alsoUpdated].map((row) =>
+      supabase.from('bookings').update({ data: row, updated_at: nowIso() }).eq('id', row.id))
     if (company?.id && poolUpdates && Object.keys(poolUpdates).length) {
       const data = Object.entries(poolUpdates).reduce(
         (co, [mk, left]) => ({ ...co, ...creditPoolPatch(co, mk, left) }), { ...company })
@@ -640,6 +682,11 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
     // existing, tested clean-up path.
     if (isRequestGated(room) && b.status === 'Confirmed') {
       return setError('This studio session is already confirmed. Please cancel it and send a new request, or email us and we’ll move it for you.')
+    }
+    // Both rooms of a function booking move together or not at all — moving one
+    // would leave the other holding the old time. Attendee edits are fine.
+    if (siblings.length && (f.date !== b.date || f.startTime !== b.startTime || f.endTime !== b.endTime)) {
+      return setError(`This is a ${b.combinedRooms || 'combined'} function booking. To change the time, cancel it and book again — or email us and we’ll move it for you.`)
     }
     if (newHrs <= 0) return setError('End time must be after start time.')
     if (toDec(f.startTime) < win.start || toDec(f.endTime) > win.end) {
@@ -692,13 +739,13 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
       const feeId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
       feeWrite = supabase.from('fees').upsert({ id: feeId, data: {
         id: feeId,
-        name: bookingFeeName({ roomName: room?.unitNumber, rate, date: f.date, startTime: f.startTime, endTime: f.endTime, usedCredits: newUsed }),
+        name: bookingFeeName({ roomName: feeRoomName(b, room), rate, date: f.date, startTime: f.startTime, endTime: f.endTime, usedCredits: newUsed }),
         type: 'Booking Fee', memberId: b.memberId ?? null, companyId: company.id,
         bookingId: b.id,
         // The booking's new date, not today's — it belongs to the period the room
         // is actually used in.
         date: f.date,
-        price: payableForCredits(extraFee, room, company?.id, leases), status: 'Not Paid',
+        price: payableForShortfall(extraFee, b, room, company?.id, leases), status: 'Not Paid',
         notes: `Amended portal booking · ${extraFee} extra credits over allowance`,
         createdAt: new Date().toISOString().split('T')[0],
       }, updated_at: nowIso() })
@@ -722,25 +769,31 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
   // otherwise a member can walk in, use the room and cancel on the way out.
   async function cancelBooking() {
     const used = bookingWasUsed(b)
+    // A function booking cancels as a whole: both rooms, and the set-up.
+    const what = siblings.length ? `this ${b.combinedRooms || 'combined'} function booking (both rooms)` : 'this booking'
     const msg = used
-      ? 'This booking has already started (or the room has been opened), so the credits used stay charged. Cancel it anyway to free the room?'
-      : 'Cancel this booking? Credits used will return to your allowance.'
+      ? `This booking has already started (or the room has been opened), so the credits used stay charged. Cancel ${what} anyway to free the room?`
+      : `Cancel ${what}? Credits used will return to your allowance.`
     if (!window.confirm(msg)) return
     setSaving(true)
-    const updated = used
-      ? { ...b, status: 'Cancelled', cancelledAt: nowIso(), chargedAfterEntry: true }
-      : { ...b, status: 'Cancelled', cancelledAt: nowIso(), creditsUsed: 0 }
+    const cancel = (row) => (used
+      ? { ...row, status: 'Cancelled', cancelledAt: nowIso(), chargedAfterEntry: true }
+      : { ...row, status: 'Cancelled', cancelledAt: nowIso(), creditsUsed: 0 })
+    const updated = cancel(b)
+    const alsoUpdated = siblings.map(cancel)
     // The refund goes back to the pool of the month the booking was FOR, which
-    // for a booking made late in the prior month is not the current one.
-    const poolUpdates = (used || !isMember || oldUsed <= 0)
+    // for a booking made late in the prior month is not the current one. Rows of
+    // a combined booking share a date, so they share that month.
+    const refundAll = round2c(group.reduce((sum, row) => sum + Number(row.creditsUsed || 0), 0))
+    const poolUpdates = (used || !isMember || refundAll <= 0)
       ? {}
-      : { [oldMk]: round2c(poolFor(oldMk) + oldUsed) }
-    const err = await persist(updated, poolUpdates, null)
+      : { [oldMk]: round2c(poolFor(oldMk) + refundAll) }
+    const err = await persist(updated, poolUpdates, null, alsoUpdated)
     setSaving(false)
     if (err) return setError(err.message)
     if ((b.attendees ?? []).length) notifyAttendees(b.id, 'cancelled')
     notifyOps(b.id, 'cancelled')
-    onSaved(updated, poolUpdates)
+    onSaved(updated, poolUpdates, alsoUpdated)
   }
 
   return (
@@ -749,7 +802,7 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
         <div className="flex items-center justify-between px-6 py-4 border-b border-ink/10">
           <div>
             <p className="hx-eyebrow">Your booking</p>
-            <h2 className="font-display font-extralight text-2xl mt-1">{room?.unitNumber}{b.title ? ` · ${b.title}` : ''}</h2>
+            <h2 className="font-display font-extralight text-2xl mt-1">{b.combinedRooms && siblings.length ? `${b.combinedRooms} function` : room?.unitNumber}{b.title ? ` · ${b.title}` : ''}</h2>
           </div>
           <button onClick={onClose} className="text-portal-muted hover:text-ink"><X size={18} /></button>
         </div>
@@ -774,7 +827,7 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
             </div>
           ) : (
             <div className="bg-bone border border-ink/10 p-4 text-[13px] space-y-1.5">
-              <div className="flex justify-between"><span className="hx-prose text-[13px]">{newHrs} hour{newHrs !== 1 ? 's' : ''} × A${rate}/hr</span>
+              <div className="flex justify-between"><span className="hx-prose text-[13px]">{newHrs} hour{newHrs !== 1 ? 's' : ''} × A${rate}/hr{b.setupCredits ? ` + A$${COMBINED_SETUP_FEE} set-up` : ''}</span>
                 <span className="font-heading uppercase tracking-nav text-[11px]">{newNeed ? `${newNeed} cr` : 'Free'}</span></div>
               <div className="flex justify-between"><span className="hx-prose text-[13px]">Allowance after change</span>
                 <span className="font-heading uppercase tracking-nav text-[11px] text-hexa-green">{newPool} cr</span></div>

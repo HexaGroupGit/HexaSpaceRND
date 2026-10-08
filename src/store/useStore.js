@@ -1275,7 +1275,9 @@ export function useStore() {
 
   // ── Fees ──────────────────────────────────────────────────────────────────
   const addFee = useCallback((fee) => {
-    const item = { ...fee, id: `f${Date.now()}`, createdAt: new Date().toISOString().split('T')[0] }
+    // Random suffix: a combined (North + South) booking raises up to three fees
+    // in one tick, and identical Date.now() ids would collapse into one row.
+    const item = { ...fee, id: `f${Date.now()}${Math.random().toString(36).slice(2, 6)}`, createdAt: new Date().toISOString().split('T')[0] }
     setFees((prev) => [...prev, item])
     syncRow('fees', item.id, item)
     logAudit('create', 'fee', item.id, item.name)

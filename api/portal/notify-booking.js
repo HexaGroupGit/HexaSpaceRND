@@ -37,7 +37,11 @@ export default async function handler(req, res) {
       b.companyId ? sb.from('tenants').select('data').eq('id', b.companyId) : Promise.resolve({ data: [] }),
     ])
     const space = spRows?.[0]?.data
-    const room = space?.unitNumber || b.resourceName || 'Meeting room'
+    // "Use as function" bookings are two rows (North + South); this one carries
+    // the label, and staff need to open the divider + set up for the group.
+    const room = b.combinedRooms
+      ? `${b.combinedRooms} combined — use as function (open the divider, up to 30 pax)`
+      : space?.unitNumber || b.resourceName || 'Meeting room'
     const company = tRows?.[0]?.data?.businessName || b.companyName || '—'
 
     const opsNoun = space?.type === 'studio' ? 'Media studio' : space?.type === 'podcast' ? 'Podcast room' : 'Meeting room'

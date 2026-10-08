@@ -1,12 +1,13 @@
 import SearchSelect from './SearchSelect.jsx'
 import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, X, Users, Clock, CalendarClock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Users, Clock, CalendarClock, Info } from 'lucide-react'
 import { format, addDays } from 'date-fns'
 import { DatePicker } from './ui/date-picker.jsx'
 import { bookingFeeName, afterHoursConfig, spendablePoolFor, bookingMonthKey, creditPoolPatch, hasActiveMembership } from '../lib/credits.js'
-import { bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../lib/dropIn.js'
+import { bookingRate, bookingWasUsed, creditsForBooking } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
+import { combinePartner, combinedLabel, combinedGroup, newCombinedGroupId, bookingCreditsNeed, payableForShortfall, feeRoomName, COMBINED_SETUP_FEE, COMBINED_SETUP_CREDITS, COMBINED_MAX_PAX, COMBINED_EXPLAINER } from '../lib/combinedRooms.js'
 import { to12h, durationLabel, addMinutes } from '../lib/tourInvite.js'
 import { UnlockButton } from './Bookings.jsx'
 import CancelBookingDialog from './CancelBookingDialog.jsx'
@@ -66,7 +67,12 @@ export default function Calendar() {
   // month end). Computed locally against the fresh tenant balance so an edit that
   // refunds-then-reapplies in one tick can't double-charge. Returns what the
   // booking should now record.
-  function reconcile(oldB, next) {
+  //
+  // `shared` ({ pools: {} }) carries the pool arithmetic across several calls in
+  // one tick — the rows of a combined North + South booking — since `tenants`
+  // won't reflect the first call's write yet. The caller then writes it once
+  // with flushPools.
+  function reconcile(oldB, next, shared) {
     const companyId = next?.companyId || oldB?.companyId || members.find((m) => m.id === (next?.memberId || oldB?.memberId))?.companyId
     const tenant = tenants.find((t) => t.id === companyId)
 
@@ -82,7 +88,7 @@ export default function Calendar() {
     // to be editing in. A booking moved across a month boundary refunds one
     // month's pool and draws from another's, and a booking made for next month
     // never touches this month's allowance.
-    const pools = {}
+    const pools = shared?.pools ?? {}
     const poolOf = (mk) => (pools[mk] != null ? pools[mk] : spendablePoolFor(tenant, leases, mk))
     const setPool = (mk, v) => { pools[mk] = round2(v) }
     const oldMk = oldB?.date ? bookingMonthKey(oldB.date) : null
@@ -113,7 +119,8 @@ export default function Calendar() {
         // It discounts CASH only: credits are drawn at the list rate for
         // everyone, so `need` comes off creditsForBooking, not `rate`.
         const rate = bookingRate(room, companyId, leases)
-        const need = creditsForBooking(room, hrs)
+        // + the function set-up, on the row of a combined booking that carries it.
+        const need = bookingCreditsNeed(next, room, hrs)
         if (need <= 0) paidBy = 'free'
         else {
           // Draw on the pool of the month this booking falls in.
@@ -123,9 +130,9 @@ export default function Calendar() {
           const shortfall = round2(Math.max(0, need - available))
           setPool(newMk, available - creditsUsed)
           if (shortfall > 0) {
-            feeAmount = payableForCredits(shortfall, room, companyId, leases)
+            feeAmount = payableForShortfall(shortfall, next, room, companyId, leases)
             const fee = addFee?.({
-              name: bookingFeeName({ roomName: room?.unitNumber, rate, date: next.date, startTime: next.startTime, endTime: next.endTime, usedCredits: creditsUsed }),
+              name: bookingFeeName({ roomName: feeRoomName(next, room), rate, date: next.date, startTime: next.startTime, endTime: next.endTime, usedCredits: creditsUsed }),
               type: 'Booking Fee', memberId: next.memberId ?? null, companyId,
               date: next.date || new Date().toISOString().split('T')[0],
               price: feeAmount, status: 'Not Paid',
@@ -143,7 +150,14 @@ export default function Calendar() {
     // current month is among them, so the company profile and dashboards are
     // unchanged; an untouched month needs no stamp because creditPoolFor reads a
     // month with no record as holding its full allowance.
-    if (companyId && tenant && isMember && Object.keys(pools).length) {
+    if (shared) shared.companyId = companyId
+    else flushPools(companyId, pools)
+    return { creditsUsed, paidBy, feeAmount, feeId }
+  }
+
+  function flushPools(companyId, pools) {
+    const tenant = tenants.find((t) => t.id === companyId)
+    if (companyId && tenant && hasActiveMembership(companyId, leases) && Object.keys(pools).length) {
       const co = Object.entries(pools).reduce(
         (acc, [mk, left]) => ({ ...acc, ...creditPoolPatch(acc, mk, left) }), { ...tenant })
       updateTenant?.(companyId, {
@@ -152,15 +166,24 @@ export default function Calendar() {
         creditsPeriod: co.creditsPeriod,
       })
     }
-    return { creditsUsed, paidBy, feeAmount, feeId }
   }
 
-  function handleSave(payload) {
+  // Live rows of the booking being edited — two for a combined function booking.
+  const groupOf = (b) => combinedGroup(b, bookings).filter((x) => x.status !== 'Cancelled' || x.id === b.id)
+
+  function handleSave({ asFunction, ...payload }) {
+    // "Use as function" books North + South together (see combinedRooms.js). An
+    // edit of a combined booking moves both rows; each keeps its own room.
+    const editGroup = modal.mode === 'edit' ? groupOf(modal) : []
+    const partner = modal.mode !== 'edit' && asFunction ? combinePartner(spaces.find((s) => s.id === payload.resourceId), spaces) : null
+    const roomIds = editGroup.length > 1 ? editGroup.map((b) => b.resourceId)
+      : partner ? [payload.resourceId, partner.id] : [payload.resourceId]
+    const ownIds = new Set(editGroup.map((b) => b.id))
     // Conflict-aware clash guard — the Function Space physically comprises
     // North/South/West, so a hold on any of them occupies the others too.
-    const ids = new Set(blockingResourceIds(payload.resourceId, spaces))
+    const ids = new Set(roomIds.flatMap((id) => blockingResourceIds(id, spaces)))
     const clash = bookings.find((b) =>
-      (modal.mode !== 'edit' || b.id !== modal.id) && ids.has(b.resourceId) &&
+      !ownIds.has(b.id) && ids.has(b.resourceId) &&
       b.date === payload.date && b.status !== 'Cancelled' &&
       timesOverlap(payload.startTime, payload.endTime, b.startTime, b.endTime))
     if (clash) {
@@ -172,6 +195,32 @@ export default function Calendar() {
     const status = payload.tentative ? 'Pending' : 'Confirmed'
     const member = members.find((m) => m.id === payload.memberId)
     const companyId = payload.companyId || member?.companyId || ''
+    if (editGroup.length > 1) {
+      const shared = { pools: {} }
+      for (const row of editGroup) {
+        const next = { ...row, ...payload, resourceId: row.resourceId, companyId, status }
+        const charge = reconcile(row, next, shared)
+        updateBooking(row.id, { ...payload, resourceId: row.resourceId, companyId, status, ...charge })
+      }
+      flushPools(shared.companyId, shared.pools)
+      setModal(null)
+      return
+    }
+    if (partner) {
+      const room = spaces.find((s) => s.id === payload.resourceId)
+      const group = { combinedGroupId: newCombinedGroupId(), combinedRooms: combinedLabel(room, partner), useAsFunction: true }
+      const shared = { pools: {} }
+      ;[payload.resourceId, partner.id].forEach((resourceId, i) => {
+        // The first row carries the set-up; invitations go out from it alone.
+        const next = { ...payload, resourceId, companyId, status, ...group,
+          ...(i === 0 ? { setupCredits: COMBINED_SETUP_CREDITS } : { inviteGuests: false }) }
+        const charge = reconcile(null, next, shared)
+        addBooking({ ...next, ...charge, source: 'Admin', createdBy: 'Admin' })
+      })
+      flushPools(shared.companyId, shared.pools)
+      setModal(null)
+      return
+    }
     if (modal.mode === 'edit') {
       const { creditsUsed, paidBy, feeAmount, feeId } = reconcile(modal, { ...payload, companyId, status })
       updateBooking(modal.id, { ...payload, companyId, status, creditsUsed, paidBy, feeAmount, feeId })
@@ -202,12 +251,21 @@ export default function Calendar() {
       if (result.message) window.alert(result.message)
       return
     }
-    reconcile(b, { ...b, status: 'Cancelled' })
-    updateBooking(b.id, { status: 'Cancelled', creditsUsed: 0, paidBy: 'cancelled', feeAmount: 0, feeId: null })
+    // A combined function booking cancels as a whole — both rooms and the set-up.
+    const shared = { pools: {} }
+    for (const row of groupOf(b)) {
+      reconcile(row, { ...row, status: 'Cancelled' }, shared)
+      updateBooking(row.id, { status: 'Cancelled', creditsUsed: 0, paidBy: 'cancelled', feeAmount: 0, feeId: null })
+    }
+    flushPools(shared.companyId, shared.pools)
   }
   function handleDelete() {
-    reconcile(modal, null) // refund only
-    deleteBooking(modal.id)
+    const shared = { pools: {} }
+    for (const row of groupOf(modal)) {
+      reconcile(row, null, shared) // refund only
+      deleteBooking(row.id)
+    }
+    flushPools(shared.companyId, shared.pools)
     setModal(null)
   }
 
@@ -314,7 +372,7 @@ export default function Calendar() {
                             ? 'repeating-linear-gradient(45deg, #6b7280, #6b7280 6px, #4b5563 6px, #4b5563 12px)'
                             : color }}
                         >
-                          <div className="font-semibold truncate">{external ? `Blocked — ${sourceRoom || 'shared space'}` : (b.title || co?.businessName || m?.name || 'Booking')}</div>
+                          <div className="font-semibold truncate">{external ? `Blocked — ${sourceRoom || 'shared space'}` : `${b.combinedRooms ? '⧉ ' : ''}${b.title || co?.businessName || m?.name || 'Booking'}`}</div>
                           <div className="truncate opacity-90">{external ? (b.title || co?.businessName || 'Booking') : `${t12(Math.floor(toDec(b.startTime)))}–${t12(Math.floor(toDec(b.endTime)))}${b.status === 'Pending' ? ' · tentative' : ''}`}</div>
                         </div>
                       )
@@ -333,6 +391,7 @@ export default function Calendar() {
         <BookingModal
           key={modal.id || 'new'}
           init={modal}
+          group={modal.mode === 'edit' ? groupOf(modal) : []}
           rooms={modalRooms}
           roomLabel={modalLabel}
           members={members}
@@ -361,7 +420,7 @@ export default function Calendar() {
 const ic = 'w-full border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40'
 const lbl = 'block text-xs font-medium text-muted-foreground mb-1'
 
-function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, leases = [], addMember, onClose, onSave, onCancelBooking, onDelete }) {
+function BookingModal({ init, group = [], rooms, roomLabel = 'Room', members, tenants, leases = [], addMember, onClose, onSave, onCancelBooking, onDelete }) {
   const edit = init.mode === 'edit'
   const [f, setF] = useState({
     companyId: init.companyId || '',
@@ -379,6 +438,7 @@ function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, lease
     free: init.paidBy === 'free' || !!init.free,
     tentative: init.status === 'Pending' || !!init.tentative,
     notify: init.notify !== undefined ? init.notify : true,
+    asFunction: false,
   })
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
   const up = (k) => (e) => set(k, e.target.value)
@@ -395,8 +455,15 @@ function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, lease
   // Preview mirrors the reconcile charge exactly: members get 30% off the cash
   // rate and can draw on the pool; a drop-in pays list rate with no credits.
   // Credits are counted at the list rate, so they don't track `cost` 1:1.
-  const cost = f.free ? 0 : round2(hrs * bookingRate(room, companyId, leases))
-  const credits = f.free ? 0 : creditsForBooking(room, hrs)
+  // "Use as function" — a new North/South booking can take its partner too. An
+  // existing combined booking quotes both rows (it was booked that way).
+  const isGroup = group.length > 1
+  const partner = !edit ? combinePartner(room, rooms) : null
+  const combined = isGroup || (f.asFunction && !!partner)
+  const bookedRooms = isGroup ? group.map((b) => rooms.find((r) => r.id === b.resourceId)).filter(Boolean)
+    : combined ? [room, partner] : [room]
+  const cost = f.free ? 0 : round2(bookedRooms.reduce((sum, r) => sum + hrs * bookingRate(r, companyId, leases), 0) + (combined ? COMBINED_SETUP_FEE : 0))
+  const credits = f.free ? 0 : round2(bookedRooms.reduce((sum, r) => sum + creditsForBooking(r, hrs), 0) + (combined ? COMBINED_SETUP_CREDITS : 0))
   // The pool of the month being booked into — what reconcile will actually draw
   // on. Quoting the current month here would mis-state a forward booking.
   const bal = spendablePoolFor(company, leases, bookingMonthKey(f.date))
@@ -424,6 +491,7 @@ function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, lease
       resourceId: f.resourceId, date: f.date, startTime: f.startTime, endTime: f.endTime,
       prepMinutes: Number(f.prepMinutes) || 0, repeat: f.repeat ? (init.repeat && init.repeat !== 'none' ? init.repeat : 'weekly') : 'none',
       inviteGuests: f.inviteGuests, free: f.free, tentative: f.tentative, notify: f.notify,
+      asFunction: f.asFunction && !!partner,
     })
   }
 
@@ -466,10 +534,33 @@ function BookingModal({ init, rooms, roomLabel = 'Room', members, tenants, lease
           {/* Meeting room */}
           <label className="block">
             <span className={lbl}>{roomLabel}</span>
-            <SearchSelect aria-label="Room or space" value={f.resourceId} onChange={up('resourceId')} className={ic}>
-              {rooms.map((r) => <option key={r.id} value={r.id}>{r.unitNumber}{r.size ? ` · ${r.size}` : ''}{r.hourlyRate ? ` — $${r.hourlyRate}/hr` : ''}</option>)}
-            </SearchSelect>
+            {isGroup ? (
+              <div className={`${ic} bg-muted/50`}>{init.combinedRooms || bookedRooms.map((r) => r.unitNumber).join(' + ')} · function (both rooms)</div>
+            ) : (
+              <SearchSelect aria-label="Room or space" value={f.resourceId} onChange={up('resourceId')} className={ic}>
+                {rooms.map((r) => <option key={r.id} value={r.id}>{r.unitNumber}{r.size ? ` · ${r.size}` : ''}{r.hourlyRate ? ` — $${r.hourlyRate}/hr` : ''}</option>)}
+              </SearchSelect>
+            )}
           </label>
+
+          {/* North + South open into one room for up to 30 — books both + set-up. */}
+          {(partner || isGroup) && (
+            <label className={`flex items-start gap-2 rounded-md border px-3 py-2 text-sm ${combined ? 'border-blue-300 bg-blue-50/60' : 'border-border'}`}>
+              <input type="checkbox" className="mt-0.5" checked={combined} disabled={isGroup}
+                onChange={chk('asFunction')} />
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 font-medium text-foreground">
+                  <Users size={13} /> Use as function
+                  <span title={COMBINED_EXPLAINER} aria-label={COMBINED_EXPLAINER} className="text-muted-foreground cursor-help"><Info size={13} /></span>
+                </span>
+                <span className="block text-xs text-muted-foreground mt-0.5">
+                  {isGroup
+                    ? `Booked as ${init.combinedRooms || 'North + South'} combined, up to ${COMBINED_MAX_PAX} pax — changes apply to both rooms.`
+                    : `Books ${combinedLabel(room, partner)} together, up to ${COMBINED_MAX_PAX} pax · both rooms + $${COMBINED_SETUP_FEE} set-up (${COMBINED_SETUP_CREDITS} credits).`}
+                </span>
+              </span>
+            </label>
+          )}
 
           {/* From / To */}
           <div className="grid grid-cols-[1.4fr_1fr_1fr] gap-3 items-end">
