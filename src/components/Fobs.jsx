@@ -94,7 +94,7 @@ export default function Fobs() {
     setModal(null)
   }
 
-  async function issueDevice({ fob, memberId, expectedReturnAt, notes }) {
+  async function issueDevice({ fob, memberId, expectedReturnAt, notes, waiveDeposit }) {
     const member = memberById[memberId]
     if (!member) return alert('Pick a member.')
     const company = companyById[member.companyId]
@@ -103,7 +103,8 @@ export default function Fobs() {
       id: rid('fa'), fobId: fob.id, serial: fob.serial, type: fob.type,
       memberId: member.id, memberName: member.name, companyId: member.companyId, companyName: company?.businessName ?? '',
       issuedAt: nowIso(), expectedReturnAt: expectedReturnAt || null, returnedAt: null,
-      depositAmount: deposit, depositStatus: 'pending', lost: false, issueNotes: notes || '', createdAt: today(),
+      depositAmount: deposit, depositStatus: waiveDeposit ? 'waived' : 'pending', lost: false, issueNotes: notes || '', createdAt: today(),
+      ...(waiveDeposit ? { depositWaivedAt: nowIso() } : {}),
     }
     const rA = await persist('fob_assignments', assignment)
     if (rA.error) return alert(`Could not issue the device — the assignment didn't save.\n\n${rA.error.message}\n\nIf this keeps happening, check you're signed in as an admin.`)
@@ -112,8 +113,9 @@ export default function Fobs() {
     const rF = await persist('fobs', upFob)
     if (rF.error) return alert(`The assignment saved, but the device status didn't update:\n\n${rF.error.message}`)
     setFobs((prev) => prev.map((f) => (f.id === fob.id ? upFob : f)))
-    // Refundable deposit invoice (billed to the member's company, no GST).
-    if (member.companyId) addInvoice?.({
+    // Refundable deposit invoice (billed to the member's company, no GST) —
+    // skipped entirely when the deposit is waived at issue.
+    if (member.companyId && !waiveDeposit) addInvoice?.({
       tenantId: member.companyId, source: 'fob', invoiceType: 'fob_deposit', fobAssignmentId: assignment.id,
       status: 'pending', sentStatus: 'not_sent', clientName: company?.businessName ?? '', clientEmail: company?.email ?? '',
       issueDate: today(), dueDate: today(), vatEnabled: false, reference: `${fob.type} deposit — ${fob.serial}`,
@@ -492,6 +494,7 @@ function IssueModal({ fobs, preFob, members, tenants, requestMemberId, requestTy
   const [memberId, setMemberId] = useState(requestMemberId || '')
   const [expectedReturnAt, setExpectedReturnAt] = useState('')
   const [notes, setNotes] = useState('')
+  const [waiveDeposit, setWaiveDeposit] = useState(false)
   const fob = fobs.find((f) => f.id === fobId) || preFob
   return (
     <ModalShell title={`Issue ${fob?.type ?? 'device'}${fob ? ` — ${fob.serial}` : ''}`} onClose={onClose}>
@@ -515,10 +518,18 @@ function IssueModal({ fobs, preFob, members, tenants, requestMemberId, requestTy
       </div>
       <div><label className="block text-xs text-muted-foreground mb-1">Expected return (optional)</label><input type="date" value={expectedReturnAt} onChange={(e) => setExpectedReturnAt(e.target.value)} className={field} /></div>
       <div><label className="block text-xs text-muted-foreground mb-1">Issue notes</label><input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} /></div>
-      {fob && <p className="text-xs text-muted-foreground">A refundable <strong>{money(depositFor(fob.type))}</strong> deposit invoice will be raised to the member's company.</p>}
+      {fob && (
+        <label className="flex items-center gap-2 text-sm text-foreground">
+          <input type="checkbox" checked={waiveDeposit} onChange={(e) => setWaiveDeposit(e.target.checked)} />
+          Waive the {money(depositFor(fob.type))} deposit
+        </label>
+      )}
+      {fob && (waiveDeposit
+        ? <p className="text-xs text-muted-foreground">No deposit invoice will be raised — the deposit shows as Waived.</p>
+        : <p className="text-xs text-muted-foreground">A refundable <strong>{money(depositFor(fob.type))}</strong> deposit invoice will be raised to the member's company.</p>)}
       <div className="flex items-center justify-end gap-3 pt-1">
         {(!fob || !memberId) && <span className="text-xs text-muted-foreground">{!fob ? 'Choose a device' : 'Select a member'} to enable</span>}
-        <button disabled={!fob || !memberId} onClick={() => onIssue({ fob, memberId, expectedReturnAt, notes })} className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:bg-primary/90 disabled:opacity-40">Issue device</button>
+        <button disabled={!fob || !memberId} onClick={() => onIssue({ fob, memberId, expectedReturnAt, notes, waiveDeposit })} className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:bg-primary/90 disabled:opacity-40">Issue device</button>
       </div>
     </ModalShell>
   )
