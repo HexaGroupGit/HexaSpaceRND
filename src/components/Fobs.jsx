@@ -2,7 +2,7 @@ import SearchSelect from './SearchSelect.jsx'
 import { useState, useEffect, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
-import { KeyRound, Plus, RefreshCw, X, Search, AlertTriangle } from 'lucide-react'
+import { KeyRound, Plus, RefreshCw, X, Search, AlertTriangle, Trash2 } from 'lucide-react'
 import {
   DEVICE_TYPES, LOCATIONS, FOB_STATUS, DEPOSIT_STATUS, depositFor, normalizeSerial, money,
   openAssignment, depositPaid, depositState, isUnmatched,
@@ -24,7 +24,7 @@ function Badge({ map, k }) {
 
 export default function Fobs() {
   const store = useOutletContext()
-  const { members = [], tenants = [], invoices = [], addInvoice, settings } = store
+  const { members = [], tenants = [], invoices = [], addInvoice, voidInvoice, settings } = store
   const [fobs, setFobs] = useState([])
   const [assignments, setAssignments] = useState([])
   const [requests, setRequests] = useState([])
@@ -32,7 +32,7 @@ export default function Fobs() {
   const [tab, setTab] = useState('devices')
   const [search, setSearch] = useState('')
   const [onlyUnmatched, setOnlyUnmatched] = useState(false)
-  const [modal, setModal] = useState(null) // { kind:'issue'|'return'|'lost'|'add'|'reassign', fob?, member? }
+  const [modal, setModal] = useState(null) // { kind:'issue'|'return'|'lost'|'add'|'reassign'|'waive'|'delete'|'faulty', fob?, member? }
 
   useEffect(() => { load() }, [])
   async function load() {
@@ -57,6 +57,7 @@ export default function Fobs() {
     issued: fobs.filter((f) => f.status === 'assigned').length,
     available: fobs.filter((f) => f.status === 'available').length,
     lost: fobs.filter((f) => f.status === 'lost').length,
+    faulty: fobs.filter((f) => f.status === 'faulty').length,
     requests: pendingRequests.length,
   }), [fobs, pendingRequests.length])
 
@@ -71,6 +72,7 @@ export default function Fobs() {
     const q = search.trim().toLowerCase()
     return fobs
       .filter((f) => {
+        if ((tab === 'faulty') !== (f.status === 'faulty')) return false
         const a = openAssignment(f.id, assignments)
         if (onlyUnmatched && !(f.status === 'assigned' && isUnmatched(a))) return false
         if (!q) return true
@@ -78,7 +80,7 @@ export default function Fobs() {
         return `${f.serial} ${f.type} ${holder}`.toLowerCase().includes(q)
       })
       .sort((a, b) => String(a.serial).localeCompare(String(b.serial)))
-  }, [fobs, assignments, search, onlyUnmatched])
+  }, [fobs, assignments, search, onlyUnmatched, tab])
 
   // ── Actions ────────────────────────────────────────────────────────────────
   async function addDevice({ serial, type, location, notes }) {
@@ -161,12 +163,15 @@ export default function Fobs() {
     setModal(null)
   }
 
-  async function returnDevice({ fob, assignment, notes, refund }) {
+  async function returnDevice({ fob, assignment, notes, refund, faulty }) {
     const paid = depositPaid(assignment, invoices)
     const upA = { ...assignment, returnedAt: nowIso(), returnNotes: notes || '', depositStatus: refund && paid ? 'refunding' : (paid ? 'waived' : 'pending') }
     await persist('fob_assignments', upA)
     setAssignments((prev) => prev.map((a) => (a.id === assignment.id ? upA : a)))
-    const upFob = { ...fob, status: 'available', currentMemberId: null, currentCompanyId: null, currentAssignmentId: null }
+    const upFob = {
+      ...fob, status: faulty ? 'faulty' : 'available', currentMemberId: null, currentCompanyId: null, currentAssignmentId: null,
+      ...(faulty ? { faultyAt: nowIso(), faultNotes: notes || 'Returned not working' } : {}),
+    }
     await persist('fobs', upFob)
     setFobs((prev) => prev.map((f) => (f.id === fob.id ? upFob : f)))
     // Refund the deposit as a credit note → Billing "pending refunds" approval queue.
@@ -185,6 +190,47 @@ export default function Fobs() {
     setAssignments((prev) => prev.map((a) => (a.id === assignment.id ? upA : a)))
     const upFob = { ...fob, status: 'lost', currentMemberId: null, currentCompanyId: null, currentAssignmentId: null }
     await persist('fobs', upFob)
+    setFobs((prev) => prev.map((f) => (f.id === fob.id ? upFob : f)))
+    setModal(null)
+  }
+
+  // Waive an unpaid deposit: the member keeps the device, nothing is owed, and
+  // the linked deposit invoice is voided so it stops being chased.
+  async function waiveDeposit({ fob, assignment, notes }) {
+    const upA = { ...assignment, depositStatus: 'waived', depositWaivedAt: nowIso(), waiveNotes: notes || '' }
+    const rA = await persist('fob_assignments', upA)
+    if (rA.error) return alert(`Could not waive the deposit — the assignment didn't save.\n\n${rA.error.message}`)
+    setAssignments((prev) => prev.map((a) => (a.id === assignment.id ? upA : a)))
+    invoices
+      .filter((i) => i.fobAssignmentId === assignment.id && i.invoiceType === 'fob_deposit' && !['paid', 'voided'].includes(i.status))
+      .forEach((i) => voidInvoice?.(i.id))
+    setModal(null)
+  }
+
+  // Remove a device row entirely (duplicates, data-entry mistakes, binned
+  // devices) along with its issue/return history. Issued devices must be
+  // returned or released first so no live deposit is orphaned.
+  async function deleteDevice({ fob }) {
+    if (openAssignment(fob.id, assignments)) return alert('This device is still issued — return or release it before deleting.')
+    const history = assignments.filter((a) => a.fobId === fob.id)
+    if (history.length) {
+      const rA = await supabase.from('fob_assignments').delete().in('id', history.map((a) => a.id))
+      if (rA.error) return alert(`Could not delete the device history:\n\n${rA.error.message}`)
+    }
+    const rF = await supabase.from('fobs').delete().eq('id', fob.id)
+    if (rF.error) return alert(`Could not delete the device:\n\n${rF.error.message}`)
+    setAssignments((prev) => prev.filter((a) => a.fobId !== fob.id))
+    setFobs((prev) => prev.filter((f) => f.id !== fob.id))
+    setModal(null)
+  }
+
+  // Move an in-stock device to / from the "Not functioning" section.
+  async function setFaulty({ fob, faulty, notes }) {
+    const upFob = faulty
+      ? { ...fob, status: 'faulty', faultyAt: nowIso(), faultNotes: notes || '' }
+      : { ...fob, status: 'available', faultyAt: null, faultNotes: '' }
+    const rF = await persist('fobs', upFob)
+    if (rF.error) return alert(`Could not update the device:\n\n${rF.error.message}`)
     setFobs((prev) => prev.map((f) => (f.id === fob.id ? upFob : f)))
     setModal(null)
   }
@@ -215,23 +261,25 @@ export default function Fobs() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 mb-6">
         <StatCard label="In circulation" value={stats.issued} tone="text-blue-700" />
         <StatCard label="Available" value={stats.available} tone="text-green-700" />
         <StatCard label="Lost" value={stats.lost} tone="text-red-700" />
+        <StatCard label="Not functioning" value={stats.faulty} tone={stats.faulty ? 'text-orange-700' : undefined} />
         <StatCard label="Total devices" value={stats.total} />
         <StatCard label="Requests" value={stats.requests} tone={stats.requests ? 'text-amber-700' : undefined} />
       </div>
 
       <div className="flex items-center gap-1 mb-4 border-b border-border">
-        {[['devices', 'Devices'], ['requests', `Requests${pendingRequests.length ? ` (${pendingRequests.length})` : ''}`], ['order', 'Fob Order']].map(([k, label]) => (
+        {[['devices', 'Devices'], ['faulty', `Not functioning${stats.faulty ? ` (${stats.faulty})` : ''}`], ['requests', `Requests${pendingRequests.length ? ` (${pendingRequests.length})` : ''}`], ['order', 'Fob Order']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === k ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>{label}</button>
         ))}
       </div>
 
-      {tab === 'devices' && (
+      {(tab === 'devices' || tab === 'faulty') && (
         <>
-          {unmatchedCount > 0 && (
+          {tab === 'faulty' && <p className="mb-3 text-sm text-muted-foreground">Devices that don't work. They can't be issued until marked working again.</p>}
+          {tab === 'devices' && unmatchedCount > 0 && (
             <div className="mb-3 flex items-start gap-2 text-sm border border-amber-200 bg-amber-50 text-amber-900 rounded-md px-3 py-2">
               <AlertTriangle size={15} className="mt-0.5 shrink-0" />
               <div>
@@ -249,7 +297,7 @@ export default function Fobs() {
           </div>
           <div className="border border-border rounded-lg bg-card overflow-hidden">
             {loading ? <div className="p-10 text-center text-muted-foreground text-sm">Loading…</div>
-              : shownFobs.length === 0 ? <div className="p-10 text-center text-muted-foreground text-sm">{fobs.length === 0 ? 'No devices yet. Add your first fob or remote.' : 'No devices match. Available stock has no holder, so searching a member name only finds devices they already hold.'}</div>
+              : shownFobs.length === 0 ? <div className="p-10 text-center text-muted-foreground text-sm">{tab === 'faulty' && !search.trim() ? 'No devices are marked as not functioning.' : fobs.length === 0 ? 'No devices yet. Add your first fob or remote.' : 'No devices match. Available stock has no holder, so searching a member name only finds devices they already hold.'}</div>
               : (
                 <table className="w-full text-sm">
                   <thead className="text-xs text-muted-foreground uppercase border-b border-border">
@@ -269,12 +317,17 @@ export default function Fobs() {
                         <tr key={f.id} className="border-b border-border/60 last:border-0 hover:bg-muted/40">
                           <td className="px-4 py-3 font-mono text-foreground">{f.serial}</td>
                           <td className="px-4 py-3 text-muted-foreground capitalize">{f.type}</td>
-                          <td className="px-4 py-3"><Badge map={FOB_STATUS} k={f.status} /></td>
+                          <td className="px-4 py-3"><Badge map={FOB_STATUS} k={f.status} />{f.status === 'faulty' && f.faultNotes && <span className="text-muted-foreground text-xs block mt-0.5">{f.faultNotes}</span>}</td>
                           <td className="px-4 py-3 text-foreground">{a ? <>{a.memberName || <span className="text-muted-foreground">unnamed</span>}<span className="text-muted-foreground text-xs block">{isUnmatched(a) ? <span className="text-amber-700 font-medium">Not linked to a member</span> : a.companyName}</span></> : <span className="text-muted-foreground">—</span>}</td>
                           <td className="px-4 py-3">{a ? <Badge map={DEPOSIT_STATUS} k={depositState(a, invoices)} /> : <span className="text-muted-foreground">—</span>}</td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
                               {f.status === 'available' && <button onClick={() => setModal({ kind: 'issue', fob: f })} className="text-xs bg-primary text-primary-foreground rounded px-2.5 py-1 font-medium hover:bg-primary/90">Issue</button>}
+                              {f.status === 'available' && <button onClick={() => setModal({ kind: 'faulty', fob: f })} className="text-xs border border-orange-200 text-orange-700 rounded px-2.5 py-1 font-medium hover:bg-orange-50">Not working</button>}
+                              {f.status === 'faulty' && <button onClick={() => setFaulty({ fob: f, faulty: false })} className="text-xs border border-input rounded px-2.5 py-1 font-medium hover:bg-muted/50">Working again</button>}
+                              {a && !isUnmatched(a) && depositState(a, invoices) === 'pending' && (
+                                <button onClick={() => setModal({ kind: 'waive', fob: f, assignment: a })} className="text-xs border border-input rounded px-2.5 py-1 font-medium hover:bg-muted/50">Waive deposit</button>
+                              )}
                               {f.status === 'assigned' && a && isUnmatched(a) && (
                                 <button onClick={() => setModal({ kind: 'reassign', fob: f, assignment: a })} className="text-xs bg-amber-600 text-white rounded px-2.5 py-1 font-medium hover:bg-amber-700">Reassign</button>
                               )}
@@ -282,6 +335,7 @@ export default function Fobs() {
                                 {!isUnmatched(a) && <button onClick={() => setModal({ kind: 'return', fob: f, assignment: a })} className="text-xs border border-input rounded px-2.5 py-1 font-medium hover:bg-muted/50">Return</button>}
                                 <button onClick={() => setModal({ kind: 'lost', fob: f, assignment: a })} className="text-xs border border-red-200 text-red-600 rounded px-2.5 py-1 font-medium hover:bg-red-50">Lost</button>
                               </>}
+                              {!a && <button onClick={() => setModal({ kind: 'delete', fob: f })} title="Delete device" className="p-1 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>}
                             </div>
                           </td>
                         </tr>
@@ -329,6 +383,9 @@ export default function Fobs() {
       {modal?.kind === 'reassign' && <ReassignModal ctx={modal} members={members} tenants={tenants} onClose={() => setModal(null)} onReassign={reassignDevice} onRelease={releaseDevice} />}
       {modal?.kind === 'return' && <ReturnModal ctx={modal} paid={depositPaid(modal.assignment, invoices)} onClose={() => setModal(null)} onReturn={returnDevice} />}
       {modal?.kind === 'lost' && <LostModal ctx={modal} onClose={() => setModal(null)} onLost={markLost} />}
+      {modal?.kind === 'waive' && <WaiveModal ctx={modal} invoices={invoices} onClose={() => setModal(null)} onWaive={waiveDeposit} />}
+      {modal?.kind === 'delete' && <DeleteModal ctx={modal} history={assignments.filter((a) => a.fobId === modal.fob.id)} onClose={() => setModal(null)} onDelete={deleteDevice} />}
+      {modal?.kind === 'faulty' && <FaultyModal ctx={modal} onClose={() => setModal(null)} onSave={setFaulty} />}
     </div>
   )
 }
@@ -470,6 +527,7 @@ function ReturnModal({ ctx, paid, onClose, onReturn }) {
   const { fob, assignment } = ctx
   const [notes, setNotes] = useState('')
   const [refund, setRefund] = useState(true)
+  const [faulty, setFaultyFlag] = useState(false)
   return (
     <ModalShell title={`Return ${fob.type} — ${fob.serial}`} onClose={onClose}>
       <p className="text-sm text-muted-foreground">Returned by <strong className="text-foreground">{assignment.memberName}</strong> ({assignment.companyName}).</p>
@@ -477,7 +535,8 @@ function ReturnModal({ ctx, paid, onClose, onReturn }) {
         <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={refund} onChange={(e) => setRefund(e.target.checked)} /> Refund the {money(assignment.depositAmount)} deposit (raises a credit note for approval)</label>
       ) : <p className="text-xs text-amber-700">No deposit payment recorded for this device — nothing to refund.</p>}
       <div><label className="block text-xs text-muted-foreground mb-1">Return notes</label><input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} /></div>
-      <div className="flex justify-end pt-1"><button onClick={() => onReturn({ fob, assignment, notes, refund })} className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:bg-primary/90">Mark returned</button></div>
+      <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={faulty} onChange={(e) => setFaultyFlag(e.target.checked)} /> Device isn't working — move it to Not functioning</label>
+      <div className="flex justify-end pt-1"><button onClick={() => onReturn({ fob, assignment, notes, refund, faulty })} className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:bg-primary/90">Mark returned</button></div>
     </ModalShell>
   )
 }
@@ -491,6 +550,48 @@ function LostModal({ ctx, onClose, onLost }) {
       <p className="text-xs text-red-700">The {money(assignment.depositAmount)} deposit is <strong>forfeited</strong> (kept to cover the lost device). Issue a replacement separately — it takes a fresh {money(depositFor(fob.type))} deposit.</p>
       <div><label className="block text-xs text-muted-foreground mb-1">Notes</label><input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} /></div>
       <div className="flex justify-end pt-1"><button onClick={() => onLost({ fob, assignment, notes })} className="bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700">Mark lost &amp; forfeit deposit</button></div>
+    </ModalShell>
+  )
+}
+
+function WaiveModal({ ctx, invoices, onClose, onWaive }) {
+  const { fob, assignment } = ctx
+  const [notes, setNotes] = useState('')
+  const open = invoices.filter((i) => i.fobAssignmentId === assignment.id && i.invoiceType === 'fob_deposit' && !['paid', 'voided'].includes(i.status))
+  return (
+    <ModalShell title={`Waive deposit — ${fob.serial}`} onClose={onClose}>
+      <p className="text-sm text-muted-foreground">Held by <strong className="text-foreground">{assignment.memberName}</strong> ({assignment.companyName}). They keep the device and owe no deposit.</p>
+      {open.length > 0 && <p className="text-xs text-amber-700">Voids {open.map((i) => i.number || 'the deposit invoice').join(', ')} ({money(assignment.depositAmount)}) so it stops being chased.</p>}
+      <div><label className="block text-xs text-muted-foreground mb-1">Reason (optional)</label><input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} /></div>
+      <div className="flex justify-end pt-1"><button onClick={() => onWaive({ fob, assignment, notes })} className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:bg-primary/90">Waive deposit</button></div>
+    </ModalShell>
+  )
+}
+
+function DeleteModal({ ctx, history, onClose, onDelete }) {
+  const { fob } = ctx
+  return (
+    <ModalShell title={`Delete ${fob.type} — ${fob.serial}`} onClose={onClose}>
+      <p className="text-sm text-muted-foreground">
+        Removes this device from inventory permanently{history.length ? `, along with its ${history.length} past issue/return record${history.length === 1 ? '' : 's'}` : ''}.
+        Use it for duplicates or entry mistakes. Invoices are not touched.
+      </p>
+      <div className="flex justify-end gap-2 pt-1">
+        <button onClick={onClose} className="border border-input px-4 py-2 rounded text-sm font-medium hover:bg-muted/50">Cancel</button>
+        <button onClick={() => onDelete({ fob })} className="bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700">Delete device</button>
+      </div>
+    </ModalShell>
+  )
+}
+
+function FaultyModal({ ctx, onClose, onSave }) {
+  const { fob } = ctx
+  const [notes, setNotes] = useState('')
+  return (
+    <ModalShell title={`Not working — ${fob.serial}`} onClose={onClose}>
+      <p className="text-sm text-muted-foreground">Moves the device to the Not functioning section. It can't be issued until it's marked working again.</p>
+      <div><label className="block text-xs text-muted-foreground mb-1">What's wrong? (optional)</label><input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} placeholder="e.g. doesn't open the front door" /></div>
+      <div className="flex justify-end pt-1"><button onClick={() => onSave({ fob, faulty: true, notes })} className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:bg-primary/90">Mark not functioning</button></div>
     </ModalShell>
   )
 }

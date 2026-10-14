@@ -19,6 +19,7 @@ export const FOB_STATUS = {
   available:   { label: 'Available',   cls: 'bg-green-100 text-green-700' },
   assigned:    { label: 'Issued',      cls: 'bg-blue-100 text-blue-700' },
   lost:        { label: 'Lost',        cls: 'bg-red-100 text-red-700' },
+  faulty:      { label: 'Not functioning', cls: 'bg-orange-100 text-orange-700' },
   deactivated: { label: 'Deactivated', cls: 'bg-gray-100 text-gray-500' },
   retired:     { label: 'Retired',     cls: 'bg-gray-100 text-gray-500' },
 }
@@ -73,7 +74,7 @@ export function companyOpenAssignments(companyId, assignments) {
 export function companyFobSummary(companyId, assignments, invoices) {
   const open = companyOpenAssignments(companyId, assignments)
   const depositsHeld = open.reduce((s, a) => s + (depositPaid(a, invoices) ? Number(a.depositAmount || 0) : 0), 0)
-  const owing = open.reduce((s, a) => s + (depositPaid(a, invoices) ? 0 : Number(a.depositAmount || 0)), 0)
+  const owing = open.reduce((s, a) => s + (depositState(a, invoices) === 'pending' ? Number(a.depositAmount || 0) : 0), 0)
   return { held: open.length, depositsHeld, depositOwing: owing, assignments: open }
 }
 
