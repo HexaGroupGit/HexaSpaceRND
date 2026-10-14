@@ -45,6 +45,7 @@ export default function Assistant() {
   const [formUploads, setFormUploads] = useState([])
   const [photoBusy, setPhotoBusy] = useState('') // task id (card) or 'form'
   const [photoErr, setPhotoErr] = useState('')
+  const [dropId, setDropId] = useState('') // card a file is being dragged over
 
   // The tasks table ships as its own migration (tasks-schema.sql). Without it
   // every write would fail silently in the console and tasks would vanish on
@@ -242,7 +243,11 @@ export default function Assistant() {
                 const pMeta = PRIORITY_STYLE[task.priority] ?? PRIORITY_STYLE.normal
                 const isOverdue = task.dueDate && task.dueDate < today
                 return (
-                  <div key={task.id} className="bg-card border border-border rounded-xl shadow-sm p-4 flex items-start gap-3.5">
+                  <div key={task.id}
+                    onDragOver={(e) => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); setDropId(task.id) } }}
+                    onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropId('') }}
+                    onDrop={(e) => { e.preventDefault(); setDropId(''); if (e.dataTransfer.files.length) addCardPhotos(task, e.dataTransfer.files) }}
+                    className={`bg-card border rounded-xl shadow-sm p-4 flex items-start gap-3.5 transition-colors ${dropId === task.id ? 'border-primary ring-2 ring-primary/20' : 'border-border'}`}>
                     <button onClick={() => completeTask(task)} title="Mark as done"
                       className="mt-0.5 shrink-0 text-muted-foreground hover:text-green-600 transition-colors">
                       <Circle size={18} />
@@ -257,7 +262,6 @@ export default function Assistant() {
                               <ArrowUpRight size={14} />
                             </button>
                           )}
-                          <PhotoPickButton busy={photoBusy === task.id} onFiles={(files) => addCardPhotos(task, files)} />
                           <button onClick={() => openEdit(task)}
                             className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"><Pencil size={13} /></button>
                           <button onClick={() => removeTask(task)}
@@ -266,7 +270,8 @@ export default function Assistant() {
                       </div>
 
                       {task.detail && <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{task.detail}</p>}
-                      {task.photos?.length > 0 && <PhotoStrip photos={task.photos} onRemove={(ph) => removeCardPhoto(task, ph)} />}
+                      <TaskImages task={task} busy={photoBusy === task.id}
+                        onAdd={(files) => addCardPhotos(task, files)} onRemove={(ph) => removeCardPhoto(task, ph)} />
 
                       <div className="flex flex-wrap items-center gap-2 mt-2.5">
                         <span className={`text-xs px-1.5 py-0.5 rounded ${pMeta.cls}`}>{pMeta.label}</span>
@@ -427,17 +432,19 @@ export default function Assistant() {
 }
 
 // Add-photo button: a hidden file input (phones offer the camera too).
-function PhotoPickButton({ busy, onFiles, label }) {
+function PhotoPickButton({ busy, onFiles, label, variant }) {
   const ref = useRef(null)
   return (
     <>
       <input ref={ref} type="file" accept="image/*" multiple hidden
         onChange={(e) => { const files = [...e.target.files]; e.target.value = ''; if (files.length) onFiles(files) }} />
       <button type="button" onClick={() => ref.current?.click()} disabled={busy} title="Add photo"
-        className={label
+        className={variant === 'tile'
+          ? 'h-14 w-14 flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-input text-[10px] text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 disabled:opacity-50'
+          : label
           ? 'flex items-center gap-1.5 border border-input rounded-md px-3 py-1.5 text-xs font-medium hover:bg-muted/50 disabled:opacity-50'
           : 'p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50'}>
-        {busy ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}{label && (busy ? 'Uploading…' : label)}
+        {busy ? <Loader2 size={variant === 'tile' ? 15 : 13} className="animate-spin" /> : <ImagePlus size={variant === 'tile' ? 15 : 13} />}{label && (busy ? 'Uploading…' : label)}
       </button>
     </>
   )
@@ -445,7 +452,7 @@ function PhotoPickButton({ busy, onFiles, label }) {
 
 // Thumbnails from the private bucket via short-lived signed URLs; click opens
 // the full photo in a new tab.
-function PhotoStrip({ photos, onRemove, compact }) {
+function PhotoStrip({ photos, onRemove, compact, children }) {
   const [urls, setUrls] = useState({})
   const key = photos.map((p) => p.path).join('|')
   useEffect(() => {
@@ -471,6 +478,29 @@ function PhotoStrip({ photos, onRemove, compact }) {
           )}
         </div>
       ))}
+      {children}
+    </div>
+  )
+}
+
+// The Images section inside each task card: thumbnails plus an add tile. With
+// no images yet it's a slim dashed button so empty tasks stay compact. Files
+// can also be dropped anywhere on the card.
+function TaskImages({ task, busy, onAdd, onRemove }) {
+  const photos = task.photos ?? []
+  if (!photos.length) {
+    return (
+      <div className="mt-2.5">
+        <PhotoPickButton busy={busy} onFiles={onAdd} label="Add image" />
+      </div>
+    )
+  }
+  return (
+    <div className="mt-2.5">
+      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Images ({photos.length})</p>
+      <PhotoStrip photos={photos} onRemove={onRemove} compact>
+        {photos.length < MAX_TASK_PHOTOS && <PhotoPickButton busy={busy} onFiles={onAdd} variant="tile" label="Add" />}
+      </PhotoStrip>
     </div>
   )
 }
