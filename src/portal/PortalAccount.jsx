@@ -118,7 +118,9 @@ function FobsCard({ member, company }) {
           : (
             <div className="space-y-2.5">
               {rows.map((a) => {
-                const ds = DEPOSIT_STATUS[depositState(a)] ?? {}
+                // Members don't need to see our record-keeping gap on migrated devices.
+                const st = depositState(a)
+                const ds = st === 'unrecorded' ? {} : (DEPOSIT_STATUS[st] ?? {})
                 return (
                   <div key={a.id} className="flex items-center justify-between gap-3 border border-ink/10 px-3.5 py-2.5">
                     <div className="flex items-center gap-2.5">
@@ -126,7 +128,7 @@ function FobsCard({ member, company }) {
                       <span className="font-mono text-[13px] text-ink">{a.serial}</span>
                       <span className="hx-prose text-[12px] capitalize">{a.type}</span>
                     </div>
-                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${ds.cls || 'bg-gray-100 text-gray-600'}`}>{ds.label || 'Deposit'}</span>
+                    {st !== 'unrecorded' && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${ds.cls || 'bg-gray-100 text-gray-600'}`}>{ds.label || 'Deposit'}</span>}
                   </div>
                 )
               })}

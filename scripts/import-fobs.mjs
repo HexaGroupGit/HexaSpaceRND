@@ -5,8 +5,9 @@
 //   node scripts/import-fobs.mjs --apply     # write to Supabase
 //
 // Idempotent: fob/assignment ids are derived from the serial, so re-running
-// updates in place. Migrated deposits are marked ALREADY PAID (collected in the
-// old system) — no new deposit invoice is raised. Unmatched holders still get a
+// updates in place. Migrated deposits are marked UNRECORDED — the export has no
+// deposit data, so we can't claim they were paid (this wrote 'paid' until
+// 14 Oct 2026) — and no new deposit invoice is raised. Unmatched holders still get a
 // fob + assignment (with the raw name) flagged `unmatched:true` so no data is
 // lost and an admin can re-link them in the Fobs screen.
 import { readFileSync } from 'fs'
@@ -113,7 +114,7 @@ async function main() {
       companyId: linked?.companyId ?? null, companyName: company?.businessName ?? '',
       suggestedMemberId: !high ? (member?.id ?? null) : null, needsReview: !high, matchMethod: how,
       issuedAt: null, migratedAt: now, expectedReturnAt: null, returnedAt: null,
-      depositAmount: DEPOSITS[type], depositStatus: 'paid', lost: false,
+      depositAmount: DEPOSITS[type], depositStatus: 'unrecorded', lost: false,
       issueNotes: `Migrated from OfficeRND fob tracker${r.suite ? ` · ${r.suite}` : ''}`,
       createdAt: now.split('T')[0],
     })

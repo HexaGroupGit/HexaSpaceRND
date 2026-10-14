@@ -32,6 +32,9 @@ export const DEPOSIT_STATUS = {
   refunded:  { label: 'Refunded',         cls: 'bg-emerald-100 text-emerald-700' },
   forfeited: { label: 'Forfeited',        cls: 'bg-red-100 text-red-600' },
   waived:    { label: 'Waived',           cls: 'bg-gray-100 text-gray-500' },
+  // Migrated from the OfficeRND tracker, which never recorded deposits — we
+  // genuinely don't know. Not owed, not held, until an admin confirms it.
+  unrecorded: { label: 'No deposit on record', cls: 'bg-gray-100 text-gray-500' },
 }
 
 export function depositFor(type) {
@@ -80,16 +83,21 @@ export function companyFobSummary(companyId, assignments, invoices) {
 
 // Is the deposit for this assignment actually paid? Authoritative answer comes
 // from the linked deposit invoice (fobAssignmentId), not the coarse cached status.
+// Without an invoice, only an admin's explicit "Deposit paid" confirmation
+// counts — the migration's blanket 'paid' was never evidence of anything.
 export function depositPaid(assignment, invoices) {
   if (!assignment) return false
   const inv = (invoices ?? []).find((i) => i.fobAssignmentId === assignment.id && i.invoiceType === 'fob_deposit')
   if (inv) return inv.status === 'paid'
-  return assignment.depositStatus === 'paid'
+  return assignment.depositStatus === 'paid' && !!(assignment.depositConfirmedAt || !assignment.migratedAt)
 }
 
 // Coarse deposit status for a badge, reconciled with the live invoice.
 export function depositState(assignment, invoices) {
   if (!assignment) return 'pending'
   if (['forfeited', 'refunded', 'refunding', 'waived'].includes(assignment.depositStatus)) return assignment.depositStatus
-  return depositPaid(assignment, invoices) ? 'paid' : 'pending'
+  if (depositPaid(assignment, invoices)) return 'paid'
+  // Migrated with no invoice of ours: unknown, not "due".
+  if (assignment.depositStatus === 'unrecorded' || (assignment.migratedAt && assignment.depositStatus === 'paid')) return 'unrecorded'
+  return 'pending'
 }

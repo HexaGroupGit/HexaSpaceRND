@@ -24,7 +24,7 @@ function Badge({ map, k }) {
 
 export default function Fobs() {
   const store = useOutletContext()
-  const { members = [], tenants = [], invoices = [], addInvoice, voidInvoice, settings } = store
+  const { members = [], tenants = [], invoices = [], addInvoice, voidInvoice, settings, currentUserEmail = '' } = store
   const [fobs, setFobs] = useState([])
   const [assignments, setAssignments] = useState([])
   const [requests, setRequests] = useState([])
@@ -209,6 +209,18 @@ export default function Fobs() {
     setModal(null)
   }
 
+  // Admin knows an unrecorded (migrated) deposit really was paid — e.g. collected
+  // in OfficeRND. Stamped so depositPaid() trusts it and Return offers a refund.
+  async function confirmDepositPaid({ assignment }) {
+    if (!window.confirm(`Record that ${assignment.memberName || 'this holder'} paid the ${money(assignment.depositAmount)} deposit?`)) return
+    const upA = { ...assignment, depositStatus: 'paid', depositConfirmedAt: nowIso(), depositConfirmedBy: currentUserEmail }
+    const rA = await persist('fob_assignments', upA)
+    if (rA.error) return alert(`Could not save:
+
+${rA.error.message}`)
+    setAssignments((prev) => prev.map((a) => (a.id === assignment.id ? upA : a)))
+  }
+
   // Remove a device row entirely (duplicates, data-entry mistakes, binned
   // devices) along with its issue/return history. If it's still issued, any
   // unpaid deposit invoice can be voided in the same step so nobody is chased
@@ -328,6 +340,9 @@ export default function Fobs() {
                               {f.status === 'available' && <button onClick={() => setModal({ kind: 'issue', fob: f })} className="text-xs bg-primary text-primary-foreground rounded px-2.5 py-1 font-medium hover:bg-primary/90">Issue</button>}
                               {f.status === 'available' && <button onClick={() => setModal({ kind: 'faulty', fob: f })} className="text-xs border border-orange-200 text-orange-700 rounded px-2.5 py-1 font-medium hover:bg-orange-50">Not working</button>}
                               {f.status === 'faulty' && <button onClick={() => setFaulty({ fob: f, faulty: false })} className="text-xs border border-input rounded px-2.5 py-1 font-medium hover:bg-muted/50">Working again</button>}
+                              {a && !isUnmatched(a) && depositState(a, invoices) === 'unrecorded' && (
+                                <button onClick={() => confirmDepositPaid({ assignment: a })} title="Record that this deposit was actually paid (e.g. collected in OfficeRND)" className="text-xs border border-input rounded px-2.5 py-1 font-medium hover:bg-muted/50">Deposit paid</button>
+                              )}
                               {a && !isUnmatched(a) && depositState(a, invoices) === 'pending' && (
                                 <button onClick={() => setModal({ kind: 'waive', fob: f, assignment: a })} className="text-xs border border-input rounded px-2.5 py-1 font-medium hover:bg-muted/50">Waive deposit</button>
                               )}
