@@ -22,6 +22,9 @@ export default defineConfig({
         target: 'https://portal.hexaspace.com.au',
         changeOrigin: true,
         secure: true,
+        // src/ imports shared modules straight out of api/ (e.g. _invoicePdf.js);
+        // serve those locally or the admin app loads blank in dev.
+        bypass: (req) => (/\.m?js(\?|$)/.test(req.url) ? req.url : undefined),
       },
     },
   },
