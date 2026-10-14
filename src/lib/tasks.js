@@ -105,7 +105,17 @@ export function newTask(partial = {}, { createdBy = '' } = {}) {
     createdBy,
     completedAt: partial.completedAt || '',
     completedBy: partial.completedBy || '',
+    photos: cleanPhotos(partial.photos),
   }
+}
+
+// Photo refs into the private task-photos bucket (src/lib/taskPhotos.js) —
+// only well-formed paths inside our folder survive, max 10.
+function cleanPhotos(photos) {
+  return (Array.isArray(photos) ? photos : [])
+    .filter((p) => typeof p?.path === 'string' && /^tasks\/[\w.-]+$/.test(p.path))
+    .slice(0, 10)
+    .map((p) => ({ path: p.path, name: String(p.name ?? '').slice(0, 120), addedAt: p.addedAt || '' }))
 }
 
 /** Overdue first, then by due date, then by priority, then newest. */

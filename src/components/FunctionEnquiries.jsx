@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { authHeaders } from '../lib/apiFetch.js'
 import { format } from 'date-fns'
-import { Mail, UserPlus, CheckCircle2, X, RefreshCw, CalendarDays, Users, ExternalLink, Sparkles, Loader2, Send, MapPin } from 'lucide-react'
+import { Mail, UserPlus, CheckCircle2, X, RefreshCw, CalendarDays, Users, ExternalLink, Sparkles, Loader2, Send, MapPin, Reply, ChevronDown, ChevronRight } from 'lucide-react'
 import { STAGES, money, computeQuote, dateClashes, RATES } from '../lib/functionBooking.js'
 import { sendBrochure, sendBookingInvite, approveFunctionBooking, declineFunctionBooking, askAmendDate, updatePricing } from '../lib/functionActions.js'
 
@@ -25,7 +25,7 @@ export default function FunctionEnquiries({ store }) {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
   const [busy, setBusy] = useState('')
-  const [replying, setReplying] = useState(false)
+  const [replying, setReplying] = useState(null) // 'invite' | 'reply' | null
 
   useEffect(() => { load() }, [])
   async function load() {
@@ -125,17 +125,21 @@ export default function FunctionEnquiries({ store }) {
             )}
             {selected.brochureSentAt && <div className="text-xs text-muted-foreground">Brochure sent {format(new Date(selected.brochureSentAt), 'dd MMM')}</div>}
             {selected.replySentAt && <div className="text-xs text-emerald-700">Replied {format(new Date(selected.replySentAt), 'dd MMM')}{selected.tourInviteSentAt ? ' · tour link sent' : ''}</div>}
+            {selected.replies?.length > 0 && <ReplyHistory replies={selected.replies} />}
             {selected.inviteSentAt && <div className="text-xs text-indigo-600">Portal invite sent {format(new Date(selected.inviteSentAt), 'dd MMM')}</div>}
             {selected.signedAt && <div className="text-xs text-yellow-700">Signed {format(new Date(selected.signedAt), 'dd MMM')} by {selected.signerName}</div>}
 
             <div className="space-y-2 pt-1">
+              <button disabled={busy || !selected.email} onClick={() => setReplying('reply')}
+                title={selected.email ? 'Write a reply — by hand, or let AI draft it from your notes' : 'No email address on this enquiry'}
+                className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40"><Reply size={14} /> Reply</button>
               {['enquiry', 'quoted'].includes(selected.stage) && (
                 <>
-                  <button disabled={busy || !selected.email} onClick={() => setReplying(true)}
+                  <button disabled={busy || !selected.email} onClick={() => setReplying('invite')}
                     title={selected.email ? 'AI reads their message, drafts a reply, attaches the brochure and invites them in for a look' : 'No email address on this enquiry'}
                     className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40"><Sparkles size={14} /> Reply &amp; invite for a look</button>
                   <button disabled={busy} onClick={() => run('brochure', () => sendBrochure({ booking: selected, settings }))} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40"><Mail size={14} /> {busy === 'brochure' ? 'Sending…' : selected.brochureSentAt ? 'Resend brochure' : 'Send brochure & info'}</button>
-                  <button disabled={busy} onClick={() => run('invite', () => sendBookingInvite({ store, booking: selected, settings }))} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-md text-sm font-semibold hover:bg-primary/90 disabled:opacity-40"><UserPlus size={14} /> {busy === 'invite' ? 'Sending…' : 'Send booking invite'}</button>
+                  <button disabled={busy} onClick={() => run('invite', () => sendBookingInvite({ store, booking: selected, settings }))} className="w-full flex items-center justify-center gap-2 border border-input py-2.5 rounded-md text-sm font-medium hover:bg-muted/50 disabled:opacity-40"><UserPlus size={14} /> {busy === 'invite' ? 'Sending…' : 'Send booking invite'}</button>
                 </>
               )}
               {selected.stage === 'requested' && (
@@ -160,7 +164,7 @@ export default function FunctionEnquiries({ store }) {
       )}
 
       {replying && selected && (
-        <ReplyModal booking={selected} onClose={() => setReplying(false)} onSent={(rec) => { replace(rec); setReplying(false) }} />
+        <ReplyModal key={`${selected.id}-${replying}`} booking={selected} mode={replying} onClose={() => setReplying(null)} onSent={(rec) => { replace(rec); setReplying(null) }} />
       )}
     </div>
   )
@@ -171,31 +175,36 @@ export default function FunctionEnquiries({ store }) {
 // look first?". Claude reads their message and drafts the reply; we attach the
 // function brochure and a "book a time to visit" link instead of pushing a
 // quote/proposal at them. Everything stays editable before it goes out.
-function ReplyModal({ booking, onClose, onSent }) {
-  const [subject, setSubject] = useState('')
+const firstName = (b) => String(b.name || '').trim().split(/\s+/)[0] || 'there'
+
+function ReplyModal({ booking, mode = 'invite', onClose, onSent }) {
+  const plain = mode === 'reply'
+  const [subject, setSubject] = useState(plain ? `Re: ${booking.eventName ? `${booking.eventName} — ` : ''}your Function Space enquiry` : '')
   const [headline, setHeadline] = useState('')
-  const [body, setBody] = useState('')
+  const [body, setBody] = useState(plain ? `Hi ${firstName(booking)},\n\n\n\n— The Hexa Space Team` : '')
   const [summary, setSummary] = useState('')
-  const [attachBrochure, setAttachBrochure] = useState(true)
-  const [includeTourLink, setIncludeTourLink] = useState(true)
+  const [notes, setNotes] = useState('')
+  const [attachBrochure, setAttachBrochure] = useState(!plain)
+  const [includeTourLink, setIncludeTourLink] = useState(!plain)
   const [drafting, setDrafting] = useState(false)
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState('')
 
-  // Draft as soon as it opens — reading their message is the whole point.
-  useEffect(() => { draft() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // The invite drafts as soon as it opens — reading their message is the whole
+  // point. A plain reply starts blank; AI drafting is opt-in from your notes.
+  useEffect(() => { if (!plain) draft() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function draft() {
     setDrafting(true); setErr('')
     try {
       const r = await fetch('/api/function-enquiry-reply', {
         method: 'POST', headers: await authHeaders(),
-        body: JSON.stringify({ id: booking.id, action: 'draft', attachBrochure }),
+        body: JSON.stringify({ id: booking.id, action: 'draft', attachBrochure, purpose: plain ? 'reply' : 'invite', instructions: notes.trim() }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d.error ?? 'Drafting failed.')
       setSubject(d.subject ?? ''); setHeadline(d.headline ?? ''); setBody(d.body ?? ''); setSummary(d.summary ?? '')
-      if (d.wantsVisit) setIncludeTourLink(true)
+      if (d.wantsVisit && !plain) setIncludeTourLink(true)
     } catch (e) { setErr(e.message) } finally { setDrafting(false) }
   }
 
@@ -223,8 +232,8 @@ function ReplyModal({ booking, onClose, onSent }) {
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-border">
-          <h2 className="font-semibold text-foreground flex items-center gap-2"><Sparkles size={16} /> Reply &amp; invite for a look</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">To {booking.name || booking.organisation || 'the enquirer'} &lt;{booking.email}&gt; — brochure attached, tour link instead of a proposal.</p>
+          <h2 className="font-semibold text-foreground flex items-center gap-2">{plain ? <><Reply size={16} /> Reply</> : <><Sparkles size={16} /> Reply &amp; invite for a look</>}</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">To {booking.name || booking.organisation || 'the enquirer'} &lt;{booking.email}&gt;{plain ? ' — replies come back to the team inbox.' : ' — brochure attached, tour link instead of a proposal.'}</p>
         </div>
 
         <div className="px-6 py-5 space-y-4">
@@ -236,11 +245,19 @@ function ReplyModal({ booking, onClose, onSent }) {
             </div>
           )}
 
+          {plain && (
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Notes for AI <span className="font-normal normal-case">(optional — or just write the message below)</span></label>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} disabled={drafting}
+                className={`${inp} resize-y`} placeholder="e.g. Saturday 14 Nov is free, catering is via our partner list, deposit link to follow" />
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Draft</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{plain ? 'Message' : 'Draft'}</label>
             <button onClick={draft} disabled={busy}
               className="flex items-center gap-1.5 border border-input px-3 py-1.5 rounded-md text-xs font-medium hover:bg-muted/50 disabled:opacity-40">
-              {drafting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {drafting ? 'Drafting…' : 'Redraft'}
+              {drafting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {drafting ? 'Drafting…' : plain ? 'Draft with AI' : 'Redraft'}
             </button>
           </div>
 
@@ -346,6 +363,31 @@ function DiscountEditor({ booking, disabled, onApply, onClear }) {
         {isActive && <button disabled={disabled} onClick={onClear} className="border border-input py-1.5 px-3 rounded text-xs font-medium hover:bg-muted/50 disabled:opacity-40">Clear</button>}
       </div>
       <p className="text-[10px] text-muted-foreground leading-snug">The brochure keeps standard RRP — this discount shows on the emailed proposal and their members portal.</p>
+    </div>
+  )
+}
+
+// Every reply sent from here, newest first — click to read what went out.
+function ReplyHistory({ replies }) {
+  const [openIdx, setOpenIdx] = useState(null)
+  const list = [...replies].reverse()
+  return (
+    <div>
+      <dt className="text-xs text-muted-foreground uppercase mb-1">Replies sent ({list.length})</dt>
+      <div className="border border-border rounded-md divide-y divide-border">
+        {list.map((r, i) => (
+          <div key={`${r.at}-${i}`}>
+            <button onClick={() => setOpenIdx(openIdx === i ? null : i)} className="w-full flex items-start gap-1.5 text-left px-3 py-2 hover:bg-muted/40">
+              {openIdx === i ? <ChevronDown size={13} className="mt-0.5 shrink-0" /> : <ChevronRight size={13} className="mt-0.5 shrink-0" />}
+              <span className="min-w-0">
+                <span className="block text-xs font-medium text-foreground truncate">{r.subject}</span>
+                <span className="block text-[11px] text-muted-foreground">{r.at ? format(new Date(r.at), 'dd/MM/yyyy h:mm a') : ''}{r.by ? ` · ${r.by}` : ''}</span>
+              </span>
+            </button>
+            {openIdx === i && <div className="px-3 pb-2.5 text-xs text-foreground whitespace-pre-wrap">{r.body}</div>}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

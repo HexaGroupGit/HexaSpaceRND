@@ -208,10 +208,10 @@ export default function Fobs() {
   }
 
   // Remove a device row entirely (duplicates, data-entry mistakes, binned
-  // devices) along with its issue/return history. Issued devices must be
-  // returned or released first so no live deposit is orphaned.
-  async function deleteDevice({ fob }) {
-    if (openAssignment(fob.id, assignments)) return alert('This device is still issued — return or release it before deleting.')
+  // devices) along with its issue/return history. If it's still issued, any
+  // unpaid deposit invoice can be voided in the same step so nobody is chased
+  // for a device that no longer exists; a paid deposit is left for a refund.
+  async function deleteDevice({ fob, voidDeposit }) {
     const history = assignments.filter((a) => a.fobId === fob.id)
     if (history.length) {
       const rA = await supabase.from('fob_assignments').delete().in('id', history.map((a) => a.id))
@@ -219,6 +219,7 @@ export default function Fobs() {
     }
     const rF = await supabase.from('fobs').delete().eq('id', fob.id)
     if (rF.error) return alert(`Could not delete the device:\n\n${rF.error.message}`)
+    if (voidDeposit) unpaidDeposits(invoices, history).forEach((i) => voidInvoice?.(i.id))
     setAssignments((prev) => prev.filter((a) => a.fobId !== fob.id))
     setFobs((prev) => prev.filter((f) => f.id !== fob.id))
     setModal(null)
@@ -335,7 +336,7 @@ export default function Fobs() {
                                 {!isUnmatched(a) && <button onClick={() => setModal({ kind: 'return', fob: f, assignment: a })} className="text-xs border border-input rounded px-2.5 py-1 font-medium hover:bg-muted/50">Return</button>}
                                 <button onClick={() => setModal({ kind: 'lost', fob: f, assignment: a })} className="text-xs border border-red-200 text-red-600 rounded px-2.5 py-1 font-medium hover:bg-red-50">Lost</button>
                               </>}
-                              {!a && <button onClick={() => setModal({ kind: 'delete', fob: f })} title="Delete device" className="p-1 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>}
+                              <button onClick={() => setModal({ kind: 'delete', fob: f, assignment: a })} title="Delete this device from the system" className="flex items-center gap-1 text-xs border border-red-200 text-red-600 rounded px-2.5 py-1 font-medium hover:bg-red-50"><Trash2 size={12} /> Delete</button>
                             </div>
                           </td>
                         </tr>
@@ -384,7 +385,7 @@ export default function Fobs() {
       {modal?.kind === 'return' && <ReturnModal ctx={modal} paid={depositPaid(modal.assignment, invoices)} onClose={() => setModal(null)} onReturn={returnDevice} />}
       {modal?.kind === 'lost' && <LostModal ctx={modal} onClose={() => setModal(null)} onLost={markLost} />}
       {modal?.kind === 'waive' && <WaiveModal ctx={modal} invoices={invoices} onClose={() => setModal(null)} onWaive={waiveDeposit} />}
-      {modal?.kind === 'delete' && <DeleteModal ctx={modal} history={assignments.filter((a) => a.fobId === modal.fob.id)} onClose={() => setModal(null)} onDelete={deleteDevice} />}
+      {modal?.kind === 'delete' && <DeleteModal ctx={modal} history={assignments.filter((a) => a.fobId === modal.fob.id)} invoices={invoices} onClose={() => setModal(null)} onDelete={deleteDevice} />}
       {modal?.kind === 'faulty' && <FaultyModal ctx={modal} onClose={() => setModal(null)} onSave={setFaulty} />}
     </div>
   )
@@ -568,17 +569,37 @@ function WaiveModal({ ctx, invoices, onClose, onWaive }) {
   )
 }
 
-function DeleteModal({ ctx, history, onClose, onDelete }) {
-  const { fob } = ctx
+// Deposit invoices on these assignments that are still being chased.
+function unpaidDeposits(invoices, assignments) {
+  const ids = new Set(assignments.map((a) => a.id))
+  return invoices.filter((i) => ids.has(i.fobAssignmentId) && i.invoiceType === 'fob_deposit' && !['paid', 'voided'].includes(i.status))
+}
+
+function DeleteModal({ ctx, history, invoices, onClose, onDelete }) {
+  const { fob, assignment } = ctx
+  const unpaid = unpaidDeposits(invoices, history)
+  const paidOpen = assignment && depositPaid(assignment, invoices) && !['refunding', 'refunded'].includes(assignment.depositStatus)
+  const [voidDeposit, setVoidDeposit] = useState(true)
   return (
     <ModalShell title={`Delete ${fob.type} — ${fob.serial}`} onClose={onClose}>
       <p className="text-sm text-muted-foreground">
-        Removes this device from inventory permanently{history.length ? `, along with its ${history.length} past issue/return record${history.length === 1 ? '' : 's'}` : ''}.
-        Use it for duplicates or entry mistakes. Invoices are not touched.
+        Removes this device from the system permanently{history.length ? `, along with its ${history.length} issue/return record${history.length === 1 ? '' : 's'}` : ''}.
       </p>
+      {assignment && (
+        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+          Still issued to <strong>{assignment.memberName || 'an unnamed holder'}</strong>{assignment.companyName ? ` (${assignment.companyName})` : ''}.
+        </p>
+      )}
+      {unpaid.length > 0 && (
+        <label className="flex items-start gap-2 text-sm text-foreground">
+          <input type="checkbox" className="mt-0.5" checked={voidDeposit} onChange={(e) => setVoidDeposit(e.target.checked)} />
+          <span>Also void the unpaid deposit invoice{unpaid.length === 1 ? '' : 's'} {unpaid.map((i) => i.number).filter(Boolean).join(', ')}</span>
+        </label>
+      )}
+      {paidOpen && <p className="text-xs text-amber-700">The {money(assignment.depositAmount)} deposit was paid — raise a refund separately if it's owed back.</p>}
       <div className="flex justify-end gap-2 pt-1">
         <button onClick={onClose} className="border border-input px-4 py-2 rounded text-sm font-medium hover:bg-muted/50">Cancel</button>
-        <button onClick={() => onDelete({ fob })} className="bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700">Delete device</button>
+        <button onClick={() => onDelete({ fob, voidDeposit: unpaid.length > 0 && voidDeposit })} className="bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700">Delete device</button>
       </div>
     </ModalShell>
   )

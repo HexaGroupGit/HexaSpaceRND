@@ -45,7 +45,7 @@ export const MAX_IMAGES = 4
 const MAX_EDGE = 1568
 const THUMB_EDGE = 240
 
-function loadImage(file) {
+export function loadImage(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file)
     const img = new Image()
@@ -55,7 +55,7 @@ function loadImage(file) {
   })
 }
 
-function drawJpeg(img, maxEdge, quality) {
+export function drawJpeg(img, maxEdge, quality) {
   const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight))
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))

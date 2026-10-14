@@ -6,10 +6,15 @@
 // brochure attached and a "book a time to visit" tour link — the walkthrough
 // path, not the quote / proposal path (that's function-bookings/notify.js).
 //
-//   { id, action: 'draft' }
+//   { id, action: 'draft', purpose?: 'invite'|'reply', instructions? }
 //     → { subject, headline, body, wantsVisit, summary }
 //   { id, action: 'send', subject, headline, body, attachBrochure, includeTourLink }
-//     → { sent: true, to }
+//     → { sent: true, to, booking }
+//
+// purpose 'invite' (default) is the walkthrough email above. 'reply' is a plain
+// reply at any stage — answering a question, a follow-up — drafted from the
+// admin's own notes ("instructions") when given. Every send is logged on the
+// booking as replies[] so the thread shows what went out.
 //
 // The recipient is ALWAYS the address stored on the enquiry — never one supplied
 // by the caller — so this can't be turned into an open relay even if the admin
@@ -25,13 +30,35 @@ export const config = { maxDuration: 60 }
 
 const MODEL = 'claude-opus-5'
 
-const SYSTEM = `You write email replies for the events team at Hexa Space — a
+const VOICE = `You write email replies for the events team at Hexa Space — a
 business infrastructure and coworking space at Level 4, 402/830 Whitehorse Road,
 Box Hill, Melbourne. You are replying to someone who enquired about hiring The
 Function Space.
 
 Voice: warm, professional, concise, Australian English. Write as "we" (the Hexa
-Space team). No hype, no exclamation-mark stacking, no emoji.
+Space team). No hype, no exclamation-mark stacking, no emoji.`
+
+const OUTPUT_RULES = `Output rules: PLAIN TEXT that gets typeset into a branded email — no markdown,
+no HTML, no bullet characters. Blank line between paragraphs. Open with a
+greeting on its own line ("Hi Sarah,"), close with "— The Hexa Space Team". Keep
+the whole body under about 160 words. The headline is a short warm serif line
+above the body (under 60 characters, no full stop needed).`
+
+const REPLY_SYSTEM = `${VOICE}
+
+What this particular email is for: a direct reply from the team. If the admin
+gave notes on what to say, the email must say exactly that — they are the
+instructions; write them up in the Hexa voice without adding commitments they
+didn't make. With no notes, answer their message and move the booking forward
+sensibly for its stage.
+
+Never invent prices, availability, dates being held, or venue details beyond
+the facts given. Do not write URLs. Only mention the brochure if the facts say
+it is attached.
+
+${OUTPUT_RULES}`
+
+const SYSTEM = `${VOICE}
 
 What this particular email is for: answering the person's message and inviting
 them in to see the space in person. It is NOT a quote and NOT a proposal — never
@@ -50,11 +77,7 @@ can't be answered from the facts (catering suppliers, specific AV gear, a firm
 price), say we'll cover it when they come in or that we'll follow up — do not
 invent details.
 
-Output rules: PLAIN TEXT that gets typeset into a branded email — no markdown,
-no HTML, no bullet characters. Blank line between paragraphs. Open with a
-greeting on its own line ("Hi Sarah,"), close with "— The Hexa Space Team". Keep
-the whole body under about 160 words. The headline is a short warm serif line
-above the body (under 60 characters, no full stop needed).`
+${OUTPUT_RULES}`
 
 const SCHEMA = {
   type: 'object',
@@ -100,6 +123,7 @@ function factSheet(b, settings, { attachBrochure = true } = {}) {
     `Event: ${b.eventName || '(not given)'}${b.eventType ? ` — ${b.eventType}` : ''}`,
     `Requested date/time: ${b.eventDate || '(none given)'} ${b.startTime || ''}${b.endTime ? `–${b.endTime}` : ''}`.trim(),
     `Guests: ${b.guests || '(not given)'}`,
+    b.stage ? `Booking stage: ${b.stage}` : '',
     `Catering requested: ${b.catering ? 'yes' : 'no'}`,
     addons ? `Add-ons ticked: ${addons}` : '',
     '',
@@ -113,6 +137,10 @@ function factSheet(b, settings, { attachBrochure = true } = {}) {
     '',
     'Their message:',
     (b.additionalRequirements || '').trim() || '(they did not write a message — invite them in to see the space)',
+    ...(Array.isArray(b.replies) && b.replies.length
+      ? ['', 'What we have already sent them (oldest first):',
+        ...b.replies.slice(-3).map((r) => `- ${String(r.at || '').slice(0, 10)} "${r.subject}": ${String(r.body || '').slice(0, 600)}`)]
+      : []),
   ]
   return lines.filter((l) => l !== '').join('\n')
 }
@@ -120,12 +148,12 @@ function factSheet(b, settings, { attachBrochure = true } = {}) {
 // Draft with Claude. Server-side fallbacks are on so a spurious safety refusal
 // re-runs on another model instead of blocking the team; older SDK/API combos
 // that don't know the beta just fall through to the plain call.
-async function draftWithClaude(prompt) {
+async function draftWithClaude(prompt, system = SYSTEM) {
   const client = new Anthropic()
   const params = {
     model: MODEL,
     max_tokens: 6000,
-    system: SYSTEM,
+    system,
     thinking: { type: 'adaptive' },
     output_config: { effort: 'medium', format: { type: 'json_schema', schema: SCHEMA } },
     messages: [{ role: 'user', content: prompt }],
@@ -166,9 +194,15 @@ export default async function handler(req, res) {
     }
     try {
       const attachBrochure = req.body?.attachBrochure !== false
-      const response = await draftWithClaude(
-        `Reply to this function space enquiry and invite them in for a look.\n\n${factSheet(booking, settings, { attachBrochure })}`
-      )
+      const instructions = String(req.body?.instructions ?? '').trim().slice(0, 2000)
+      const response = req.body?.purpose === 'reply'
+        ? await draftWithClaude(
+          `Write the team's reply to this function space enquiry.\n\n${factSheet(booking, settings, { attachBrochure })}` +
+          (instructions ? `\n\nThe admin's notes — what this email must say:\n${instructions}` : ''),
+          REPLY_SYSTEM)
+        : await draftWithClaude(
+          `Reply to this function space enquiry and invite them in for a look.\n\n${factSheet(booking, settings, { attachBrochure })}`
+        )
       if (response.stop_reason === 'refusal') {
         return res.status(400).json({ error: 'The assistant declined to draft that one — write the reply by hand.' })
       }
@@ -229,6 +263,9 @@ export default async function handler(req, res) {
       read: true,
       replySentAt: now,
       replySubject: subject,
+      replies: [...(Array.isArray(booking.replies) ? booking.replies : []), {
+        at: now, by: auth.user?.email ?? '', subject, body, attachBrochure, includeTourLink,
+      }].slice(-50),
       ...(attachBrochure ? { brochureSentAt: now } : {}),
       ...(includeTourLink ? { tourInviteSentAt: now } : {}),
       // A personal reply supersedes the automated drip — same rule the tour

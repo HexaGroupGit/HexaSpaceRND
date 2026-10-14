@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import {
   Sparkles, Plus, X, Trash2, Pencil, ArrowUpRight, UserRound,
-  CheckCircle2, Circle, ChevronDown, ChevronRight, RotateCcw, AlertCircle,
+  CheckCircle2, Circle, ChevronDown, ChevronRight, RotateCcw, AlertCircle, ImagePlus, Loader2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { melbourneToday, melbourneStamp } from '../lib/studio.js'
@@ -13,10 +13,11 @@ import {
 } from '../lib/tasks.js'
 import { useAssistantChat } from '../lib/useAssistant.js'
 import AssistantChat from './AssistantChat.jsx'
+import { uploadTaskPhoto, signTaskPhotos, removeTaskPhotos, MAX_TASK_PHOTOS } from '../lib/taskPhotos.js'
 
 const EMPTY_FORM = {
   title: '', detail: '', priority: 'normal', category: 'admin', dueDate: '', link: '',
-  requestedBy: '',
+  requestedBy: '', photos: [],
 }
 
 const dmy = (iso) => { try { return format(parseISO(iso), 'dd/MM/yyyy') } catch { return iso } }
@@ -40,6 +41,10 @@ export default function Assistant() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [filter, setFilter] = useState('all')
   const [doneOpen, setDoneOpen] = useState(false)
+  // Photos uploaded while the form is open — deleted again if it's cancelled.
+  const [formUploads, setFormUploads] = useState([])
+  const [photoBusy, setPhotoBusy] = useState('') // task id (card) or 'form'
+  const [photoErr, setPhotoErr] = useState('')
 
   // The tasks table ships as its own migration (tasks-schema.sql). Without it
   // every write would fail silently in the console and tasks would vanish on
@@ -76,15 +81,58 @@ export default function Assistant() {
     updateTask(task.id, { status: 'open', completedAt: '', completedBy: '' })
   }
 
-  function openAdd() { setEditId(null); setForm(EMPTY_FORM); setShowForm(true) }
+  function openAdd() { setEditId(null); setForm(EMPTY_FORM); setFormUploads([]); setPhotoErr(''); setShowForm(true) }
   function openEdit(task) {
     setEditId(task.id)
     setForm({
       title: task.title ?? '', detail: task.detail ?? '', priority: task.priority ?? 'normal',
       category: task.category ?? 'admin', dueDate: task.dueDate ?? '', link: task.link ?? '',
-      requestedBy: task.requestedBy ?? '',
+      requestedBy: task.requestedBy ?? '', photos: task.photos ?? [],
     })
+    setFormUploads([]); setPhotoErr('')
     setShowForm(true)
+  }
+
+  async function uploadPhotos(files, current) {
+    const list = [...(files ?? [])].filter((f) => /^image\//.test(f?.type ?? ''))
+    if (!list.length) return []
+    const room = MAX_TASK_PHOTOS - current.length
+    if (room <= 0) { setPhotoErr(`Up to ${MAX_TASK_PHOTOS} photos per task.`); return [] }
+    setPhotoErr('')
+    const added = []
+    for (const f of list.slice(0, room)) {
+      try { added.push(await uploadTaskPhoto(f)) } catch (err) { setPhotoErr(err.message) }
+    }
+    if (list.length > room) setPhotoErr(`Only the first ${room} photo${room === 1 ? '' : 's'} were added — ${MAX_TASK_PHOTOS} max.`)
+    return added
+  }
+
+  async function addFormPhotos(files) {
+    setPhotoBusy('form')
+    const added = await uploadPhotos(files, form.photos)
+    setForm((f) => ({ ...f, photos: [...f.photos, ...added] }))
+    setFormUploads((u) => [...u, ...added.map((p) => p.path)])
+    setPhotoBusy('')
+  }
+
+  async function addCardPhotos(task, files) {
+    setPhotoBusy(task.id)
+    const added = await uploadPhotos(files, task.photos ?? [])
+    if (added.length) updateTask(task.id, { photos: [...(task.photos ?? []), ...added] })
+    setPhotoBusy('')
+  }
+
+  function removeCardPhoto(task, photo) {
+    if (!window.confirm("Remove this photo?")) return
+    updateTask(task.id, { photos: (task.photos ?? []).filter((p) => p.path !== photo.path) })
+    removeTaskPhotos([photo.path])
+  }
+
+  function closeForm() {
+    // Anything uploaded during a cancelled add/edit is orphaned — clean it up.
+    removeTaskPhotos(formUploads)
+    setFormUploads([])
+    setShowForm(false)
   }
 
   function saveForm(e) {
@@ -92,15 +140,20 @@ export default function Assistant() {
     if (!form.title.trim()) return
     if (editId) {
       const existing = tasks.find((t) => t.id === editId)
+      const kept = new Set(form.photos.map((p) => p.path))
+      removeTaskPhotos((existing?.photos ?? []).map((p) => p.path).filter((path) => !kept.has(path)))
       updateTask(editId, newTask({ ...existing, ...form }, { createdBy: existing?.createdBy ?? currentUserEmail }))
     } else {
       addTasks([newTask({ ...form, source: 'manual' }, { createdBy: currentUserEmail })])
     }
+    setFormUploads([])
     setShowForm(false)
   }
 
   function removeTask(task) {
-    if (window.confirm(`Delete "${task.title}"?`)) deleteTask(task.id)
+    if (!window.confirm(`Delete "${task.title}"?`)) return
+    deleteTask(task.id)
+    removeTaskPhotos((task.photos ?? []).map((p) => p.path))
   }
 
   function clearThread() {
@@ -127,6 +180,13 @@ export default function Assistant() {
       {setupErr && (
         <div className="flex items-start gap-2 mb-5 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-4 py-3">
           <AlertCircle size={15} className="mt-0.5 shrink-0" /> <span>{setupErr}</span>
+        </div>
+      )}
+
+      {photoErr && !showForm && (
+        <div className="flex items-start gap-2 mb-5 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-4 py-3">
+          <AlertCircle size={15} className="mt-0.5 shrink-0" /> <span className="flex-1">{photoErr}</span>
+          <button onClick={() => setPhotoErr('')} className="text-red-700/70 hover:text-red-700"><X size={14} /></button>
         </div>
       )}
 
@@ -197,6 +257,7 @@ export default function Assistant() {
                               <ArrowUpRight size={14} />
                             </button>
                           )}
+                          <PhotoPickButton busy={photoBusy === task.id} onFiles={(files) => addCardPhotos(task, files)} />
                           <button onClick={() => openEdit(task)}
                             className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"><Pencil size={13} /></button>
                           <button onClick={() => removeTask(task)}
@@ -205,6 +266,7 @@ export default function Assistant() {
                       </div>
 
                       {task.detail && <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{task.detail}</p>}
+                      {task.photos?.length > 0 && <PhotoStrip photos={task.photos} onRemove={(ph) => removeCardPhoto(task, ph)} />}
 
                       <div className="flex flex-wrap items-center gap-2 mt-2.5">
                         <span className={`text-xs px-1.5 py-0.5 rounded ${pMeta.cls}`}>{pMeta.label}</span>
@@ -269,6 +331,7 @@ export default function Assistant() {
                             Asked by {task.requestedBy}
                           </p>
                         )}
+                        {task.photos?.length > 0 && <PhotoStrip photos={task.photos} />}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button onClick={() => reopenTask(task)} title="Move back to to-do"
@@ -291,9 +354,10 @@ export default function Assistant() {
           <div className="bg-card rounded-xl w-full max-w-lg shadow-2xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
               <h2 className="font-semibold text-foreground">{editId ? 'Edit Task' : 'Add Task'}</h2>
-              <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
+              <button onClick={closeForm} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
-            <form onSubmit={saveForm} className="px-6 py-5 space-y-4">
+            <form onSubmit={saveForm} className="px-6 py-5 space-y-4 max-h-[80vh] overflow-y-auto"
+              onPaste={(e) => { const files = [...e.clipboardData.files]; if (files.length) { e.preventDefault(); addFormPhotos(files) } }}>
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Task *</label>
                 <input required autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -308,6 +372,18 @@ export default function Assistant() {
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Asked by</label>
                 <input value={form.requestedBy} onChange={(e) => setForm({ ...form, requestedBy: e.target.value })}
                   placeholder="The staff member who gave you this — blank if it's your own" className={input} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Photos</label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {form.photos.length > 0 && <PhotoStrip photos={form.photos} compact
+                    onRemove={(ph) => setForm((f) => ({ ...f, photos: f.photos.filter((p) => p.path !== ph.path) }))} />}
+                  {form.photos.length < MAX_TASK_PHOTOS && (
+                    <PhotoPickButton busy={photoBusy === 'form'} onFiles={addFormPhotos} label="Add photo" />
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">Choose files, take one on your phone, or paste a screenshot (Ctrl+V).</p>
+                {photoErr && <p className="text-xs text-red-600 mt-1">{photoErr}</p>}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -335,10 +411,10 @@ export default function Assistant() {
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowForm(false)}
+                <button type="button" onClick={closeForm}
                   className="px-4 py-2 text-sm text-foreground border border-input rounded-md hover:bg-muted/50">Cancel</button>
-                <button type="submit"
-                  className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium">
+                <button type="submit" disabled={photoBusy === 'form'}
+                  className="disabled:opacity-50 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium">
                   {editId ? 'Save Changes' : 'Add Task'}
                 </button>
               </div>
@@ -346,6 +422,55 @@ export default function Assistant() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Add-photo button: a hidden file input (phones offer the camera too).
+function PhotoPickButton({ busy, onFiles, label }) {
+  const ref = useRef(null)
+  return (
+    <>
+      <input ref={ref} type="file" accept="image/*" multiple hidden
+        onChange={(e) => { const files = [...e.target.files]; e.target.value = ''; if (files.length) onFiles(files) }} />
+      <button type="button" onClick={() => ref.current?.click()} disabled={busy} title="Add photo"
+        className={label
+          ? 'flex items-center gap-1.5 border border-input rounded-md px-3 py-1.5 text-xs font-medium hover:bg-muted/50 disabled:opacity-50'
+          : 'p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50'}>
+        {busy ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}{label && (busy ? 'Uploading…' : label)}
+      </button>
+    </>
+  )
+}
+
+// Thumbnails from the private bucket via short-lived signed URLs; click opens
+// the full photo in a new tab.
+function PhotoStrip({ photos, onRemove, compact }) {
+  const [urls, setUrls] = useState({})
+  const key = photos.map((p) => p.path).join('|')
+  useEffect(() => {
+    let cancelled = false
+    signTaskPhotos(photos.map((p) => p.path)).then((u) => { if (!cancelled) setUrls(u) })
+    return () => { cancelled = true }
+  }, [key]) // eslint-disable-line react-hooks/exhaustive-deps -- re-sign only when the set of paths changes
+  const size = compact ? 'h-14 w-14' : 'h-16 w-16'
+  return (
+    <div className={`flex flex-wrap gap-2 ${compact ? '' : 'mt-2.5'}`}>
+      {photos.map((p) => (
+        <div key={p.path} className={`relative group ${size} rounded-md border border-border bg-muted overflow-hidden`}>
+          {urls[p.path]
+            ? <a href={urls[p.path]} target="_blank" rel="noopener noreferrer" title={p.name}>
+                <img src={urls[p.path]} alt={p.name} className="h-full w-full object-cover" />
+              </a>
+            : <div className="h-full w-full grid place-items-center"><Loader2 size={12} className="animate-spin text-muted-foreground" /></div>}
+          {onRemove && (
+            <button type="button" onClick={() => onRemove(p)} title="Remove photo"
+              className="absolute top-0.5 right-0.5 h-5 w-5 grid place-items-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 focus:opacity-100">
+              <X size={11} />
+            </button>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
