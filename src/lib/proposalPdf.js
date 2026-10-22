@@ -766,7 +766,7 @@ function voPackagesPage(offer, { P }) {
           ${bl('Business &amp; online directory listing')}
           ${bl('Mail handling &amp; forwarding')}
           ${bl('Reception service')}
-          ${bl('30% off meeting rooms, media &amp; events')}
+          ${bl('Book meeting rooms, media &amp; events')}
           ${bl('Exclusive community event invitations')}
         </ul>
         <div style="margin-top:auto;padding-top:18px;"><div class="body" style="font-size:10px;color:var(--soft);">Everything you need to establish and register your business at a premium address.</div></div>
@@ -784,6 +784,7 @@ function voPackagesPage(offer, { P }) {
           ${bl('9am–5pm lounge access', true)}
           ${bl('Complimentary tea &amp; coffee', true)}
           ${bl('2 hours free daily · 4-pax meeting room', true)}
+          ${bl('30% off meeting rooms, media &amp; events', true)}
           ${bl('Priority room &amp; studio booking', true)}
         </ul>
         <div style="margin-top:auto;padding-top:18px;"><div class="body" style="font-size:10px;color:#bdbbc0;">A professional base with room to meet clients and work on-site, every day.</div></div>
@@ -814,10 +815,10 @@ function voAmenitiesPage() {
   return `<div class="page"><div class="pad" style="display:flex;gap:.7in;">
     <div style="width:46%;display:flex;flex-direction:column;">
       <div class="eyebrow">Amenities</div>
-      <div class="display" style="font-size:44px;margin-top:12px;">The whole centre,<br>on member rates.</div>
-      <p class="body" style="margin-top:18px;max-width:4.3in;">As a virtual office member you can book the full run of the centre — meeting rooms, event spaces and media studios — all at an exclusive member's discount, with priority for Plus members.</p>
+      <div class="display" style="font-size:44px;margin-top:12px;">The whole centre,<br>a booking away.</div>
+      <p class="body" style="margin-top:18px;max-width:4.3in;">As a virtual office member you can book the full run of the centre — meeting rooms, event spaces and media studios. Plus members book at an exclusive member's discount, with priority access.</p>
       <div style="margin-top:26px;display:flex;gap:16px;">
-        <div style="flex:1;border-top:1.5px solid var(--ink);padding-top:12px;"><div class="display" style="font-size:34px;color:var(--olive);">30%</div><div class="label" style="font-size:8px;color:var(--soft);margin-top:4px;">Off standard room rates</div></div>
+        <div style="flex:1;border-top:1.5px solid var(--ink);padding-top:12px;"><div class="display" style="font-size:34px;color:var(--olive);">30%</div><div class="label" style="font-size:8px;color:var(--soft);margin-top:4px;">Off room rates · Plus members</div></div>
         <div style="flex:1;border-top:1.5px solid var(--ink);padding-top:12px;"><div class="display" style="font-size:34px;">2 hrs</div><div class="label" style="font-size:8px;color:var(--soft);margin-top:4px;">Free daily · Plus members</div></div>
       </div>
       <ul class="bullets" style="margin-top:26px;">

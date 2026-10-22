@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Printer, CalendarClock, Receipt, Wifi, KeyRound, Coffee, ArrowRight } from 'lucide-react'
 import { useApp } from '../context.js'
+import { wifiSupport, telHref } from '../../lib/wifiSupport.js'
 import { Screen, BackHeader, Label, Card } from '../ui.jsx'
 
 // How-to guides — the portal's guide content, phone-sized.
@@ -15,6 +16,7 @@ export default function Guides() {
   const nav = useNavigate()
   const { data } = useApp()
   const wifi = data?.settings?.wifi ?? {}
+  const support = wifiSupport(wifi)
   return (
     <Screen>
       <BackHeader title="Guides" fallback="/more" />
@@ -32,6 +34,15 @@ export default function Guides() {
               Network <span className="text-ink font-medium">{wifi.ssid || 'Hexa Spaces'}</span>
               {wifi.password ? <> · password <span className="font-mono text-ink text-[12px] break-all">{wifi.password}</span></> : ' — password at reception.'}
             </p>
+            {support && (
+              <p className="hx-prose text-[12px] mt-2">
+                Not working? Contact {support.name && <span className="text-ink font-medium">{support.name} — </span>}
+                {support.phone && <a href={telHref(support.phone)} className="text-ink underline">{support.phone}</a>}
+                {support.phone && support.email && ' · '}
+                {support.email && <a href={`mailto:${support.email}`} className="text-ink underline break-all">{support.email}</a>}
+                {support.hours && ` (${support.hours})`}
+              </p>
+            )}
           </div>
         </Card>
         {GUIDES.map((g, i) => (

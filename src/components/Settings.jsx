@@ -27,6 +27,7 @@ const MENU = [
       { key: 'room-perks', label: 'Room Perks' },
       { key: 'after-hours', label: 'After-hours' },
       { key: 'tours', label: 'Tours' },
+      { key: 'wifi', label: 'Wi-Fi' },
       { key: 'email-templates', label: 'Email Templates' },
     ],
   },
@@ -1251,6 +1252,64 @@ function ToursSection({ settings, updateSettings }) {
   )
 }
 
+// ── Wi-Fi ─────────────────────────────────────────────────────────────────────
+// The network members are given (app + portal Guides, getting-started and
+// invite emails) and who they contact when it's down. The support line only
+// shows once a phone or email is set (see lib/wifiSupport.js).
+const WIFI_FIELDS = ['ssid', 'password', 'supportName', 'supportPhone', 'supportEmail', 'supportHours']
+function WifiSection({ settings, updateSettings }) {
+  const [form, setForm] = useState(() =>
+    Object.fromEntries(WIFI_FIELDS.map((k) => [k, settings.wifi?.[k] ?? (k === 'ssid' ? 'Hexa Spaces' : '')])))
+  const [saved, setSaved] = useState(false)
+  const set = (k) => (v) => setForm((p) => ({ ...p, [k]: v }))
+
+  function save() {
+    const trimmed = Object.fromEntries(WIFI_FIELDS.map((k) => [k, String(form[k] ?? '').trim()]))
+    updateSettings({ wifi: { ...(settings.wifi ?? {}), ...trimmed, ssid: trimmed.ssid || 'Hexa Spaces' } })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  return (
+    <div>
+      <h1 className="text-xl font-bold text-foreground mb-1">Wi-Fi</h1>
+      <p className="text-sm text-muted-foreground mb-6">
+        The member Wi-Fi shown in the app and portal Guides and in the getting-started and portal-invite emails.
+      </p>
+
+      <div className="mb-6 border border-border rounded-md p-4">
+        <FormRow label="Network name">
+          <TextInput value={form.ssid} onChange={set('ssid')} placeholder="Hexa Spaces" />
+        </FormRow>
+        <FormRow label="Password" description="Leave blank to tell members to ask at reception">
+          <TextInput value={form.password} onChange={set('password')} mono />
+        </FormRow>
+      </div>
+
+      <h2 className="text-sm font-semibold text-foreground mb-1">Wi-Fi support contact</h2>
+      <p className="text-xs text-muted-foreground mb-3">
+        Who members contact when the Wi-Fi is down. Shown as “Not working? Contact …” once a phone or email is set.
+      </p>
+      <div className="mb-6 border border-border rounded-md p-4">
+        <FormRow label="Name" description="Person or provider, e.g. the IT support company">
+          <TextInput value={form.supportName} onChange={set('supportName')} />
+        </FormRow>
+        <FormRow label="Phone">
+          <TextInput type="tel" value={form.supportPhone} onChange={set('supportPhone')} />
+        </FormRow>
+        <FormRow label="Email">
+          <TextInput type="email" value={form.supportEmail} onChange={set('supportEmail')} />
+        </FormRow>
+        <FormRow label="Hours" description="Optional, e.g. Mon–Fri 9am–5pm">
+          <TextInput value={form.supportHours} onChange={set('supportHours')} />
+        </FormRow>
+      </div>
+
+      <SaveButton onClick={save} saved={saved} />
+    </div>
+  )
+}
+
 // ── Invoicing ─────────────────────────────────────────────────────────────────
 function InvoicingSection({ settings, updateSettings }) {
   const [form, setForm] = useState(() => ({ ...settings.invoicing }))
@@ -2309,6 +2368,7 @@ export default function Settings() {
     'room-perks': <RoomPerksSection settings={settings} updateSettings={updateSettings} />,
     'after-hours': <AfterHoursSection settings={settings} updateSettings={updateSettings} />,
     'tours': <ToursSection settings={settings} updateSettings={updateSettings} />,
+    'wifi': <WifiSection settings={settings} updateSettings={updateSettings} />,
     'billing-rules': <BillingRulesSection settings={settings} updateSettings={updateSettings} />,
     'invoicing': <InvoicingSection settings={settings} updateSettings={updateSettings} />,
     'email-templates': <EmailTemplatesSection settings={settings} updateSettings={updateSettings} />,

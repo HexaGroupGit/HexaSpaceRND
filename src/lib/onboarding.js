@@ -15,6 +15,7 @@ import { buildPaymentSchedule } from './paymentSchedule.js'
 import { invoiceCoversLease } from './billingEngine.js'
 import { holdsSpace } from './spaceHold.js'
 import { virtualSuiteLabel } from './virtualSuites.js'
+import { wifiSupportHtml } from './wifiSupport.js'
 
 const PORTAL_URL = 'https://portal.hexaspace.com.au'
 
@@ -616,7 +617,8 @@ export function gettingStartedEmailHtml({ tenant, space, settings, directoryLink
       `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0 0 12px">A separate email with your personal <strong>set-password link</strong> is on its way. Once you're in, your invoices, bookings and team all live in the portal. Can't find the invite? Go to the portal and use “Forgot password?” with this email address.</p>` +
       _btn('Open the portal', portal)) +
     _box('Wi-Fi',
-      `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0">Network <strong style="color:${_INK}">${wifi.ssid || 'Hexa Spaces'}</strong>${wifi.password ? ` &nbsp;·&nbsp; password <strong style="color:${_INK}">${wifi.password}</strong>` : ' — password available at reception'}</p>`) +
+      `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.6;margin:0">Network <strong style="color:${_INK}">${wifi.ssid || 'Hexa Spaces'}</strong>${wifi.password ? ` &nbsp;·&nbsp; password <strong style="color:${_INK}">${wifi.password}</strong>` : ' — password available at reception'}</p>` +
+      wifiSupportHtml(wifi, { font: _SANS })) +
     _box('On your phone',
       `<p style="font-family:${_SANS};font-size:13px;color:#3a3a3a;line-height:1.8;margin:0">After you've set your password, open <a href="${appUrl}" style="color:${_OLIVE};font-weight:600">portal.hexaspace.com.au/app</a> and add it to your home screen so it opens like an app:<br>` +
       `<strong>iPhone</strong> — open in Safari, tap Share, then &ldquo;Add to Home Screen&rdquo;.<br>` +

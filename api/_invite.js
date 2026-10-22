@@ -6,6 +6,7 @@ import { sendResendEmail } from './_email.js'
 import { brandFrame, bKicker, bH2, bP, bBtn, bSmall, bPanel, OLIVE } from './_brand.js'
 import { mintSetPasswordLink } from './_recoveryLink.js'
 import { isLiveMember } from '../src/lib/memberAccess.js'
+import { wifiSupportHtml } from '../src/lib/wifiSupport.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 
@@ -20,7 +21,8 @@ export function newUserEssentialsHtml(settings = {}) {
   return (
     bPanel(
       title('Wi-Fi') +
-      `<p style="margin:0;font-size:13px;line-height:1.7;color:#3a3a3a">Network <strong>${wifi.ssid || 'Hexa Spaces'}</strong>${wifi.password ? ` &nbsp;·&nbsp; password <strong>${wifi.password}</strong>` : ' — password available at reception'}</p>`
+      `<p style="margin:0;font-size:13px;line-height:1.7;color:#3a3a3a">Network <strong>${wifi.ssid || 'Hexa Spaces'}</strong>${wifi.password ? ` &nbsp;·&nbsp; password <strong>${wifi.password}</strong>` : ' — password available at reception'}</p>` +
+      wifiSupportHtml(wifi)
     ) +
     bPanel(
       title('On your phone') +

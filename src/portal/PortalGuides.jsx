@@ -2,6 +2,7 @@ import { Printer, CalendarClock, Receipt, Wifi, KeyRound, Coffee, Laptop, Smartp
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Page, PageHeader, Card, Eyebrow } from './ui.jsx'
+import { wifiSupport, telHref } from '../lib/wifiSupport.js'
 
 // No OS detection here on purpose — the print server's /setup page reads the
 // user-agent and serves the matching installer, so guessing ourselves could only
@@ -40,10 +41,23 @@ export default function PortalGuides({ member }) {
     fetch('/api/portal/settings').then((r) => r.json())
       .then((d) => setWifi(d?.settings?.wifi ?? {})).catch(() => {})
   }, [])
+  const support = wifiSupport(wifi)
+  const supportLine = support && (
+    <span className="block mt-2 text-[13px]">
+      Not working? Contact {support.name && <strong className="text-ink">{support.name} — </strong>}
+      {support.phone && <a href={telHref(support.phone)} className="text-ink underline">{support.phone}</a>}
+      {support.phone && support.email && ' · '}
+      {support.email && <a href={`mailto:${support.email}`} className="text-ink underline break-all">{support.email}</a>}
+      {support.hours && ` (${support.hours})`}
+    </span>
+  )
   const guideBody = (g) => g.body === 'WIFI_BODY_PLACEHOLDER'
-    ? (wifi.password
-        ? <>Network <strong className="text-ink">{wifi.ssid || 'Hexa Spaces'}</strong> · password <span className="font-mono text-ink text-[13px]">{wifi.password}</span>. Set up printing on any device below.</>
-        : <>Connect to “{wifi.ssid || 'Hexa Spaces'}” — password at reception. Set up printing on any device below.</>)
+    ? (<>
+        {wifi.password
+          ? <>Network <strong className="text-ink">{wifi.ssid || 'Hexa Spaces'}</strong> · password <span className="font-mono text-ink text-[13px]">{wifi.password}</span>. Set up printing on any device below.</>
+          : <>Connect to “{wifi.ssid || 'Hexa Spaces'}” — password at reception. Set up printing on any device below.</>}
+        {supportLine}
+      </>)
     : g.body
 
   return (

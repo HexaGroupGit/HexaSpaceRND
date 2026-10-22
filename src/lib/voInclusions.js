@@ -16,11 +16,18 @@ export const VO_ADDRESS_INCLUSION =
 const voAddressInclusion = (suite) =>
   `Premium Business Address in Box Hill (${suite}, Level 4/830 Whitehorse Road Box Hill VIC 3128)`
 
+// The member-rate line. The $75 address package lost the room discount on
+// 22 Oct 2026 — see addressOnlyWithoutRoomDiscount below.
+export const VO_ROOM_DISCOUNT_INCLUSION =
+  'Booking access to meeting rooms, event spaces and media studios with member’s discount (Refer to Meeting Room Pricing Guide)'
+const VO_ROOM_ACCESS_INCLUSION =
+  'Booking access to meeting rooms, event spaces and media studios (Refer to Meeting Room Pricing Guide)'
+
 export const VO_INCLUSIONS = [
   VO_ADDRESS_INCLUSION,
   'Mail & Package Handling',
   'Access to Reception Services',
-  'Booking access to meeting rooms, event spaces and media studios with member’s discount (Refer to Meeting Room Pricing Guide)',
+  VO_ROOM_DISCOUNT_INCLUSION,
   'Daily Access to Sky & Tian Meeting Room + Consulting Rooms (2 Hours Daily)',
   'Coworking lounge access with Enterprise-Grade WiFi. 9:00AM - 5:30PM',
   'Connection to the Ucommune network across China, Singapore and Hong Kong',
@@ -39,6 +46,26 @@ export const isVirtualOfficeAgreement = (lease, space) =>
 const voListMonthly = (lease) =>
   Number(lease?.items?.[0]?.steps?.[0]?.listPrice ?? lease?.listPrice ?? lease?.monthlyRent ?? 0)
 
+// The $75 address package stopped carrying the member room discount for
+// contracts created from 22 Oct 2026 (Melbourne). Earlier $75 contracts keep it
+// — their signed agreement lists it. createdAt is a UTC instant, so the cutoff
+// is Melbourne midnight as an instant; startDate is the fallback for records
+// with no createdAt.
+export const VO_ROOM_DISCOUNT_DROPPED_AT = '2026-10-21T13:00:00.000Z'
+export function addressOnlyWithoutRoomDiscount(lease, space) {
+  if (!isVirtualOfficeAgreement(lease, space)) return false
+  if (voListMonthly(lease) >= VO_LIST_PRICE) return false
+  // A proposal-accepted VO names its package ("Virtual Office Plus · Suite 431")
+  // but stores no list price, so a Plus deal quoted under $150 is still Plus.
+  if (/plus/i.test(String(lease?.resource ?? ''))) return false
+  // A renewal carries the first contract's date, so a grandfathered member
+  // keeps the discount across renewals.
+  const since = lease?.originalCreatedAt ?? lease?.createdAt
+  const created = since ? new Date(since) : null
+  if (created && !isNaN(created)) return created.toISOString() >= VO_ROOM_DISCOUNT_DROPPED_AT
+  return String(lease?.startDate ?? '') >= '2026-10-22'
+}
+
 // The full inclusions list an agreement should print: VO agreements get their
 // package's standard set first, then whatever negotiated extras were typed on
 // the contract (lease.inclusions — one per line). Any agreement type can carry
@@ -49,9 +76,10 @@ export function leaseInclusions(lease, space) {
     .map((l) => l.replace(/^[-•*]\s*/, '').trim())
     .filter(Boolean)
   if (!isVirtualOfficeAgreement(lease, space)) return custom
-  const base = voListMonthly(lease) >= VO_LIST_PRICE
-    ? VO_INCLUSIONS
-    : VO_INCLUSIONS.filter((i) => !VO_PREMIUM_ONLY.includes(i))
+  const premium = voListMonthly(lease) >= VO_LIST_PRICE
+  const noDiscount = addressOnlyWithoutRoomDiscount(lease, space)
+  const base = (premium ? VO_INCLUSIONS : VO_INCLUSIONS.filter((i) => !VO_PREMIUM_ONLY.includes(i)))
+    .map((i) => (noDiscount && i === VO_ROOM_DISCOUNT_INCLUSION ? VO_ROOM_ACCESS_INCLUSION : i))
   // Once the member holds a suite, the agreement names it: this exact line is
   // what they register with ASIC and hand to their bank.
   const suite = virtualSuiteLabel(space)

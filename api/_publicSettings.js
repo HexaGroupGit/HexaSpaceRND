@@ -43,6 +43,11 @@ export function publicSettings(settings = {}) {
     wifi: {
       ssid: s.wifi?.ssid ?? 'Hexa Spaces',
       password: s.wifi?.password ?? '',
+      // Who to call when it's down — shown next to the network details.
+      supportName: s.wifi?.supportName ?? '',
+      supportPhone: s.wifi?.supportPhone ?? '',
+      supportEmail: s.wifi?.supportEmail ?? '',
+      supportHours: s.wifi?.supportHours ?? '',
     },
     // Function-space pricing defaults appear on every quote a client sees —
     // public to the authenticated member, not secret.

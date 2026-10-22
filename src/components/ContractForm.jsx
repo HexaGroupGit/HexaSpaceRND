@@ -17,10 +17,16 @@ const FORM_SECTIONS = [
 
 const CONTRACT_TYPES = ['New', 'Renewal', 'Transfer', 'Amendment', 'Month-to-month']
 const DEDICATED_DESK_DOC = 'Dedicated Desk Membership Agreement'
+const FLEXIBLE_DESK_DOC = 'Flexible Desk Membership Agreement'
+// The membership a desk agreement signs the member up to — written onto the
+// lease so Memberships, credits and the card rule classify it without relying
+// on the desk's name.
+const DESK_DOC_PLAN = { [DEDICATED_DESK_DOC]: 'Dedicated Desk', [FLEXIBLE_DESK_DOC]: 'Flexible Desk' }
 const DOCUMENT_TYPES = [
   'License Agreement',
   'Virtual Office Membership Agreement',
   DEDICATED_DESK_DOC,
+  FLEXIBLE_DESK_DOC,
   'Membership Agreement Month-to-month',
   'Service Agreement',
 ]
@@ -31,13 +37,15 @@ const DOC_TYPE_SPACES = {
   'License Agreement': ['office', 'parking'], // private offices
   'Virtual Office Membership Agreement': ['virtual', 'parking'],
   [DEDICATED_DESK_DOC]: ['desk', 'parking'], // a numbered desk — never the Flexible Access product
+  [FLEXIBLE_DESK_DOC]: ['desk', 'parking'], // the Flexible Access product only — no seat
   'Membership Agreement Month-to-month': ['desk', 'parking'], // flexible or dedicated desk
 }
 
 // Item picker label. Car bays read "Bay 412 — Level 4 · L4.12 · Lot S34 · $200/mo"
 // so they can't be mistaken for suites.
 function spaceOptionLabel(s) {
-  if (s.type !== 'parking') return `${s.unitNumber} — ${s.size}`
+  // Blank sizes (VO suites, older desks) used to print "Suite 441 — undefined".
+  if (s.type !== 'parking') return [s.unitNumber, s.size].filter(Boolean).join(' — ')
   const price = s.includedInContract
     ? PARKING_INCLUDED_LABEL
     : `$${Number(s.monthlyRate ?? s.rate ?? 0).toLocaleString('en-AU')}/mo`
@@ -277,8 +285,8 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
         : space.type === 'virtual' ? (Number(space.monthlyRate) || 150)
         : space.includedInContract ? 0
         : space.monthlyRate
-      // Car bays carry no bond of their own.
-      const deposit = mtm || space?.type === 'parking' ? 0 : Number(space?.monthlyRate || 0) * 2
+      // Car bays and virtual offices carry no bond (VO deposits dropped Oct 2026).
+      const deposit = mtm || space?.type === 'parking' || space?.type === 'virtual' ? 0 : Number(space?.monthlyRate || 0) * 2
       return {
       ...f,
       items: f.items.map((item, i) =>
@@ -425,7 +433,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
       documentType: form.documentType,
       // Classifies the contract for Memberships, credits and the card rule
       // without relying on the desk's name.
-      ...(form.documentType === DEDICATED_DESK_DOC ? { membershipType: 'Dedicated Desk', planName: 'Dedicated Desk' } : {}),
+      ...(DESK_DOC_PLAN[form.documentType] ? { membershipType: DESK_DOC_PLAN[form.documentType], planName: DESK_DOC_PLAN[form.documentType] } : {}),
       // Explicit card decision: default follows the document type (VO/desk
       // require it) but stores whatever the tick-box shows so the agreement,
       // signing page and onboarding gate all agree.
@@ -436,6 +444,13 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
       contractTerms: form.contractTerms,
       discount: firstStep.discount ?? '',
       items: form.items,
+      // A renewal remembers when the membership first began, so terms that were
+      // grandfathered by contract date (the $75 VO room discount) survive it.
+      ...(() => {
+        const prev = editLease?.previousContractId && leases.find((l) => l.id === editLease.previousContractId)
+        const original = editLease?.originalCreatedAt ?? prev?.originalCreatedAt ?? prev?.createdAt
+        return original ? { originalCreatedAt: original } : {}
+      })(),
     })
   }
 
@@ -709,7 +724,12 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                               // desk agreement offers only numbered desks — Flexible
                               // Access is a membership product with no seat.
                               if (s.type === 'desk') {
-                                if (form.documentType === DEDICATED_DESK_DOC && NON_POSITION_DESK_IDS.includes(s.id)) return false
+                                const isFlex = NON_POSITION_DESK_IDS.includes(s.id)
+                                if (form.documentType === DEDICATED_DESK_DOC && isFlex) return false
+                                if (form.documentType === FLEXIBLE_DESK_DOC) return isFlex
+                                // Flexible Access is shared by every flexible member, so
+                                // another contract (or its 'occupied' status) never uses it up.
+                                if (isFlex) return true
                                 if (leases.some((l) => [l.spaceId, ...(l.items ?? []).map((i) => i.spaceId)].includes(s.id) && holdsSpace(l))) return false
                               }
                               return s.status === 'vacant'

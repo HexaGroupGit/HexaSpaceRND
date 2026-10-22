@@ -6,6 +6,7 @@
 // room went out free. Drop-ins now add a card and are charged before the booking
 // exists.
 import { memberRoomRate, spendableCredits, spendablePoolFor, bookingMonthKey, hasActiveMembership, isDropIn, CREDIT_VALUE, creditsForCost, round2 } from './credits.js'
+import { addressOnlyWithoutRoomDiscount } from './voInclusions.js'
 
 // The membership test itself lives in credits.js so the credit model can apply
 // it without importing this module; re-exported here for existing callers.
@@ -18,7 +19,9 @@ export { hasActiveMembership, isDropIn }
  *
  * Who gets it: a company holding an ACTIVE membership. Anyone else pays the full
  * listed rate — a walk-in with no record, and equally a client record whose
- * membership has lapsed or hasn't started. hasActiveMembership is the only test.
+ * membership has lapsed or hasn't started. hasActiveMembership is the test, with
+ * one carve-out: a company whose only active membership is a $75 address-only
+ * Virtual Office created from 22 Oct 2026 pays list (see qualifiesForMemberRate).
  *
  * It moves MONEY only. The credit allowance is drawn at the list rate either way
  * (creditRate), so a member spends their included hours at list value first and
@@ -26,12 +29,20 @@ export { hasActiveMembership, isDropIn }
  */
 export const MEMBER_RATE_DISCOUNTED = true
 
+/** Does this company get the member room rate? Any active membership except a
+ *  $75 address-only Virtual Office created from 22 Oct 2026. */
+export function qualifiesForMemberRate(companyId, leases) {
+  if (!companyId) return false
+  return (leases ?? []).some((l) =>
+    l.tenantId === companyId && l.status === 'active' && !addressOnlyWithoutRoomDiscount(l))
+}
+
 /**
  * Hourly rate for this booker, in MONEY. Drop-ins always pay the list rate — the
  * member discount is a membership benefit, not a walk-in price.
  */
 export function bookingRate(room, companyId, leases) {
-  const isMember = hasActiveMembership(companyId, leases) && MEMBER_RATE_DISCOUNTED
+  const isMember = qualifiesForMemberRate(companyId, leases) && MEMBER_RATE_DISCOUNTED
   return memberRoomRate(room, isMember)
 }
 
