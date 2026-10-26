@@ -73,6 +73,8 @@ export default function Fobs() {
     return fobs
       .filter((f) => {
         if ((tab === 'faulty') !== (f.status === 'faulty')) return false
+        // Available: in-stock devices ready to issue.
+        if (tab === 'available' && f.status !== 'available') return false
         const a = openAssignment(f.id, assignments)
         if (onlyUnmatched && !(f.status === 'assigned' && isUnmatched(a))) return false
         if (!q) return true
@@ -274,14 +276,15 @@ export default function Fobs() {
       </div>
 
       <div className="flex items-center gap-1 mb-4 border-b border-border">
-        {[['devices', 'Devices'], ['faulty', `Not functioning${stats.faulty ? ` (${stats.faulty})` : ''}`], ['requests', `Requests${pendingRequests.length ? ` (${pendingRequests.length})` : ''}`], ['order', 'Fob Order']].map(([k, label]) => (
+        {[['devices', 'Devices'], ['available', `Available (${stats.available})`], ['faulty', `Not functioning${stats.faulty ? ` (${stats.faulty})` : ''}`], ['requests', `Requests${pendingRequests.length ? ` (${pendingRequests.length})` : ''}`], ['order', 'Fob Order']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === k ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>{label}</button>
         ))}
       </div>
 
-      {(tab === 'devices' || tab === 'faulty') && (
+      {(tab === 'devices' || tab === 'faulty' || tab === 'available') && (
         <>
           {tab === 'faulty' && <p className="mb-3 text-sm text-muted-foreground">Devices that don't work. They can't be issued until marked working again.</p>}
+          {tab === 'available' && <p className="mb-3 text-sm text-muted-foreground">Devices in stock and ready to issue.</p>}
           {tab === 'devices' && unmatchedCount > 0 && (
             <div className="mb-3 flex items-start gap-2 text-sm border border-amber-200 bg-amber-50 text-amber-900 rounded-md px-3 py-2">
               <AlertTriangle size={15} className="mt-0.5 shrink-0" />
@@ -300,7 +303,7 @@ export default function Fobs() {
           </div>
           <div className="border border-border rounded-lg bg-card overflow-hidden">
             {loading ? <div className="p-10 text-center text-muted-foreground text-sm">Loading…</div>
-              : shownFobs.length === 0 ? <div className="p-10 text-center text-muted-foreground text-sm">{tab === 'faulty' && !search.trim() ? 'No devices are marked as not functioning.' : fobs.length === 0 ? 'No devices yet. Add your first fob or remote.' : 'No devices match. Available stock has no holder, so searching a member name only finds devices they already hold.'}</div>
+              : shownFobs.length === 0 ? <div className="p-10 text-center text-muted-foreground text-sm">{tab === 'faulty' && !search.trim() ? 'No devices are marked as not functioning.' : tab === 'available' && !search.trim() ? 'No devices in stock — every working device is issued.' : fobs.length === 0 ? 'No devices yet. Add your first fob or remote.' : 'No devices match. Available stock has no holder, so searching a member name only finds devices they already hold.'}</div>
               : (
                 <table className="w-full text-sm">
                   <thead className="text-xs text-muted-foreground uppercase border-b border-border">

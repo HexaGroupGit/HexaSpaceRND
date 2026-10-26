@@ -39,9 +39,13 @@ export default async function handler(req, res) {
     const space = spRows?.[0]?.data
     // "Use as function" bookings are two rows (North + South); this one carries
     // the label, and staff need to open the divider + set up for the group.
-    const room = b.combinedRooms
+    // Central runs as a function on its own (one row, no group): staff set out
+    // the extra tables and chairs the $50 set-up pays for.
+    const room = b.combinedRooms && b.combinedGroupId
       ? `${b.combinedRooms} combined — use as function (open the divider, up to 30 pax)`
-      : space?.unitNumber || b.resourceName || 'Meeting room'
+      : b.useAsFunction
+        ? `${b.combinedRooms || space?.unitNumber || 'Room'} — use as function (set out extra tables & chairs)`
+        : space?.unitNumber || b.resourceName || 'Meeting room'
     const company = tRows?.[0]?.data?.businessName || b.companyName || '—'
 
     const opsNoun = space?.type === 'studio' ? 'Media studio' : space?.type === 'podcast' ? 'Podcast room' : 'Meeting room'

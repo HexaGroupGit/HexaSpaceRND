@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase.js'
 import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfterHours, bookingWindow, resourceBookingWindow, isStudioSpace, afterHoursConfig, hasActiveMembership, spendablePoolFor, bookingMonthKey, creditPoolPatch, round2 } from '../lib/credits.js'
 import { bookingRate, bookingWasUsed, creditsForBooking } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
-import { combinePartner, combinedLabel, combinedGroup, newCombinedGroupId, bookingCreditsNeed, payableForShortfall, feeRoomName, COMBINED_SETUP_FEE, COMBINED_SETUP_CREDITS, COMBINED_MAX_PAX, COMBINED_EXPLAINER } from '../lib/combinedRooms.js'
+import { functionOption, functionFields, combinedGroup, newCombinedGroupId, bookingCreditsNeed, payableForShortfall, feeRoomName, COMBINED_SETUP_FEE, COMBINED_SETUP_CREDITS } from '../lib/combinedRooms.js'
 import { isRequestGated, studioRequestState } from '../lib/studio.js'
 import StudioRequestModal from './StudioRequestModal.jsx'
 import { Card, DateDropdown } from './ui.jsx'
@@ -280,11 +280,11 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
   const room = resources.find((r) => r.id === f.resourceId)
   const spaceById = (id) => (allSpaces ?? resources).find((s) => s.id === id)
   // "Use as function": North + South booked together as one room for up to 30
-  // people — both rooms' hire plus a flat set-up, all payable from credits
-  // (see combinedRooms.js).
-  const partner = combinePartner(room, allSpaces ?? resources)
-  const combined = f.asFunction && !!partner
-  const booked = combined ? [room, partner] : [room]
+  // people, or Central set up on its own with extra tables and chairs — the
+  // room hire plus a flat set-up, all payable from credits (see combinedRooms.js).
+  const fn = functionOption(room, allSpaces ?? resources)
+  const combined = f.asFunction && !!fn
+  const booked = combined ? fn.rooms : [room]
   const hrs = Math.max(0, toDec(f.endTime) - toDec(f.startTime))
   // Office perk: private-office (suite) companies get Sky/Earth/Sun/Moon free,
   // capped per booking + per company per day. When it applies, no credits/fee.
@@ -371,7 +371,7 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
         perkAddedByDate[date] = (perkAddedByDate[date] || 0) + hrs
       }
       const reference = `BKG-${Math.floor(100000 + Math.random() * 900000)}`
-      const group = combined ? { combinedGroupId: newCombinedGroupId(), combinedRooms: combinedLabel(room, partner), useAsFunction: true } : {}
+      const groupId = newCombinedGroupId()
       booked.forEach((r, i) => created.push({
         id: `bk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         reference,
@@ -382,8 +382,8 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
         attendees: i === 0 ? parseEmails(f.attendees) : [],
         status: 'Confirmed', source: 'Portal', repeat: f.repeat, createdBy: 'Member',
         createdAt: new Date().toISOString().split('T')[0],
-        // The first row of a combined booking carries the set-up charge.
-        ...group, ...(combined && i === 0 ? { setupCredits: COMBINED_SETUP_CREDITS } : {}),
+        // The first row of a function booking carries the set-up charge.
+        ...(combined ? functionFields(fn, i, groupId) : {}),
       }))
     }
     if (created.length === 0) {
@@ -489,7 +489,7 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
         <div className="flex items-center justify-between px-6 py-4 border-b border-ink/10">
           <div>
             <p className="hx-eyebrow">{combined ? 'Request a function booking' : 'Request a booking'}</p>
-            <h2 className="font-display font-extralight text-2xl mt-1">{combined ? combinedLabel(room, partner) : room?.unitNumber}</h2>
+            <h2 className="font-display font-extralight text-2xl mt-1">{combined ? fn.label : room?.unitNumber}</h2>
           </div>
           <button onClick={onClose} className="text-portal-muted hover:text-ink"><X size={18} /></button>
         </div>
@@ -500,18 +500,21 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
               {resources.map((r) => { const rr = bookingRate(r, company?.id, leases); return <option key={r.id} value={r.id}>{r.unitNumber}{rr ? ` — A$${rr}/hr` : ''}</option> })}
             </SearchSelect>
           </div>
-          {/* North + South open into one room — offered on either of the pair. */}
-          {partner && (
+          {/* North + South open into one room — offered on either of the pair —
+              or Central set up on its own. */}
+          {fn && (
             <label className={`flex items-start gap-3 border p-4 cursor-pointer transition-colors ${combined ? 'border-hexa-green bg-hexa-green/5' : 'border-ink/10 hover:bg-bone'}`}>
               <input type="checkbox" checked={f.asFunction} onChange={(e) => setF((p) => ({ ...p, asFunction: e.target.checked }))} className="mt-0.5" />
               <span className="min-w-0">
                 <span className="flex items-center gap-1.5">
                   <Users size={14} className="text-hexa-green shrink-0" />
                   <span className="font-heading uppercase tracking-nav text-[11px]">Use as function space</span>
-                  <span title={COMBINED_EXPLAINER} aria-label={COMBINED_EXPLAINER} className="text-portal-muted hover:text-ink cursor-help"><Info size={13} /></span>
+                  <span title={fn.explainer} aria-label={fn.explainer} className="text-portal-muted hover:text-ink cursor-help"><Info size={13} /></span>
                 </span>
                 <span className="hx-prose text-[12px] block mt-1">
-                  Opens {combinedLabel(room, partner)} into one room for up to {COMBINED_MAX_PAX} people. Both rooms’ hire + A${COMBINED_SETUP_FEE} set-up ({COMBINED_SETUP_CREDITS} cr){count > 1 ? ' per booking' : ''} — payable from your credits.
+                  {fn.partner
+                    ? <>Opens {fn.label} into one room for up to {fn.maxPax} people. Both rooms’ hire + A${COMBINED_SETUP_FEE} set-up ({COMBINED_SETUP_CREDITS} cr){count > 1 ? ' per booking' : ''} — payable from your credits.</>
+                    : <>We set {fn.label} up with extra tables and chairs. Room hire + A${COMBINED_SETUP_FEE} set-up ({COMBINED_SETUP_CREDITS} cr){count > 1 ? ' per booking' : ''} — payable from your credits.</>}
                 </span>
               </span>
             </label>
@@ -577,7 +580,7 @@ function BookingModal({ slot, resources, bookings, member, company, poolFor, lea
             </div>
           ) : (
             <div className="bg-bone border border-ink/10 p-4 text-[13px] space-y-1.5">
-              <div className="flex justify-between"><span className="hx-prose text-[13px]">{count > 1 ? `${count} bookings × ${hrs}h` : `${hrs} hour${hrs !== 1 ? 's' : ''}`}{combined ? ` × 2 rooms + A$${COMBINED_SETUP_FEE} set-up` : ''}</span>
+              <div className="flex justify-between"><span className="hx-prose text-[13px]">{count > 1 ? `${count} bookings × ${hrs}h` : `${hrs} hour${hrs !== 1 ? 's' : ''}`}{combined ? `${fn.partner ? ' × 2 rooms' : ''} + A$${COMBINED_SETUP_FEE} set-up` : ''}</span>
                 <span className="font-heading uppercase tracking-nav text-[11px]">{totalCost ? `A$${totalCost.toLocaleString('en-AU')} · ${totalCredits} cr` : 'Free'}</span></div>
               {company && totalCost > 0 && (
                 <div className="flex justify-between"><span className="hx-prose text-[13px]">Allowance remaining</span>
@@ -802,7 +805,7 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
         <div className="flex items-center justify-between px-6 py-4 border-b border-ink/10">
           <div>
             <p className="hx-eyebrow">Your booking</p>
-            <h2 className="font-display font-extralight text-2xl mt-1">{b.combinedRooms && siblings.length ? `${b.combinedRooms} function` : room?.unitNumber}{b.title ? ` · ${b.title}` : ''}</h2>
+            <h2 className="font-display font-extralight text-2xl mt-1">{b.combinedRooms && (siblings.length || b.useAsFunction) ? `${b.combinedRooms} function` : room?.unitNumber}{b.title ? ` · ${b.title}` : ''}</h2>
           </div>
           <button onClick={onClose} className="text-portal-muted hover:text-ink"><X size={18} /></button>
         </div>

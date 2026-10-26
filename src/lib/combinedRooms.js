@@ -29,6 +29,39 @@ export function combinePartner(room, spaces) {
 
 export const combinedLabel = (room, partner) => `${room?.unitNumber ?? ''} + ${partner?.unitNumber ?? ''}`
 
+// Rooms that run as a function ON THEIR OWN: no partner to open into, just the
+// same room with extra tables and chairs set out for the same flat set-up fee
+// (assistant board, 26 Oct 2026). Stored as ONE ordinary row carrying
+// useAsFunction + setupCredits, with combinedRooms holding the room name as the
+// function label — but no combinedGroupId, so it edits and cancels as a single
+// booking.
+export const SOLO_FUNCTION_ROOM_NAMES = ['central']
+export const SOLO_FUNCTION_EXPLAINER = `We set the room up for your function with extra tables and chairs. You pay the room hire plus a A$${COMBINED_SETUP_FEE} set-up fee (${COMBINED_SETUP_CREDITS} credits), and both can come out of your credit allowance.`
+
+// What "Use as function" means for `room`: open into its partner (North +
+// South) or set up on its own (Central). null when the room has no such option.
+export function functionOption(room, spaces) {
+  const partner = combinePartner(room, spaces)
+  if (partner) return { partner, rooms: [room, partner], label: combinedLabel(room, partner), maxPax: COMBINED_MAX_PAX, explainer: COMBINED_EXPLAINER }
+  if (room && SOLO_FUNCTION_ROOM_NAMES.includes(norm(room.unitNumber))) {
+    return { partner: null, rooms: [room], label: room.unitNumber, maxPax: null, explainer: SOLO_FUNCTION_EXPLAINER }
+  }
+  return null
+}
+
+// The booking fields that mark a function booking, for the row at index i.
+// The first row carries the set-up; invitations go out from it alone.
+export function functionFields(fn, i, groupId) {
+  return {
+    useAsFunction: true, combinedRooms: fn.label,
+    ...(fn.partner ? { combinedGroupId: groupId } : {}),
+    ...(i === 0 ? { setupCredits: COMBINED_SETUP_CREDITS } : { inviteGuests: false }),
+  }
+}
+
+// A booked function that is a single room (Central) rather than a pair.
+export const isSoloFunction = (b) => !!b?.useAsFunction && !b?.combinedGroupId
+
 export const newCombinedGroupId = () => `cmb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
 
 // Every row of a combined booking (including `booking` itself).

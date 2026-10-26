@@ -7,7 +7,7 @@ import { DatePicker } from './ui/date-picker.jsx'
 import { bookingFeeName, afterHoursConfig, spendablePoolFor, bookingMonthKey, creditPoolPatch, hasActiveMembership } from '../lib/credits.js'
 import { bookingRate, bookingWasUsed, creditsForBooking } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
-import { combinePartner, combinedLabel, combinedGroup, newCombinedGroupId, bookingCreditsNeed, payableForShortfall, feeRoomName, COMBINED_SETUP_FEE, COMBINED_SETUP_CREDITS, COMBINED_MAX_PAX, COMBINED_EXPLAINER } from '../lib/combinedRooms.js'
+import { functionOption, functionFields, isSoloFunction, combinedGroup, newCombinedGroupId, bookingCreditsNeed, payableForShortfall, feeRoomName, COMBINED_SETUP_FEE, COMBINED_SETUP_CREDITS } from '../lib/combinedRooms.js'
 import { to12h, durationLabel, addMinutes } from '../lib/tourInvite.js'
 import { UnlockButton } from './Bookings.jsx'
 import CancelBookingDialog from './CancelBookingDialog.jsx'
@@ -172,12 +172,13 @@ export default function Calendar() {
   const groupOf = (b) => combinedGroup(b, bookings).filter((x) => x.status !== 'Cancelled' || x.id === b.id)
 
   function handleSave({ asFunction, ...payload }) {
-    // "Use as function" books North + South together (see combinedRooms.js). An
-    // edit of a combined booking moves both rows; each keeps its own room.
+    // "Use as function" books North + South together, or Central on its own with
+    // a set-up (see combinedRooms.js). An edit of a combined booking moves both
+    // rows; each keeps its own room.
     const editGroup = modal.mode === 'edit' ? groupOf(modal) : []
-    const partner = modal.mode !== 'edit' && asFunction ? combinePartner(spaces.find((s) => s.id === payload.resourceId), spaces) : null
+    const fn = modal.mode !== 'edit' && asFunction ? functionOption(spaces.find((s) => s.id === payload.resourceId), spaces) : null
     const roomIds = editGroup.length > 1 ? editGroup.map((b) => b.resourceId)
-      : partner ? [payload.resourceId, partner.id] : [payload.resourceId]
+      : fn ? fn.rooms.map((r) => r.id) : [payload.resourceId]
     const ownIds = new Set(editGroup.map((b) => b.id))
     // Conflict-aware clash guard — the Function Space physically comprises
     // North/South/West, so a hold on any of them occupies the others too.
@@ -206,14 +207,11 @@ export default function Calendar() {
       setModal(null)
       return
     }
-    if (partner) {
-      const room = spaces.find((s) => s.id === payload.resourceId)
-      const group = { combinedGroupId: newCombinedGroupId(), combinedRooms: combinedLabel(room, partner), useAsFunction: true }
+    if (fn) {
+      const groupId = newCombinedGroupId()
       const shared = { pools: {} }
-      ;[payload.resourceId, partner.id].forEach((resourceId, i) => {
-        // The first row carries the set-up; invitations go out from it alone.
-        const next = { ...payload, resourceId, companyId, status, ...group,
-          ...(i === 0 ? { setupCredits: COMBINED_SETUP_CREDITS } : { inviteGuests: false }) }
+      fn.rooms.forEach((r, i) => {
+        const next = { ...payload, resourceId: r.id, companyId, status, ...functionFields(fn, i, groupId) }
         const charge = reconcile(null, next, shared)
         addBooking({ ...next, ...charge, source: 'Admin', createdBy: 'Admin' })
       })
@@ -222,7 +220,10 @@ export default function Calendar() {
       return
     }
     if (modal.mode === 'edit') {
-      const { creditsUsed, paidBy, feeAmount, feeId } = reconcile(modal, { ...payload, companyId, status })
+      // A solo function (Central) keeps its set-up through an edit — the form
+      // doesn't carry it, so the recharge must.
+      const setup = modal.setupCredits ? { setupCredits: modal.setupCredits } : {}
+      const { creditsUsed, paidBy, feeAmount, feeId } = reconcile(modal, { ...payload, ...setup, companyId, status })
       updateBooking(modal.id, { ...payload, companyId, status, creditsUsed, paidBy, feeAmount, feeId })
     } else {
       const { creditsUsed, paidBy, feeAmount, feeId } = reconcile(null, { ...payload, companyId, status })
@@ -455,13 +456,15 @@ function BookingModal({ init, group = [], rooms, roomLabel = 'Room', members, te
   // Preview mirrors the reconcile charge exactly: members get 30% off the cash
   // rate and can draw on the pool; a drop-in pays list rate with no credits.
   // Credits are counted at the list rate, so they don't track `cost` 1:1.
-  // "Use as function" — a new North/South booking can take its partner too. An
-  // existing combined booking quotes both rows (it was booked that way).
+  // "Use as function" — a new North/South booking can take its partner too, and
+  // Central can be set up on its own. An existing function booking quotes as it
+  // was booked (both rows, or the one room + its set-up).
   const isGroup = group.length > 1
-  const partner = !edit ? combinePartner(room, rooms) : null
-  const combined = isGroup || (f.asFunction && !!partner)
+  const soloBooked = edit && isSoloFunction(init)
+  const fn = !edit ? functionOption(room, rooms) : null
+  const combined = isGroup || soloBooked || (f.asFunction && !!fn)
   const bookedRooms = isGroup ? group.map((b) => rooms.find((r) => r.id === b.resourceId)).filter(Boolean)
-    : combined ? [room, partner] : [room]
+    : combined && fn ? fn.rooms : [room]
   const cost = f.free ? 0 : round2(bookedRooms.reduce((sum, r) => sum + hrs * bookingRate(r, companyId, leases), 0) + (combined ? COMBINED_SETUP_FEE : 0))
   const credits = f.free ? 0 : round2(bookedRooms.reduce((sum, r) => sum + creditsForBooking(r, hrs), 0) + (combined ? COMBINED_SETUP_CREDITS : 0))
   // The pool of the month being booked into — what reconcile will actually draw
@@ -491,7 +494,7 @@ function BookingModal({ init, group = [], rooms, roomLabel = 'Room', members, te
       resourceId: f.resourceId, date: f.date, startTime: f.startTime, endTime: f.endTime,
       prepMinutes: Number(f.prepMinutes) || 0, repeat: f.repeat ? (init.repeat && init.repeat !== 'none' ? init.repeat : 'weekly') : 'none',
       inviteGuests: f.inviteGuests, free: f.free, tentative: f.tentative, notify: f.notify,
-      asFunction: f.asFunction && !!partner,
+      asFunction: f.asFunction && !!fn,
     })
   }
 
@@ -536,6 +539,9 @@ function BookingModal({ init, group = [], rooms, roomLabel = 'Room', members, te
             <span className={lbl}>{roomLabel}</span>
             {isGroup ? (
               <div className={`${ic} bg-muted/50`}>{init.combinedRooms || bookedRooms.map((r) => r.unitNumber).join(' + ')} · function (both rooms)</div>
+            ) : soloBooked ? (
+              // Its set-up and label belong to this room — cancel and rebook to move rooms.
+              <div className={`${ic} bg-muted/50`}>{room?.unitNumber ?? init.combinedRooms} · function</div>
             ) : (
               <SearchSelect aria-label="Room or space" value={f.resourceId} onChange={up('resourceId')} className={ic}>
                 {rooms.map((r) => <option key={r.id} value={r.id}>{r.unitNumber}{r.size ? ` · ${r.size}` : ''}{r.hourlyRate ? ` — $${r.hourlyRate}/hr` : ''}</option>)}
@@ -543,20 +549,25 @@ function BookingModal({ init, group = [], rooms, roomLabel = 'Room', members, te
             )}
           </label>
 
-          {/* North + South open into one room for up to 30 — books both + set-up. */}
-          {(partner || isGroup) && (
+          {/* North + South open into one room for up to 30, or Central set up on
+              its own — the room hire + a flat set-up either way. */}
+          {(fn || isGroup || soloBooked) && (
             <label className={`flex items-start gap-2 rounded-md border px-3 py-2 text-sm ${combined ? 'border-blue-300 bg-blue-50/60' : 'border-border'}`}>
-              <input type="checkbox" className="mt-0.5" checked={combined} disabled={isGroup}
+              <input type="checkbox" className="mt-0.5" checked={combined} disabled={isGroup || soloBooked}
                 onChange={chk('asFunction')} />
               <span className="min-w-0">
                 <span className="flex items-center gap-1.5 font-medium text-foreground">
                   <Users size={13} /> Use as function
-                  <span title={COMBINED_EXPLAINER} aria-label={COMBINED_EXPLAINER} className="text-muted-foreground cursor-help"><Info size={13} /></span>
+                  {fn && <span title={fn.explainer} aria-label={fn.explainer} className="text-muted-foreground cursor-help"><Info size={13} /></span>}
                 </span>
                 <span className="block text-xs text-muted-foreground mt-0.5">
                   {isGroup
-                    ? `Booked as ${init.combinedRooms || 'North + South'} combined, up to ${COMBINED_MAX_PAX} pax — changes apply to both rooms.`
-                    : `Books ${combinedLabel(room, partner)} together, up to ${COMBINED_MAX_PAX} pax · both rooms + $${COMBINED_SETUP_FEE} set-up (${COMBINED_SETUP_CREDITS} credits).`}
+                    ? `Booked as ${init.combinedRooms || 'North + South'} combined, up to 30 pax — changes apply to both rooms.`
+                    : soloBooked
+                      ? `Booked as a function — extra tables & chairs, $${COMBINED_SETUP_FEE} set-up (${COMBINED_SETUP_CREDITS} credits) included.`
+                      : fn?.partner
+                        ? `Books ${fn.label} together, up to ${fn.maxPax} pax · both rooms + $${COMBINED_SETUP_FEE} set-up (${COMBINED_SETUP_CREDITS} credits).`
+                        : `Extra tables & chairs set up · room hire + $${COMBINED_SETUP_FEE} set-up (${COMBINED_SETUP_CREDITS} credits).`}
                 </span>
               </span>
             </label>
