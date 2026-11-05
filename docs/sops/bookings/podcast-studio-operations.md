@@ -10,6 +10,8 @@ relatedCode:
   - src/portal/StudioRequestModal.jsx
   - api/studio-request.js
   - api/studio/notify-request.js
+  - api/studio/cancel.js
+  - api/_studioCancel.js
 relatedSops: [how-members-book-rooms, meeting-room-av]
 version: 1
 reviewDue: 2027-02-01
@@ -36,7 +38,7 @@ handover afterwards. So the studio is **request-to-book**:
 | Booking | Instant | Request → staff approval |
 | Status on creation | `Confirmed` | `Pending` |
 | Door access | Automatic | Only once approved |
-| Charged | On booking | On approval |
+| Charged | On booking | On approval — waived if cancelled before it starts |
 | Hours | Member's window | 9:00–17:00 weekdays only |
 
 A `Pending` booking **holds the slot** (so two people can't both be approved for
@@ -88,6 +90,25 @@ Then choose:
 
 > Requests unanswered after **48 hours** are flagged at the top of the queue.
 > Someone is holding a slot and planning around it — answer it.
+
+## 2a · Cancelling a confirmed session — no charge
+
+Cancelling is **free any time before the session starts** (policy v1.1).
+
+- **The client** cancels from the booking in the member portal (Studios) or the
+  app. Once the session has started they can't — they have to talk to us.
+- **We** cancel from **Studio Requests → the session → Cancel session**, with an
+  optional reason that goes in the client's email. Use this for website
+  clients, who have no portal account — they reply to their email instead.
+
+Either way the server (`api/studio/cancel.js`) frees the slot, withdraws door
+access, **waives the Booking Fee** raised at approval so it never reaches an
+invoice, and emails the client plus the studio team (Towhid included — the
+operator is no longer needed).
+
+> If the fee had **already gone out on an invoice** (a session approved before
+> the 1st for later that month), it is left alone and flagged — raise a credit
+> note by hand so the client isn't charged.
 
 ## 3 · Before the client arrives (opening checks)
 

@@ -3,6 +3,7 @@ import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, round2, company
 import { blockingResourceIds } from '../../lib/roomConflicts.js'
 import { priceBooking, requiresUpfrontPayment, bookingRate, bookingWasUsed, creditsForBooking, payableForCredits } from '../../lib/dropIn.js'
 import { isRequestGated } from '../../lib/studio.js'
+import { cancelStudioSession } from '../../lib/studioCancel.js'
 import { apiUrl } from './native.js'
 
 // Booking writes for the app — mirrors the portal's PortalCalendar confirm()
@@ -82,10 +83,19 @@ export function canModifyBooking(b) {
  *
  * If the room has already been opened for this booking the slot still frees up,
  * but the charge stands: they've had the room.
+ *
+ * The podcast studio is different: it takes no credits, and a confirmed
+ * session carries a Booking Fee raised at approval that members can't edit.
+ * It cancels through the server, which waives that fee (no charge) and tells
+ * the studio team — see api/studio/cancel.js.
  */
-export async function cancelBooking({ booking, company, leases }) {
+export async function cancelBooking({ booking, company, leases, room }) {
   if (!canModifyBooking(booking)) {
     throw new Error('This booking has already started — it can no longer be cancelled.')
+  }
+  if (isRequestGated(room)) {
+    const d = await cancelStudioSession({ bookingId: booking.id, url: apiUrl })
+    return { booking: d.booking ?? { ...booking, status: 'Cancelled' }, company, refund: 0 }
   }
   const nowIso = new Date().toISOString()
   const used = bookingWasUsed(booking)

@@ -1348,6 +1348,9 @@ export function useStore() {
           const fee = addFee({
             name: bookingFeeName({ roomName: room?.unitNumber, rate, date: item.date, startTime: item.startTime, endTime: item.endTime, usedCredits: 0 }),
             type: 'Booking Fee', memberId: item.memberId ?? null, companyId: item.companyId,
+            // Lets a free studio cancellation find and waive it, checked against
+            // a start time members can't edit (api/_studioCancel.js).
+            bookingId: item.id, startTime: item.startTime, endTime: item.endTime,
             date: item.date || new Date().toISOString().split('T')[0],
             price, status: 'Not Paid',
             notes: `Studio session · ${hrs}h @ A$${rate}/hr · credits not applicable`,

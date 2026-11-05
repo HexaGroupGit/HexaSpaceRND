@@ -7,7 +7,8 @@ import { bookingFeeName, isPerkRoom, perkHoursUsed, companyPerk, companyCanAfter
 import { bookingRate, bookingWasUsed, creditsForBooking } from '../lib/dropIn.js'
 import { blockingResourceIds } from '../lib/roomConflicts.js'
 import { functionOption, functionFields, combinedGroup, newCombinedGroupId, bookingCreditsNeed, payableForShortfall, feeRoomName, COMBINED_SETUP_FEE, COMBINED_SETUP_CREDITS } from '../lib/combinedRooms.js'
-import { isRequestGated, studioRequestState } from '../lib/studio.js'
+import { isRequestGated, studioRequestState, studioDmy } from '../lib/studio.js'
+import { cancelStudioSession } from '../lib/studioCancel.js'
 import StudioRequestModal from './StudioRequestModal.jsx'
 import { Card, DateDropdown } from './ui.jsx'
 
@@ -613,6 +614,11 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
 
   const room = resources.find((r) => r.id === b.resourceId)
+  // The podcast studio cancels through the server (no charge, fee waived, studio
+  // team told). A confirmed session can't be moved by the member, so it gets a
+  // read-only view whose one action is cancelling.
+  const gatedRoom = isRequestGated(room)
+  const studioConfirmed = gatedRoom && b.status === 'Confirmed'
   const rate = bookingRate(room, company?.id, leases) // members 30% off, drop-ins list rate
   const round2c = (n) => Math.round(n * 100) / 100
   const perk = companyPerk(company?.id, leases, allSpaces ?? resources, settings)
@@ -767,10 +773,33 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
     onSaved(updated, poolUpdates)
   }
 
+  // Podcast studio: free to cancel until the session starts. The server waives
+  // the Booking Fee raised at approval — members can't edit fees themselves.
+  async function cancelStudio() {
+    if (alreadyUsed) {
+      return setError('This session has already started, so it can no longer be cancelled here. Please speak to the studio team.')
+    }
+    const msg = studioConfirmed
+      ? 'Cancel this studio session? There’s no charge — the slot is released and the studio team is told.'
+      : 'Withdraw this studio request? The slot is released straight away.'
+    if (!window.confirm(msg)) return
+    setSaving(true); setError('')
+    let d
+    try {
+      d = await cancelStudioSession({ bookingId: b.id })
+    } catch (e) {
+      setSaving(false)
+      return setError(e.message)
+    }
+    setSaving(false)
+    onSaved(d.booking ?? { ...b, status: 'Cancelled' }, {})
+  }
+
   // Cancelling always frees the slot. The refund is what's gated: once the room
   // has been opened, or the booked window has started, the charge stands —
   // otherwise a member can walk in, use the room and cancel on the way out.
   async function cancelBooking() {
+    if (gatedRoom) return cancelStudio()
     const used = bookingWasUsed(b)
     // A function booking cancels as a whole: both rooms, and the set-up.
     const what = siblings.length ? `this ${b.combinedRooms || 'combined'} function booking (both rooms)` : 'this booking'
@@ -809,6 +838,31 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
           </div>
           <button onClick={onClose} className="text-portal-muted hover:text-ink"><X size={18} /></button>
         </div>
+        {studioConfirmed ? (
+          <>
+            <div className="px-6 py-5 space-y-4">
+              <div className="bg-bone border border-ink/10 p-4 text-[13px] space-y-1.5">
+                <div className="flex justify-between gap-4"><span className="hx-prose text-[13px]">When</span>
+                  <span className="font-heading uppercase tracking-nav text-[11px] text-right">{studioDmy(b.date)} · {to12(b.startTime)} – {to12(b.endTime)}</span></div>
+                <div className="flex justify-between gap-4"><span className="hx-prose text-[13px]">Status</span>
+                  <span className="font-heading uppercase tracking-nav text-[11px] text-hexa-green">Confirmed</span></div>
+              </div>
+              <p className="hx-prose text-[12px]">{alreadyUsed
+                ? 'This session has started, so it can no longer be cancelled here. Please speak to the studio team.'
+                : 'Cancel free of charge any time before your session starts. To move it, cancel and send a new request, or email info@hexaspace.com.au and we’ll move it for you.'}</p>
+              {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>}
+            </div>
+            <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-ink/10">
+              <button onClick={onClose} className="hx-btn-ghost">Close</button>
+              {!alreadyUsed && (
+                <button onClick={cancelStudio} disabled={saving}
+                  className="inline-flex items-center gap-2 font-heading uppercase tracking-nav text-[11px] px-6 py-3 border border-red-700 text-red-700 hover:bg-red-700 hover:text-paper transition-colors disabled:opacity-50">
+                  <X size={13} /> {saving ? 'Cancelling…' : 'Cancel session'}
+                </button>
+              )}
+            </div>
+          </>
+        ) : (<>
         <div className="px-6 py-5 space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <div><label className="hx-eyebrow block mb-1.5">Date</label><input type="date" value={f.date} onChange={up('date')} className="hx-input" /></div>
@@ -848,7 +902,7 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-ink/10">
           <button onClick={cancelBooking} disabled={saving}
             className="font-heading uppercase tracking-nav text-[11px] text-red-700 border-b border-red-300 pb-0.5 hover:border-red-700 disabled:opacity-50">
-            Cancel booking
+            {gatedRoom ? 'Withdraw request' : 'Cancel booking'}
           </button>
           <div className="flex gap-3">
             <button onClick={onClose} className="hx-btn-ghost">Close</button>
@@ -857,6 +911,7 @@ function AmendModal({ booking, resources, bookings, company, poolFor, leases, se
             </button>
           </div>
         </div>
+        </>)}
       </div>
     </div>
   )

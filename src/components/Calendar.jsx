@@ -11,6 +11,8 @@ import { functionOption, functionFields, isSoloFunction, combinedGroup, newCombi
 import { to12h, durationLabel, addMinutes } from '../lib/tourInvite.js'
 import { UnlockButton } from './Bookings.jsx'
 import CancelBookingDialog from './CancelBookingDialog.jsx'
+import { isRequestGated } from '../lib/studio.js'
+import { cancelStudioSession, studioCancelFollowUp } from '../lib/studioCancel.js'
 
 const HOUR_H = 52
 const CREDIT_VALUE = 40 // $40 per credit
@@ -29,7 +31,7 @@ const round2 = (n) => Math.round(n * 100) / 100
 const ROOM_COLORS = ['#7c8b2f', '#10b981', '#7c3aed', '#b45309', '#1d4ed8', '#d97706', '#374151', '#9d174d']
 
 export default function Calendar() {
-  const { bookings = [], spaces = [], members = [], tenants = [], leases = [], leads = [], settings = {}, addBooking, updateBooking, deleteBooking, updateMember, addMember, updateTenant, addFee, deleteFee } = useOutletContext()
+  const { bookings = [], spaces = [], members = [], tenants = [], leases = [], leads = [], settings = {}, addBooking, updateBooking, deleteBooking, updateMember, addMember, updateTenant, addFee, deleteFee, updateFee } = useOutletContext()
   // Grid spans the extended (after-hours) window so after-hours bookings are
   // visible to staff. Admins can create bookings at any time — no gating here.
   const ahCfg = afterHoursConfig(settings)
@@ -242,7 +244,7 @@ export default function Calendar() {
   //               note and emailed the client. Mirror its row into local state
   //               silently; a second cancellation email would confuse them.
   //   not       — ordinary cancel: reconcile credits/fees locally as before.
-  function finishCancel(result) {
+  async function finishCancel(result) {
     const b = cancelling
     setCancelling(null)
     setModal(null)
@@ -250,6 +252,19 @@ export default function Calendar() {
     if (result.refunded) {
       updateBooking(b.id, result.booking ?? { status: 'Cancelled' }, { silent: true })
       if (result.message) window.alert(result.message)
+      return
+    }
+    // Podcast studio: the same free cancellation as Studio Requests — the
+    // server waives the fee (rather than deleting it, even off an issued
+    // invoice) and tells the client and the studio team.
+    if (isRequestGated(spaces.find((s) => s.id === b.resourceId))) {
+      try {
+        const d = await cancelStudioSession({ bookingId: b.id })
+        if (d.booking) updateBooking(b.id, d.booking, { silent: true })
+        for (const f of d.waived ?? []) if (f.data) updateFee?.(f.id, f.data)
+        const followUp = studioCancelFollowUp(d)
+        if (followUp) window.alert(followUp)
+      } catch (e) { window.alert(e.message) }
       return
     }
     // A combined function booking cancels as a whole — both rooms and the set-up.

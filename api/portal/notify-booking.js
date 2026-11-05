@@ -7,6 +7,10 @@ import { requireMember } from '../_auth.js'
 import { sendResendEmail } from '../_email.js'
 import { brandFrame, bKicker, bH1, bP, bTable, bSmall } from '../_brand.js'
 import { applyCors } from '../_cors.js'
+import { isRequestGated } from '../../src/lib/studio.js'
+import {
+  studioSessionStarted, waiveStudioFees, cancelledStudioRow, sendStudioCancelEmails, emptyFeeOutcome,
+} from '../_studioCancel.js'
 
 const OPS_EMAIL = 'info@hexaspace.com.au'
 
@@ -37,6 +41,36 @@ export default async function handler(req, res) {
       b.companyId ? sb.from('tenants').select('data').eq('id', b.companyId) : Promise.resolve({ data: [] }),
     ])
     const space = spRows?.[0]?.data
+
+    // A cancelled podcast studio session. Current portal/app builds cancel
+    // through /api/studio/cancel, which records `studio.cancellation` and never
+    // calls here. Older app builds still flip the status themselves and then
+    // notify — and members can't touch fees, so the approval's Booking Fee was
+    // left to be invoiced. Finish the cancellation for them: waive the fee and
+    // send the studio emails (the rostered operator has to hear about it).
+    if (kind === 'cancelled' && isRequestGated(space) && b.status === 'Cancelled') {
+      if (b.studio?.cancellation) return res.status(200).json({ skipped: 'studio cancellation already handled' })
+      // Fail closed: fee waivers are not for anyone who can't be tied to the
+      // booking's company.
+      if (!auth.companyId || auth.companyId !== b.companyId) return res.status(403).json({ error: 'Not your booking.' })
+      if (!studioSessionStarted(b)) {
+        const nowIso = new Date().toISOString()
+        let fees
+        try {
+          fees = await waiveStudioFees(sb, b, { nowIso, space, admin: false, actor: `Member (${auth.user.email})` })
+        } catch (e) {
+          fees = { ...emptyFeeOutcome(), failed: [{ id: b.feeId ?? null, price: 0, error: e.message }] }
+        }
+        const booking = cancelledStudioRow(b, { nowIso, by: 'member', email: auth.user.email, reason: '', fees })
+        await sb.from('bookings').update({ data: booking, updated_at: nowIso }).eq('id', bookingId)
+        const mail = await sendStudioCancelEmails(sb, booking, {
+          by: 'member', reason: '', wasConfirmed: booking.studio.cancellation.wasConfirmed, fees, actorEmail: auth.user.email,
+        })
+        return res.status(200).json({ studio: true, waived: fees.waived.length, billed: fees.billed.length, ...mail })
+      }
+      // Already started: the charge stands — fall through to the ordinary notice.
+    }
+
     // "Use as function" bookings are two rows (North + South); this one carries
     // the label, and staff need to open the divider + set up for the group.
     // Central runs as a function on its own (one row, no group): staff set out

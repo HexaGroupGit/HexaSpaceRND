@@ -6,6 +6,8 @@ import { format, parseISO } from 'date-fns'
 import { bookingRate } from '../lib/dropIn.js'
 import { bufferedWindow, isWeekendDate } from '../lib/functionBooking.js'
 import { authHeaders } from '../lib/apiFetch.js'
+import { isRequestGated } from '../lib/studio.js'
+import { cancelStudioSession, studioCancelFollowUp } from '../lib/studioCancel.js'
 import CancelBookingDialog from './CancelBookingDialog.jsx'
 
 // The building's staffed hours. Outside them — any weekend, or a window that
@@ -106,7 +108,7 @@ export function UnlockButton({ booking }) {
 }
 
 export default function Bookings() {
-  const { bookings = [], spaces = [], members = [], tenants = [], leases = [], addBooking, updateBooking, deleteBooking } = useOutletContext()
+  const { bookings = [], spaces = [], members = [], tenants = [], leases = [], addBooking, updateBooking, deleteBooking, updateFee } = useOutletContext()
   const [search, setSearch] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -155,13 +157,26 @@ export default function Bookings() {
   // NOTE this list has no credit reconciliation of its own (the calendar owns
   // that), so a non-refund cancel here only sets the status. Credit-paid
   // bookings are cancelled from the calendar, which returns the credits.
-  function finishCancel(result) {
+  async function finishCancel(result) {
     const b = cancelling
     setCancelling(null)
     if (!b) return
     if (result.refunded) {
       updateBooking?.(b.id, result.booking ?? { status: 'Cancelled' }, { silent: true })
       if (result.message) window.alert(result.message)
+      return
+    }
+    // Podcast studio: cancelling is free, and its Booking Fee was raised on
+    // approval — a bare status change here would leave that fee to be invoiced.
+    // The server cancels, waives the fee and emails the client + studio team.
+    if (isRequestGated(resource(b.resourceId))) {
+      try {
+        const d = await cancelStudioSession({ bookingId: b.id })
+        if (d.booking) updateBooking?.(b.id, d.booking, { silent: true })
+        for (const f of d.waived ?? []) if (f.data) updateFee?.(f.id, f.data)
+        const followUp = studioCancelFollowUp(d)
+        if (followUp) window.alert(followUp)
+      } catch (e) { window.alert(e.message) }
       return
     }
     updateBooking?.(b.id, { status: 'Cancelled' })

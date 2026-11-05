@@ -6,8 +6,9 @@ import { authHeaders } from '../lib/apiFetch.js'
 import {
   isRequestGated, studioRequestState, STUDIO_STATE_STYLE, questionnaireRows,
   recordingMinutesFor, staleRequests, CONFIRM_SLA, RETENTION_DAYS, creditsAllowed,
-  gbForHours,
+  gbForHours, melbourneToday, melbourneNowTime,
 } from '../lib/studio.js'
+import { cancelStudioSession, studioCancelFollowUp } from '../lib/studioCancel.js'
 import { bookingRate } from '../lib/dropIn.js'
 import { bookingFeeName, round2 } from '../lib/credits.js'
 
@@ -164,10 +165,10 @@ export default function StudioRequests() {
 // ── Review drawer ────────────────────────────────────────────────────────────
 
 function RequestDrawer({ request: r, ctx, leases, onClose, onUpdated }) {
-  const { updateBooking, bookings = [], spaces = [], addFee, updateTenant } = ctx
+  const { updateBooking, bookings = [], spaces = [], addFee, updateFee } = ctx
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
-  const [mode, setMode] = useState(null) // null | 'decline' | 'propose'
+  const [mode, setMode] = useState(null) // null | 'decline' | 'propose' | 'cancel'
   const [reason, setReason] = useState('')
   const [slot, setSlot] = useState({ date: r.date, startTime: r.startTime, endTime: r.endTime })
 
@@ -177,6 +178,11 @@ function RequestDrawer({ request: r, ctx, leases, onClose, onUpdated }) {
   const rate = bookingRate(r.room, r.companyId, leases)
   const wantMins = Number(q?.expectedRecordingMins) || 0
   const fits = wantMins <= recordingMinutesFor(hrs)
+  // A confirmed session can be cancelled (free) until it has finished. Booking
+  // times are Melbourne-local, so compare against Melbourne's clock.
+  const today = melbourneToday()
+  const ended = r.date < today || (r.date === today && String(r.endTime) <= melbourneNowTime())
+  const cancellation = r.studio?.cancellation
 
   // Any other studio booking already holding this slot (excluding this one).
   const clash = bookings.find((b) => b.id !== r.id && b.resourceId === r.resourceId &&
@@ -213,6 +219,10 @@ function RequestDrawer({ request: r, ctx, leases, onClose, onUpdated }) {
         startTime: r.startTime, endTime: r.endTime, usedCredits: 0,
       }),
       type: 'Booking Fee', memberId: r.memberId ?? null, companyId: r.companyId,
+      // Ties the fee to its session, so cancelling can find and waive it — and
+      // records when that session starts on a row members can't edit, which is
+      // what a free cancellation is checked against (api/_studioCancel.js).
+      bookingId: r.id, startTime: r.startTime, endTime: r.endTime,
       date: r.date || new Date().toISOString().split('T')[0],
       price,
       status: 'Not Paid',
@@ -254,6 +264,24 @@ function RequestDrawer({ request: r, ctx, leases, onClose, onUpdated }) {
         },
       })
       await notify('declined', { reason: reason.trim() })
+      onUpdated()
+    } catch (e) { setError(e.message) } finally { setBusy('') }
+  }
+
+  // Cancel a confirmed session, free of charge. The server does it (not
+  // updateBooking) so the Booking Fee raised at approval is waived in the same
+  // step and the client + studio team get the cancellation email — the same
+  // path a member's own cancel takes.
+  async function cancelSession() {
+    setBusy('cancel'); setError('')
+    try {
+      const d = await cancelStudioSession({ bookingId: r.id, reason: reason.trim() })
+      // Mirror the server's row locally; silent so the generic "booking
+      // cancelled" email doesn't go out on top of the studio one.
+      if (d.booking) updateBooking(r.id, d.booking, { silent: true })
+      for (const f of d.waived ?? []) if (f.data) updateFee?.(f.id, f.data)
+      const followUp = studioCancelFollowUp(d)
+      if (followUp) window.alert(followUp)
       onUpdated()
     } catch (e) { setError(e.message) } finally { setBusy('') }
   }
@@ -416,14 +444,58 @@ function RequestDrawer({ request: r, ctx, leases, onClose, onUpdated }) {
               Door access is scheduled automatically and the client has their confirmation and recording guide.
             </div>
           )}
+
+          {r.state === 'approved' && !ended && mode === null && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={() => { setMode('cancel'); setError('') }} disabled={!!busy}
+                className="flex items-center gap-2 border border-red-200 text-red-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-red-50 disabled:opacity-50">
+                <X size={15} /> Cancel session
+              </button>
+              <span className="text-xs text-muted-foreground">No charge — the Booking Fee is waived.</span>
+            </div>
+          )}
+
+          {mode === 'cancel' && (
+            <div className="border border-red-200 rounded-lg p-4 space-y-3">
+              <p className="text-sm font-medium text-foreground">Cancel this session</p>
+              <p className="text-xs text-muted-foreground">
+                The slot is freed, door access is withdrawn, and the Booking Fee for the session is waived so it never reaches
+                an invoice. The client is emailed that there's no charge, and the studio team is told the operator isn't needed.
+              </p>
+              <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)}
+                placeholder="Reason for the client (optional), e.g. Our operator is unwell — reply and we'll rebook you this week."
+                className="w-full border border-input rounded-md px-3 py-2 text-sm resize-none" />
+              <div className="flex gap-2">
+                <button onClick={cancelSession} disabled={!!busy} className="bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+                  {busy === 'cancel' ? 'Cancelling…' : 'Cancel session & notify'}
+                </button>
+                <button onClick={() => setMode(null)} disabled={!!busy} className="border border-input px-4 py-2 rounded-md text-sm">Back</button>
+              </div>
+            </div>
+          )}
           {r.state === 'declined' && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-900">
               Declined{r.studio?.approval?.reason ? ` — "${r.studio.approval.reason}"` : ''}.
             </div>
           )}
           {r.state === 'cancelled' && (
-            <div className="bg-muted/50 border border-border rounded-lg px-4 py-3 text-sm text-muted-foreground">
-              This session was cancelled.
+            <div className="bg-muted/50 border border-border rounded-lg px-4 py-3 text-sm text-muted-foreground space-y-1">
+              <p>
+                {cancellation?.wasConfirmed === false ? 'Request withdrawn' : 'This session was cancelled'}
+                {cancellation ? ` by ${cancellation.by === 'admin' ? 'the Hexa Space team' : 'the client'}` : ''}
+                {cancellation?.at ? ` on ${format(parseISO(cancellation.at.split('T')[0]), 'd MMM yyyy')}` : ''}
+                {cancellation?.reason ? ` — "${cancellation.reason}"` : ''}.
+              </p>
+              {cancellation?.feesWaived?.length > 0 && <p>No charge: the Booking Fee was waived.</p>}
+              {cancellation?.feesStillBilled?.length > 0 && (
+                <p className="text-amber-800">The fee had already been invoiced — check a credit note was raised.</p>
+              )}
+              {cancellation?.feesKept?.length > 0 && (
+                <p className="text-amber-800">By its own record the fee was for a session that had already started, so it was left to be billed.</p>
+              )}
+              {cancellation?.feesUnverified?.length > 0 && (
+                <p className="text-amber-800">The booking pointed at fee {cancellation.feesUnverified.join(', ')}, which couldn't be matched to this session — check it in Fees.</p>
+              )}
             </div>
           )}
         </div>

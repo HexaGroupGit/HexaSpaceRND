@@ -207,7 +207,7 @@ export default async function handler(req, res) {
             `<div style="font-family:${SANS};font-size:13px;line-height:1.7;color:#3a3a3a">Setup is part of your booking, so arriving late shortens your recording rather than extending the session. Come to <strong>Suite 25, Level 2, 830 Whitehorse Road, Box Hill</strong> — our team will meet you and get you set up.</div>`) +
           bP(`Your files are copied and verified before you leave, and handed over as raw footage — multi-camera video and multi-track audio. Bring a USB drive or portable SSD if you can. We keep a working copy for ${RETENTION_DAYS} days as a safety net, then delete it.`) +
           guestGuideBlock() +
-          bSmall('Need to change or cancel? Reply to this email as early as you can — an operator is rostered for your session.')
+          bSmall('Need to cancel? It’s free any time before your session starts — use Cancel on the booking in the member portal or app, or reply to this email. Please let us know as early as you can, as an operator is rostered for your session.')
       }
 
       if (kind === 'declined') {

@@ -21,6 +21,10 @@ export default function BookingSheet({ booking, onClose }) {
   const level = floorLabel(room) // which floor to walk to
   const phase = bookingPhase(booking)
   const modifiable = canModifyBooking(booking)
+  // A confirmed podcast session can't be moved by the member (an operator is
+  // rostered for it) — only cancelled, which is free until it starts.
+  const studio = isRequestGated(room)
+  const studioConfirmed = studio && booking.status === 'Confirmed'
 
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({ date: booking.date, startTime: booking.startTime, endTime: booking.endTime })
@@ -61,11 +65,13 @@ export default function BookingSheet({ booking, onClose }) {
   async function doCancel() {
     const msg = booking.status === 'Pending'
       ? 'Withdraw this session request? The slot is released straight away.'
-      : 'Cancel this booking? Any credits used will return to your allowance.'
+      : studioConfirmed
+        ? 'Cancel this studio session? There’s no charge — the slot is released and the studio team is told.'
+        : 'Cancel this booking? Any credits used will return to your allowance.'
     if (!window.confirm(msg)) return
     setBusy(true); setError('')
     try {
-      const { booking: updated, company: updatedCompany } = await cancelBooking({ booking, company, leases })
+      const { booking: updated, company: updatedCompany } = await cancelBooking({ booking, company, leases, room })
       patch((prev) => ({
         ...prev,
         company: updatedCompany,
@@ -164,12 +170,16 @@ export default function BookingSheet({ booking, onClose }) {
       {/* Upcoming → change time / cancel */}
       {modifiable && !editing && (
         <div className="space-y-2.5">
-          <BigButton tone="outline" onClick={() => setEditing(true)}><Clock size={14} className="inline -mt-0.5 mr-2" />Change time</BigButton>
+          {!studioConfirmed && (
+            <BigButton tone="outline" onClick={() => setEditing(true)}><Clock size={14} className="inline -mt-0.5 mr-2" />Change time</BigButton>
+          )}
           <button onClick={doCancel} disabled={busy}
             className="w-full min-h-[48px] font-heading uppercase tracking-nav text-[11px] text-red-700 border border-red-200 active:bg-red-50 disabled:opacity-50">
-            {busy ? 'Cancelling…' : booking.status === 'Pending' ? 'Withdraw request' : 'Cancel booking'}
+            {busy ? 'Cancelling…' : booking.status === 'Pending' ? 'Withdraw request' : studio ? 'Cancel session' : 'Cancel booking'}
           </button>
-          <p className="hx-prose text-[11px] text-center pt-1">Free to change or cancel until your booking starts.</p>
+          <p className="hx-prose text-[11px] text-center pt-1">{studioConfirmed
+            ? 'No charge if you cancel before your session starts. To move it, cancel and send a new request, or email info@hexaspace.com.au.'
+            : 'Free to change or cancel until your booking starts.'}</p>
         </div>
       )}
 

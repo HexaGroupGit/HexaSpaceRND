@@ -40,7 +40,7 @@ export const creditsAllowed = (space) => !isRequestGated(space)
 
 /** Policy version stamped onto each acceptance. Bump when the terms change so
  *  we can tell which wording a client actually agreed to. */
-export const STUDIO_POLICY_VERSION = 'v1.0'
+export const STUDIO_POLICY_VERSION = 'v1.1' // v1.1: free cancellation before the session starts
 
 /** Minimum bookable session, in hours. Setup + pack-down live INSIDE this. */
 export const MIN_SESSION_HOURS = 1
@@ -218,7 +218,7 @@ export const STUDIO_POLICY = [
   },
   {
     title: 'Changes and cancellations',
-    body: 'Let us know as early as you can if you need to move or cancel a session — an operator is rostered for your slot. Changing the time of a confirmed session returns it to pending while we re-check operator availability.',
+    body: 'You can cancel a session free of charge any time before it starts — use Cancel on the booking in the member portal or app, or reply to your confirmation email. Please do it as early as you can, as an operator is rostered for your slot. To move a confirmed session, cancel it and send a new request, or ask us to move it; a new time goes back to pending while we re-check operator availability.',
   },
   {
     title: 'Care of the studio',
