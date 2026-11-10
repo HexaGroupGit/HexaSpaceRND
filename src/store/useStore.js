@@ -1556,8 +1556,10 @@ export function useStore() {
     // 'occupied' in provisionAndOnboardLease.
     const claimOccupant = initialStatus === 'occupied'
     setSpaces((prev) => {
+      // Never demote a space someone is still in to 'reserved' (a contract
+      // signed ahead of a handover) — same guard as the load-time sweep.
       const next = prev.map((s) => (heldIds.has(s.id)
-        ? { ...s, status: initialStatus, ...(claimOccupant && s.type === 'office' ? { occupantTenantId: item.tenantId, occupantName: '' } : {}) }
+        ? { ...s, status: s.status === 'occupied' && initialStatus === 'reserved' ? s.status : initialStatus, ...(claimOccupant && s.type === 'office' ? { occupantTenantId: item.tenantId, occupantName: '' } : {}) }
         : s))
       next.filter((s) => heldIds.has(s.id)).forEach((updated) => {
         syncRow('spaces', updated.id, updated)
@@ -1634,7 +1636,10 @@ export function useStore() {
     const tenant = tenantsRef.current.find((t) => t.id === lease.tenantId)
     if (!accessGateMet(lease, invoicesRef.current, tenant, new Date(), leasesRef.current)) return
     const space = spacesRef.current.find((s) => s.id === lease.spaceId)
-    const alreadyOccupied = space?.status === 'occupied'
+    // Occupied by ANOTHER company is a handover, not this tenant already being
+    // in — same sameOccupant rule as the load-time sweep and reconcile step 2.
+    const alreadyOccupied = space?.status === 'occupied' &&
+      (!space.occupantTenantId || space.occupantTenantId === lease.tenantId)
     // Flip every line item's space (multi-office contracts), not just the primary.
     const desired = desiredSpaceStatus(lease, invoicesRef.current, new Date(), leasesRef.current)
     leaseSpaceIds(lease).forEach((sid) => {
@@ -1667,7 +1672,11 @@ export function useStore() {
         setSpaces((spaces) => {
           // Release the space: clear the occupant too, not just the status, so a
           // deleted/moved lease never leaves a stale tenant tag behind.
-          const next = spaces.map((s) => (heldIds.has(s.id) ? { ...s, status: 'vacant', occupantTenantId: null, occupantName: '' } : s))
+          // Not a space another live contract still holds — deleting a
+          // successor signed ahead of a handover must not empty the suite
+          // the current tenant is still in.
+          const heldByOther = (sid) => prev.some((l) => l.id !== id && holdsSpace(l) && leaseSpaceIds(l).includes(sid))
+          const next = spaces.map((s) => (heldIds.has(s.id) && !heldByOther(s.id) ? { ...s, status: 'vacant', occupantTenantId: null, occupantName: '' } : s))
           next.filter((s) => heldIds.has(s.id)).forEach((updated) => syncRow('spaces', updated.id, updated))
           return next
         })
@@ -2142,9 +2151,17 @@ export function useStore() {
     setSpaces((prev) => {
       const next = prev.map((s) => {
         if (!spaceIds.has(s.id)) return s
-        const heldByOther = leasesRef.current.some((l) =>
+        const others = leasesRef.current.filter((l) =>
           l.id !== lease.id && holdsSpace(l) && leaseSpaceIds(l).includes(s.id))
-        if (heldByOther) return s
+        // Held by the next company's contract (signed ahead of a handover):
+        // the leaver's tag must still go, or the suite reads as theirs — and
+        // as already occupied, which suppressed the newcomer's onboarding.
+        // It stays reserved for the newcomer until their gate clears.
+        if (others.length && s.occupantTenantId === lease.tenantId &&
+          others.every((l) => l.tenantId !== lease.tenantId && !l.onboardedAt)) {
+          return { ...s, status: 'reserved', occupantTenantId: null, occupantName: '' }
+        }
+        if (others.length) return s
         return { ...s, status: 'vacant', occupantTenantId: null, occupantName: '' }
       })
       spaceIds.forEach((id) => { const sp = next.find((s) => s.id === id); if (sp) syncRow('spaces', sp.id, sp) })

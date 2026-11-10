@@ -14,6 +14,7 @@
 import { buildPaymentSchedule } from './paymentSchedule.js'
 import { invoiceCoversLease } from './billingEngine.js'
 import { holdsSpace } from './spaceHold.js'
+import { awaitingHandover } from './officeAvailability.js'
 import { virtualSuiteLabel } from './virtualSuites.js'
 import { wifiSupportHtml } from './wifiSupport.js'
 
@@ -197,6 +198,10 @@ export function accessGateMet(lease, invoices, tenant, today = new Date(), lease
   // Keyed on onboardedAt, NOT activatedAt — activatedAt is stamped at
   // countersign, so it would open the gate before any money landed.
   if (lease.onboardedAt) return true
+
+  // Signed ahead of a handover — the outgoing company is still in the space.
+  // Paying early must not hand over keys (or onboard) before they've left.
+  if (leases && awaitingHandover(lease, leases)) return false
 
   if (!isExistingTenant(lease, leases)) {
     const depositOwed = depositDue(lease) > 0

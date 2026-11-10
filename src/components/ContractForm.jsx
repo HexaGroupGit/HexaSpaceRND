@@ -1,8 +1,9 @@
 import SearchSelect from './SearchSelect.jsx'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Plus, Trash2, Minus, ChevronDown, X, AlertCircle } from 'lucide-react'
 import { discountedPrice, discountPct } from '../lib/leasePricing.js'
 import { holdsSpace } from '../lib/spaceHold.js'
+import { officeFreeFrom } from '../lib/officeAvailability.js'
 import { SPACE_TABS, floorLabel } from './spaces/shared.jsx'
 import { PARKING_INCLUDED_LABEL } from '../lib/parkingBays.js'
 import { NON_POSITION_DESK_IDS } from '../lib/deskBays.js'
@@ -43,9 +44,14 @@ const DOC_TYPE_SPACES = {
 
 // Item picker label. Car bays read "Bay 412 — Level 4 · L4.12 · Lot S34 · $200/mo"
 // so they can't be mistaken for suites.
-function spaceOptionLabel(s) {
+const dmy = (iso) => iso.split('-').reverse().join('/')
+
+function spaceOptionLabel(s, freeFrom) {
   // Blank sizes (VO suites, older desks) used to print "Suite 441 — undefined".
-  if (s.type !== 'parking') return [s.unitNumber, s.size].filter(Boolean).join(' — ')
+  if (s.type !== 'parking') {
+    const label = [s.unitNumber, s.size].filter(Boolean).join(' — ')
+    return freeFrom ? `${label} (free after ${dmy(freeFrom)})` : label
+  }
   const price = s.includedInContract
     ? PARKING_INCLUDED_LABEL
     : `$${Number(s.monthlyRate ?? s.rate ?? 0).toLocaleString('en-AU')}/mo`
@@ -54,8 +60,8 @@ function spaceOptionLabel(s) {
 
 // Picker options, grouped by kind when a document type allows more than one —
 // a licence can carry a suite and its car bays. Bays list in number order.
-function spaceOptions(list) {
-  const option = (s) => <option key={s.id} value={s.id}>{spaceOptionLabel(s)}</option>
+function spaceOptions(list, freeFrom = {}) {
+  const option = (s) => <option key={s.id} value={s.id}>{spaceOptionLabel(s, freeFrom[s.id])}</option>
   const types = [...new Set(list.map((s) => s.type))]
   if (types.length < 2) return list.map(option)
   return types.map((t) => {
@@ -388,6 +394,19 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
 
   // ── Submit ───────────────────────────────────────────────────────────────
 
+  // Per office: '' free now, a date it comes free after, or null if taken.
+  const officeFree = useMemo(() => Object.fromEntries(spaces.filter((s) => s.type === 'office')
+    .map((s) => [s.id, officeFreeFrom(s, leases, editLease?.id)])), [spaces, leases, editLease?.id])
+  // An office picked before the start date was entered (or moved earlier
+  // since) can overlap the outgoing tenant's last day.
+  const officeClash = form.items.map((item) => {
+    const free = officeFree[item.spaceId]
+    const start = item.steps?.[0]?.startDate || form.startDate
+    if (!free || !start || start > free) return null
+    const unit = spaces.find((s) => s.id === item.spaceId)?.unitNumber ?? 'This office'
+    return `${unit} is held until ${dmy(free)} — start on ${dmy(dayAfter(free))} or later`
+  }).find(Boolean)
+
   function validate() {
     const errs = {}
     if (!form.tenantId) errs.tenantId = 'Company is required'
@@ -396,6 +415,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
     // notice is given (billing treats no end date as open-ended).
     if (!form.endDate && form.contractType !== 'Month-to-month') errs.endDate = 'End date is required'
     if (form.items.some((item) => !item.spaceId)) errs.items = 'All items need a space selected'
+    else if (officeClash) errs.items = officeClash
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -708,10 +728,14 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                               if (s.id === item.spaceId) return true // keep current selection
                               // Restrict to the space types this document type may book.
                               if (allowedTypes && !allowedTypes.includes(s.type)) return false
-                              // Private offices: only units not already leased/assigned.
+                              // Private offices: free now, or held by a contract that
+                              // ends before this item starts (the next tenant can be
+                              // signed up while the current one serves out their term).
                               if (s.type === 'office') {
-                                if (s.assignedCompanyId) return false
-                                return !leases.some((l) => l.spaceId === s.id && holdsSpace(l))
+                                const free = officeFree[s.id]
+                                if (free === null) return false
+                                const start = item.steps?.[0]?.startDate || form.startDate
+                                return !free || !start || start > free
                               }
                               // A VO suite number is a mailing address, so it
                               // can't be handed to two members: only offer the
@@ -733,7 +757,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                                 if (leases.some((l) => [l.spaceId, ...(l.items ?? []).map((i) => i.spaceId)].includes(s.id) && holdsSpace(l))) return false
                               }
                               return s.status === 'vacant'
-                            }))}
+                            }), officeFree)}
                         </SearchSelect>
                       </div>
 

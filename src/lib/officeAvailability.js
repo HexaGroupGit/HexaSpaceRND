@@ -22,6 +22,48 @@ export function moveOutDate(lease) {
   return lease?.vacateDate || lease?.terminationScheduledFor || lease?.endDate || null
 }
 
+// The date a live contract is certain to let go of its space, or null if it
+// isn't — i.e. a date the nightly reconcile will actually expire it on. A served
+// notice is (reconcile step 3 keys on noticeGiven + vacateDate; every
+// termination path sets both). A bare end date is NOT — a renewing contract
+// (autoRenew unset) is rolled forward the day after, so only a contract told
+// not to renew really ends on its end date.
+export function committedMoveOut(lease) {
+  if (!lease) return null
+  const day = (v) => String(v).slice(0, 10)
+  if (lease.noticeGiven && lease.vacateDate) return day(lease.vacateDate)
+  if (lease.endDate && (lease.autoRenew === false || lease.renewalDeclined)) return day(lease.endDate)
+  return null
+}
+
+const spaceIdsOf = (l) => [l?.spaceId, ...(l?.items ?? []).map((i) => i.spaceId)].filter(Boolean)
+
+// Is this contract signed in advance to take over a space another company is
+// still in? (The picker offers an office from the day after its holder's
+// committed move-out.) Its onboarding — welcome, portal invite, door access —
+// and the space flip must wait until the outgoing contract has ended.
+export function awaitingHandover(lease, leases = []) {
+  const mine = new Set(spaceIdsOf(lease))
+  return leases.some((o) => {
+    if (o.id === lease.id || o.tenantId === lease.tenantId || !holdsSpace(o)) return false
+    const out = committedMoveOut(o)
+    return !!out && spaceIdsOf(o).some((id) => mine.has(id)) && (!lease.startDate || lease.startDate > out)
+  })
+}
+
+// When an office is free for a NEW contract, given the live contracts holding
+// it: '' when none does, the last committed move-out when every one of them is
+// ending, or null when any of them rolls on (the office isn't coming free).
+// `ignoreLeaseId` skips the contract being edited.
+export function officeFreeFrom(space, leases = [], ignoreLeaseId = null) {
+  const holders = leases.filter((l) => l.id !== ignoreLeaseId && holdsSpace(l) && spaceIdsOf(l).includes(space.id))
+  // A company tag with no contract behind it (imports) still means taken.
+  if (space.assignedCompanyId && !holders.some((l) => l.tenantId === space.assignedCompanyId)) return null
+  if (!holders.length) return ''
+  const outs = holders.map(committedMoveOut)
+  return outs.every(Boolean) ? outs.sort().pop() : null
+}
+
 const daysUntil = (iso) => {
   const t = Date.parse(`${String(iso).slice(0, 10)}T00:00:00`)
   return Number.isFinite(t) ? Math.ceil((t - Date.now()) / 86400000) : null
