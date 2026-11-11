@@ -35,6 +35,7 @@ import { configureFunctionPricing } from '../lib/functionBooking.js'
 import { isRentFreeMonth } from '../lib/paymentSchedule.js'
 import { invoiceCoversLease } from '../lib/billingEngine.js'
 import { holdsSpace } from '../lib/spaceHold.js'
+import { saveLease, forgetLease } from '../lib/leaseSave.js'
 import { allocateVirtualSuite } from '../lib/virtualSuites.js'
 import { PARKING_BAYS, RETIRED_PARKING_IDS, parkingBaySpace, missingParkingBays, retiredParkingSpaces } from '../lib/parkingBays.js'
 import { deskSpace, missingDeskPositions } from '../lib/deskBays.js'
@@ -972,7 +973,7 @@ export function useStore() {
             lease.pendingRenewalApproval = true
             lease.autoRenewedAt = nowIso
             lease.renewalCount = (lease.renewalCount ?? 0) + 1
-            syncRow('leases', lease.id, lease)
+            saveLease(supabase, lease.id, lease)
           }
         }
 
@@ -1542,7 +1543,7 @@ export function useStore() {
   const addLease = useCallback((lease) => {
     const item = { ...lease, id: `l${Date.now()}`, createdAt: new Date().toISOString().split('T')[0] }
     setLeases((prev) => [...prev, item])
-    syncRow('leases', item.id, item)
+    saveLease(supabase, item.id, item)
     logAudit('create', 'lease', item.id, item.contractNumber ?? item.id)
     // A real contract holds its spaces as 'reserved' — they only become
     // 'occupied' once the access gate is met (signed + deposit + first invoice
@@ -1594,11 +1595,13 @@ export function useStore() {
         const kept = new Set(leaseSpaceIds(updated))
         droppedSpaceIds = leaseSpaceIds(old).filter((sid) => !kept.has(sid))
       }
-      if (updated) { syncRow('leases', id, updated); logAudit('update', 'lease', id, updated.contractNumber ?? id, Object.keys(updates).join(', ')) }
+      if (updated) { saveLease(supabase, id, updated); logAudit('update', 'lease', id, updated.contractNumber ?? id, Object.keys(updates).join(', ')) }
       // Detect an end-of-lease transition; the heavy lifting runs in offboardLease.
       if (updated && ['expired', 'terminated'].includes(updates.status) && !updated.offboardedAt) endedLeaseId = id
       // Detect a just-signed transition → raise the deposit + first invoice now.
       if (SIGNED.includes(updates.signatureStatus) && !SIGNED.includes(old?.signatureStatus)) signedLeaseId = id
+      // Signed while waiting for its office: the invoices were held back until now.
+      if (old?.awaitingSpace && updates.awaitingSpace === false && SIGNED.includes(updated?.signatureStatus)) signedLeaseId = id
       return next
     })
     // Run side-effects after state settles so the data refs are fresh.
@@ -1683,6 +1686,7 @@ export function useStore() {
       }
       return prev.filter((l) => l.id !== id)
     })
+    forgetLease(id)
     deleteRow('leases', id)
   }, [])
 
@@ -1770,6 +1774,8 @@ export function useStore() {
   const raiseSigningInvoices = useCallback((leaseId) => {
     const lease = leasesRef.current.find((l) => l.id === leaseId)
     if (!lease) return
+    // Prepared for an office that isn't free: no deposit or rent until activated.
+    if (lease.awaitingSpace) return
     // A RENEWAL continues an existing tenancy on identical terms: the bond is
     // already held under the prior contract and the ongoing membership keeps
     // being billed by the monthly run, so a renewal signing raises nothing.

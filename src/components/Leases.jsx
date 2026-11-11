@@ -164,6 +164,7 @@ export default function Leases() {
       contractNumber: undefined,
       contractType: 'Renewal',
       previousContractId: base.id,
+      awaitingSpace: undefined,
       status: 'pending',
       signatureStatus: 'not_signed',
       startDate: base.endDate ?? '',
@@ -195,6 +196,7 @@ export default function Leases() {
           contractNumber: undefined,
           contractType: 'Renewal',
           previousContractId: lease.id,
+          awaitingSpace: undefined,
           status: 'pending',
           signatureStatus: 'not_signed',
           startDate: renewalStart,
@@ -229,7 +231,7 @@ export default function Leases() {
           noticeGiven: undefined, noticeServedAt: undefined, vacateDate: undefined,
           terminationScheduledFor: undefined, needsOffboard: undefined,
           cardReminderAt: undefined, cardRemindersSent: undefined,
-          lastGeneratedAt: undefined,
+          lastGeneratedAt: undefined, awaitingSpace: undefined,
         })
         setSelectedLease(null)
         setMode('create')

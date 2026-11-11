@@ -14,6 +14,7 @@ import { stepMonthly } from '../lib/leasePricing.js'
 import { leaseInclusions } from '../lib/voInclusions.js'
 import { resolvePrimaryContact } from '../lib/leaseContact.js'
 import { sendLeaseForSigning } from '../lib/esign.js'
+import { activationBlockers } from '../lib/officeAvailability.js'
 import {
   requiresCardOnFile, portalWelcomeInvitePayload, gettingStartedEmailHtml,
   openingInvoiceMismatch, openingInvoiceRepairable, isParkingOnlyLease,
@@ -54,6 +55,7 @@ export default function ContractDetail({
   // date afterwards re-prices nothing, so the two can silently disagree and the
   // difference is never billed — say so here rather than let it pass unseen.
   const openingGap = openingInvoiceMismatch(lease, invoices)
+  const spaceBlockers = lease.awaitingSpace ? activationBlockers(lease, spaces, allLeases) : []
   const unitFor = (spaceId) =>
     spaces.find((sp) => sp.id === spaceId)?.unitNumber
       ?? (spaceId && spaceId === lease.spaceId ? space?.unitNumber : null)
@@ -70,6 +72,7 @@ export default function ContractDetail({
   const [copyMsg, setCopyMsg] = useState('')
   const [eSignData, setESignData] = useState(null)
   const [showCountersignModal, setShowCountersignModal] = useState(false)
+  const [activating, setActivating] = useState(false)
   const [licensorName, setLicensorName] = useState(settings?.company?.name ?? 'Hexa Space Pty Ltd')
   const [counterskigning, setCountersigning] = useState(false)
   const licensorSigRef = useRef(null)
@@ -177,7 +180,13 @@ export default function ContractDetail({
       // space is only taken up (reserved → occupied) once the deposit + first
       // invoice are paid; an existing tenant's add-on goes live on signature.
       // Either way it waits for the commencement date (store reconcile).
-      if (onUpdateLease) onUpdateLease(lease.id, { signatureStatus: 'e_signed', signedAt: now, signerName: lease.tenantSignerName ?? tenant?.contactName, status: 'active', activatedAt: now })
+      // Still waiting for its office: executed, but it stays pending (no
+      // invoices or welcome) until the office's current contract is ended.
+      const stillWaiting = lease.awaitingSpace && spaceBlockers.length > 0
+      if (onUpdateLease) onUpdateLease(lease.id, {
+        signatureStatus: 'e_signed', signedAt: now, signerName: lease.tenantSignerName ?? tenant?.contactName,
+        ...(stillWaiting ? {} : { status: 'active', activatedAt: now, ...(lease.awaitingSpace ? { awaitingSpace: false } : {}) }),
+      })
       setESignData((prev) => ({ ...prev, status: 'fully_signed', licensor_signature_data: signatureData, licensor_signer_name: licensorName, licensor_signed_at: now }))
       setShowCountersignModal(false)
       logAudit('sign', 'lease', lease.id, contractNum, `Countersigned by ${licensorName}`)
@@ -188,22 +197,35 @@ export default function ContractDetail({
         await emailSignedCopy(fullSig)
       } catch (e) { console.error('Signed copy email failed:', e) }
 
-      // Brand-new client (nobody at the company has portal access yet) → send
-      // the portal-signup welcome now, without waiting for the paid gate.
-      try {
-        await sendPortalWelcome()
-      } catch (e) { console.error('Portal welcome failed:', e) }
-
-      // Getting-started pack: business address, directory-listing link,
-      // Wi-Fi and phone-app guide — so nothing gets lost after signing.
-      try {
-        await sendGettingStarted()
-      } catch (e) { console.error('Getting-started email failed:', e) }
+      if (!stillWaiting) await sendActivationEmails()
     } catch (err) {
       alert(`Error: ${err.message}`)
     } finally {
       setCountersigning(false)
     }
+  }
+
+  async function sendActivationEmails() {
+    // Brand-new client (nobody at the company has portal access yet) → send
+    // the portal-signup welcome now, without waiting for the paid gate.
+    try {
+      await sendPortalWelcome()
+    } catch (e) { console.error('Portal welcome failed:', e) }
+
+    // Getting-started pack: business address, directory-listing link,
+    // Wi-Fi and phone-app guide — so nothing gets lost after signing.
+    try {
+      await sendGettingStarted()
+    } catch (e) { console.error('Getting-started email failed:', e) }
+  }
+
+  // A contract prepared ahead of its office going free, now cleared to go live.
+  async function handleActivate() {
+    if (activating || lease.status !== 'pending' || spaceBlockers.length || !isSigned) return
+    setActivating(true)
+    onUpdateLease?.(lease.id, { status: 'active', activatedAt: new Date().toISOString(), awaitingSpace: false })
+    logAudit('activate', 'lease', lease.id, contractNum, 'Activated — office is free')
+    if (lease.signatureStatus === 'e_signed') await sendActivationEmails()
   }
 
   // Getting-started pack: registered business address, directory-listing
@@ -1134,6 +1156,27 @@ export default function ContractDetail({
           {/* ── Grid View ── */}
           {view === 'grid' && (
           <div className="p-5 space-y-5">
+
+            {/* ── Prepared ahead of its office going free ── */}
+            {lease.awaitingSpace && lease.status === 'pending' && (
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-4">
+                <p className="text-sm font-semibold text-amber-900">
+                  {spaceBlockers.length ? 'Prepared — cannot be activated yet' : 'Office is free — ready to activate'}
+                </p>
+                <div className="mt-1 text-xs text-amber-800 space-y-0.5">
+                  {spaceBlockers.map((b) => (
+                    <p key={`${b.unit}-${b.contract}`}>{b.unit} is still under {b.company ?? 'another company'}&rsquo;s contract {b.contract}. Terminate it with an end date before this contract starts.</p>
+                  ))}
+                  <p>No invoices, welcome email or door access until this contract is activated.</p>
+                  {!spaceBlockers.length && !isSigned && <p>It will activate when it is countersigned.</p>}
+                </div>
+                {!spaceBlockers.length && isSigned && (
+                  <button onClick={handleActivate} disabled={activating} className="mt-3 bg-primary text-primary-foreground text-xs px-4 py-1.5 rounded-md font-semibold hover:bg-primary/90 disabled:opacity-50">
+                    Activate contract
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* ── Opening invoice vs start date ── */}
             {openingGap && (

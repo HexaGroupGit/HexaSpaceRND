@@ -64,6 +64,31 @@ export function officeFreeFrom(space, leases = [], ignoreLeaseId = null) {
   return outs.every(Boolean) ? outs.sort().pop() : null
 }
 
+// When an office's current contract is due to finish, committed or not — for
+// PREPARING the next contract. null if it's open-ended, or another prepared
+// contract has already claimed it.
+export function officeEndsOn(space, leases = [], ignoreLeaseId = null) {
+  const holders = leases.filter((l) => l.id !== ignoreLeaseId && holdsSpace(l) && spaceIdsOf(l).includes(space.id))
+  if (!holders.length || holders.some((l) => l.status !== 'active')) return null
+  if (space.assignedCompanyId && !holders.some((l) => l.tenantId === space.assignedCompanyId)) return null
+  const ends = holders.map((l) => committedMoveOut(l) || (l.endDate ? String(l.endDate).slice(0, 10) : null))
+  return ends.every(Boolean) ? ends.sort().pop() : null
+}
+
+// What stops this contract going live: another company's contract on one of
+// its offices that isn't certain to have ended before it starts. A contract
+// can be prepared and signed with blockers, but not activated.
+export function activationBlockers(lease, spaces = [], leases = []) {
+  return [...new Set(spaceIdsOf(lease))].flatMap((id) => {
+    const space = spaces.find((s) => s.id === id)
+    if (space?.type !== 'office') return []
+    return leases
+      .filter((o) => o.id !== lease.id && o.tenantId !== lease.tenantId && holdsSpace(o) && spaceIdsOf(o).includes(id))
+      .filter((o) => { const out = committedMoveOut(o); return !out || !lease.startDate || lease.startDate <= out })
+      .map((o) => ({ unit: space.unitNumber, company: o.companyName, contract: o.contractNumber ?? o.id }))
+  })
+}
+
 const daysUntil = (iso) => {
   const t = Date.parse(`${String(iso).slice(0, 10)}T00:00:00`)
   return Number.isFinite(t) ? Math.ceil((t - Date.now()) / 86400000) : null

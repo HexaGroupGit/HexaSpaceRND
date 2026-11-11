@@ -304,6 +304,7 @@ export default async function handler(req, res) {
     const H24 = 24 * 3600 * 1000
     for (const lease of leases) {
       if (!requiresCardOnFile(lease)) continue
+      if (lease.awaitingSpace) continue // prepared, not live — nothing to chase yet
       if (['expired', 'cancelled', 'terminated'].includes(String(lease.status))) continue
       const signedAt = lease.tenantSignedAt || lease.signedAt
       const hasSigned = signedAt || ['e_signed', 'manually_signed'].includes(String(lease.signatureStatus))

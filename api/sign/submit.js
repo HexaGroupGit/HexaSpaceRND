@@ -30,7 +30,47 @@ export default async function handler(req, res) {
     if (request.status === 'fully_signed') return res.status(200).json({ ok: true, alreadySigned: true });
     if (request.status === 'tenant_signed') return res.status(200).json({ ok: true, alreadySigned: true });
 
+    // A contract re-sent for signing has several live links; only one signature
+    // may land. The lease row is the lock: claim it with a compare-and-swap on
+    // updated_at, so two links signed at the same moment can't both win. Claiming
+    // also points the contract's links at this token — the contract page and
+    // countersign read the request they name, and signing an older link used to
+    // leave them on the unsigned one (FACDO CON-1767: Countersign never showed).
     const now = new Date().toISOString();
+    let lease = null;
+    let prior = null;
+    for (let attempt = 0; ; attempt++) {
+      const { data: rows, error: leaseErr } = await supabase
+        .from('leases').select('data, updated_at').eq('id', request.lease_id);
+      if (leaseErr) throw leaseErr;
+      const row = rows?.[0];
+      if (!row) break;
+      lease = row.data;
+      prior = row.data;
+
+      // Only signatures since the latest send count: re-sending AFTER a signature
+      // (a re-sign following an amendment) asks for a new one. Our own earlier
+      // claim is not a rival — that's a retry after the request write failed.
+      const sentAt = Date.parse(lease.eSignSentAt ?? '') || 0;
+      const signedSinceSent = lease.tenantSignedAt && Date.parse(lease.tenantSignedAt) >= sentAt;
+      const claimedByUs = String(lease.eSignMemberLink ?? '').includes(`/sign/${token}`);
+      if (signedSinceSent && (attempt > 0 || !claimedByUs)) {
+        return res.status(200).json({ ok: true, alreadySigned: true });
+      }
+
+      lease = {
+        ...lease, signatureStatus: 'out_for_signature', tenantSignedAt: now, tenantSignerName: signerName,
+        ...(lease.eSignMemberLink ? { eSignMemberLink: lease.eSignMemberLink.replace(/\/sign\/[^/?]+/, `/sign/${token}`) } : {}),
+        ...(lease.eSignAdminLink ? { eSignAdminLink: lease.eSignAdminLink.replace(/\/sign\/[^/?]+/, `/sign/${token}`) } : {}),
+      };
+      const claim = supabase.from('leases').update({ data: lease, updated_at: now }).eq('id', request.lease_id);
+      const { data: won, error: claimErr } = await (row.updated_at ? claim.eq('updated_at', row.updated_at) : claim.is('updated_at', null)).select('id');
+      if (claimErr) throw claimErr;
+      if (won?.length) break;
+      // Lost the swap: re-read. Someone else's signature ends it above; an
+      // unrelated save to the lease just means trying again.
+      if (attempt >= 3) return res.status(503).json({ error: 'Please try again in a moment.' });
+    }
 
     const { error: reqErr } = await supabase.from('esign_requests').update({
       status: 'tenant_signed',
@@ -40,15 +80,10 @@ export default async function handler(req, res) {
       licensee_title: signerTitle ?? '',
       licensee_date: signerDate ?? '',
     }).eq('token', token);
-    if (reqErr) throw reqErr;
-
-    const { data: lRows } = await supabase.from('leases').select('data').eq('id', request.lease_id);
-    const lease = lRows?.[0]?.data;
-    if (lease) {
-      await supabase.from('leases').update({
-        data: { ...lease, signatureStatus: 'out_for_signature', tenantSignedAt: now, tenantSignerName: signerName },
-        updated_at: now,
-      }).eq('id', request.lease_id);
+    if (reqErr) {
+      // Don't leave the contract reading as signed with no signature behind it.
+      if (prior) await supabase.from('leases').update({ data: prior, updated_at: new Date().toISOString() }).eq('id', request.lease_id).eq('updated_at', now);
+      throw reqErr;
     }
 
     // Emails from server-loaded data only.

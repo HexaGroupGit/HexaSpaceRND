@@ -202,6 +202,8 @@ export function accessGateMet(lease, invoices, tenant, today = new Date(), lease
   // Signed ahead of a handover — the outgoing company is still in the space.
   // Paying early must not hand over keys (or onboard) before they've left.
   if (leases && awaitingHandover(lease, leases)) return false
+  // Prepared for an office that isn't free yet — not live until activated.
+  if (lease.awaitingSpace) return false
 
   if (!isExistingTenant(lease, leases)) {
     const depositOwed = depositDue(lease) > 0

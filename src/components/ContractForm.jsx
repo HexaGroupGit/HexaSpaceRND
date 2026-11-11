@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { Plus, Trash2, Minus, ChevronDown, X, AlertCircle } from 'lucide-react'
 import { discountedPrice, discountPct } from '../lib/leasePricing.js'
 import { holdsSpace } from '../lib/spaceHold.js'
-import { officeFreeFrom } from '../lib/officeAvailability.js'
+import { officeFreeFrom, officeEndsOn, activationBlockers } from '../lib/officeAvailability.js'
 import { SPACE_TABS, floorLabel } from './spaces/shared.jsx'
 import { PARKING_INCLUDED_LABEL } from '../lib/parkingBays.js'
 import { NON_POSITION_DESK_IDS } from '../lib/deskBays.js'
@@ -46,11 +46,11 @@ const DOC_TYPE_SPACES = {
 // so they can't be mistaken for suites.
 const dmy = (iso) => iso.split('-').reverse().join('/')
 
-function spaceOptionLabel(s, freeFrom) {
+function spaceOptionLabel(s, note) {
   // Blank sizes (VO suites, older desks) used to print "Suite 441 — undefined".
   if (s.type !== 'parking') {
     const label = [s.unitNumber, s.size].filter(Boolean).join(' — ')
-    return freeFrom ? `${label} (free after ${dmy(freeFrom)})` : label
+    return note ? `${label} (${note})` : label
   }
   const price = s.includedInContract
     ? PARKING_INCLUDED_LABEL
@@ -60,8 +60,8 @@ function spaceOptionLabel(s, freeFrom) {
 
 // Picker options, grouped by kind when a document type allows more than one —
 // a licence can carry a suite and its car bays. Bays list in number order.
-function spaceOptions(list, freeFrom = {}) {
-  const option = (s) => <option key={s.id} value={s.id}>{spaceOptionLabel(s, freeFrom[s.id])}</option>
+function spaceOptions(list, notes = {}) {
+  const option = (s) => <option key={s.id} value={s.id}>{spaceOptionLabel(s, notes[s.id])}</option>
   const types = [...new Set(list.map((s) => s.type))]
   if (types.length < 2) return list.map(option)
   return types.map((t) => {
@@ -397,11 +397,24 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
   // Per office: '' free now, a date it comes free after, or null if taken.
   const officeFree = useMemo(() => Object.fromEntries(spaces.filter((s) => s.type === 'office')
     .map((s) => [s.id, officeFreeFrom(s, leases, editLease?.id)])), [spaces, leases, editLease?.id])
+  // Offices still under a contract that hasn't been ended: their due end date.
+  // A contract can be prepared on one, but can't go live until it is ended.
+  const officeEnds = useMemo(() => Object.fromEntries(spaces.filter((s) => s.type === 'office')
+    .map((s) => [s.id, officeEndsOn(s, leases, editLease?.id)])), [spaces, leases, editLease?.id])
+  const officeNotes = Object.fromEntries(Object.keys(officeFree).map((id) => [id,
+    officeFree[id] ? `free after ${dmy(officeFree[id])}`
+      : officeFree[id] === null && officeEnds[id] ? `prepare only — current contract ends ${dmy(officeEnds[id])}` : '']))
+  // A new contract on a held office is saved as a pending draft. Editing an
+  // existing live contract never demotes it; a draft stays one until activated.
+  const holdForSpace = !!editLease?.awaitingSpace || (!editLease?.id && activationBlockers({
+    tenantId: form.tenantId, startDate: form.startDate,
+    spaceId: form.items[0]?.spaceId, items: form.items,
+  }, spaces, leases).length > 0)
   // An office picked before the start date was entered (or moved earlier
   // since) can overlap the outgoing tenant's last day.
   const officeClash = form.items.map((item) => {
-    const free = officeFree[item.spaceId]
     const start = item.steps?.[0]?.startDate || form.startDate
+    const free = officeFree[item.spaceId] || (officeFree[item.spaceId] === null ? officeEnds[item.spaceId] : '')
     if (!free || !start || start > free) return null
     const unit = spaces.find((s) => s.id === item.spaceId)?.unitNumber ?? 'This office'
     return `${unit} is held until ${dmy(free)} — start on ${dmy(dayAfter(free))} or later`
@@ -445,7 +458,8 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
       monthlyRent: startMonthly,
       listPrice: startList,
       bondAmount: form.items.reduce((sum, it) => sum + Number(it.deposit ?? 0), 0),
-      status: form.status,
+      status: holdForSpace ? 'pending' : form.status,
+      ...(holdForSpace ? { awaitingSpace: true } : {}),
       notes: form.notes,
       inclusions: form.inclusions,
       contractNumber: form.contractNumber,
@@ -697,6 +711,11 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                 <AlertCircle size={14} /> {errors.items}
               </div>
             )}
+            {holdForSpace && (
+              <div className="flex items-center gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">
+                <AlertCircle size={14} /> This office is still under another contract. This will be saved as Pending and can be activated once that contract is ended.
+              </div>
+            )}
 
             <div className="space-y-4">
               {form.items.map((item, itemIdx) => {
@@ -733,8 +752,9 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                               // signed up while the current one serves out their term).
                               if (s.type === 'office') {
                                 const free = officeFree[s.id]
-                                if (free === null) return false
                                 const start = item.steps?.[0]?.startDate || form.startDate
+                                // Not ended yet: offered once a later start date is set.
+                                if (free === null) return !!officeEnds[s.id] && !!start && start > officeEnds[s.id]
                                 return !free || !start || start > free
                               }
                               // A VO suite number is a mailing address, so it
@@ -757,7 +777,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                                 if (leases.some((l) => [l.spaceId, ...(l.items ?? []).map((i) => i.spaceId)].includes(s.id) && holdsSpace(l))) return false
                               }
                               return s.status === 'vacant'
-                            }), officeFree)}
+                            }), officeNotes)}
                         </SearchSelect>
                       </div>
 

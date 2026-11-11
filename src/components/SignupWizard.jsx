@@ -87,7 +87,8 @@ export default function SignupWizard({ onClose }) {
   const unitName = spaces.find((s) => s.id === lease?.spaceId)?.unitNumber ?? lease?.resource ?? 'Membership'
 
   function raiseDeposit() {
-    if (depositRaised || depositAmount <= 0) return
+    // Prepared for an office that isn't free yet: no invoices until activated.
+    if (depositRaised || depositAmount <= 0 || lease.awaitingSpace) return
     const due = new Date(); due.setDate(due.getDate() + 14)
     addInvoice({
       tenantId: tenant.id, leaseId: lease.id,
@@ -232,7 +233,9 @@ export default function SignupWizard({ onClose }) {
                   ) : (
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-foreground">Security deposit: <span className="font-semibold">${depositAmount.toLocaleString('en-AU')}</span></span>
-                      <button onClick={raiseDeposit} className="text-sm bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90">Raise deposit invoice</button>
+                      {lease.awaitingSpace
+                        ? <span className="text-xs text-muted-foreground">Raised when the contract is activated</span>
+                        : <button onClick={raiseDeposit} className="text-sm bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90">Raise deposit invoice</button>}
                     </div>
                   )
                 ) : (
