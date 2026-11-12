@@ -41,11 +41,12 @@ export const STATUS_STYLE = {
   available: 'bg-green-50 text-green-700 border border-green-200',
   reserved:  'bg-amber-50 text-amber-800 border border-amber-200',
   vacating:  'bg-yellow-100 text-yellow-800 border border-yellow-300',
+  potential: 'bg-blue-50 text-blue-700 border border-blue-200',
 }
 
 export function StatusPill({ status }) {
   const s = status === 'vacant' ? 'available' : status
-  const label = s === 'reserved' ? 'Under offer' : s === 'vacating' ? 'Vacating soon' : s
+  const label = s === 'reserved' ? 'Under offer' : s === 'vacating' ? 'Vacating soon' : s === 'potential' ? 'Potentially available' : s
   return (
     <span className={`text-xs font-semibold px-2 py-0.5 rounded capitalize ${STATUS_STYLE[s] || 'bg-muted text-muted-foreground'}`}>
       {label}

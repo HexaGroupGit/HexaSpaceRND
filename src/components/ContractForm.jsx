@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { Plus, Trash2, Minus, ChevronDown, X, AlertCircle } from 'lucide-react'
 import { discountedPrice, discountPct } from '../lib/leasePricing.js'
 import { holdsSpace } from '../lib/spaceHold.js'
-import { officeFreeFrom, officeEndsOn, activationBlockers } from '../lib/officeAvailability.js'
+import { officeFreeFrom, officeEndsOn, officeMarkedAvailable, activationBlockers } from '../lib/officeAvailability.js'
 import { SPACE_TABS, floorLabel } from './spaces/shared.jsx'
 import { PARKING_INCLUDED_LABEL } from '../lib/parkingBays.js'
 import { NON_POSITION_DESK_IDS } from '../lib/deskBays.js'
@@ -97,6 +97,37 @@ function dayAfter(d) {
   dt.setDate(dt.getDate() + 1)
   return fmtDate(dt)
 }
+// Rent-free incentive spread over the term: one free month after every
+// `every - 1` paid ones (every 4 → months 4, 8 and 12 of a year). Free months
+// are whole calendar months: the bill run invoices by calendar month and skips
+// any month the schedule makes $0, so a free step straddling two months would
+// bill part of both. A part month at the start counts as month 1 (paid, prorated).
+function amortisedRentFreeSteps({ startDate, endDate, listPrice, discount }, every) {
+  const paid = (s, e) => ({ startDate: s, endDate: e, listPrice, discount: discount ?? '' })
+  const steps = []
+  let cursor = startDate
+  const start = new Date(startDate + 'T00:00:00')
+  let m = new Date(start.getFullYear(), start.getMonth(), 1)
+  for (let n = 1; ; n++, m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
+    const monthEnd = fmtDate(new Date(m.getFullYear(), m.getMonth() + 1, 0))
+    if (monthEnd > endDate) break
+    if (n % every) continue
+    const monthStart = fmtDate(m)
+    if (cursor < monthStart) steps.push(paid(cursor, fmtDate(new Date(m.getFullYear(), m.getMonth(), 0))))
+    steps.push({ startDate: monthStart, endDate: monthEnd, listPrice, discount: '100%' })
+    cursor = dayAfter(monthEnd)
+  }
+  if (cursor <= endDate) steps.push(paid(cursor, endDate))
+  return steps
+}
+const isFreeStep = (st) => st.discount === '100%' || (st.startDate && Number(st.listPrice) === 0)
+// The price and discount of an item's paid months — never a free step's 100%.
+function paidTerms(item) {
+  const paid = item.steps.find((st) => !isFreeStep(st))
+  return { listPrice: paid?.listPrice ?? item.steps[0]?.listPrice ?? 0, discount: paid?.discount ?? '' }
+}
+const monthLabel = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })
+
 // AVAILABLE_TERMS is now driven by the templates store — see Terms tab render
 
 function generateContractNumber(leases) {
@@ -262,7 +293,12 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
   useEffect(() => {
     setForm((f) => ({
       ...f,
-      items: f.items.map((item) => ({
+      items: f.items.map((item) => item.rentFreeEvery && f.startDate && f.endDate ? {
+        // A rent-free pattern is rebuilt for the new term, so its free months
+        // stay whole calendar months inside it.
+        ...item,
+        steps: amortisedRentFreeSteps({ startDate: f.startDate, endDate: f.endDate, ...paidTerms(item) }, item.rentFreeEvery),
+      } : ({
         ...item,
         steps: item.steps.map((step, i) =>
           i === 0
@@ -342,7 +378,8 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
         i !== itemIdx
           ? item
           : {
-              ...item,
+              // Edited by hand: the rent-free pattern no longer owns these steps.
+              ...item, rentFreeEvery: undefined,
               steps: item.steps.map((step, si) => (si === stepIdx ? { ...step, ...updates } : step)),
             }
       ),
@@ -359,7 +396,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
         // Only add when the last step doesn't already fill the whole duration.
         if (f.endDate && nextStart && nextStart > f.endDate) return item
         return {
-          ...item,
+          ...item, rentFreeEvery: undefined,
           steps: [
             ...item.steps,
             { startDate: nextStart, endDate: f.endDate, listPrice: last?.listPrice ?? 0, discount: '' },
@@ -369,13 +406,35 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
     }))
   }
 
+  // The pattern covers the item's own span (a car bay can start after the
+  // office) and replaces its steps, so price changes need a yes first. It is
+  // rebuilt on date changes only while the item follows the contract term.
+  function applyRentFree(itemIdx, every) {
+    const item = form.items[itemIdx]
+    const startDate = item.steps[0]?.startDate || form.startDate
+    const endDate = item.steps[item.steps.length - 1]?.endDate || form.endDate
+    if (!startDate || !endDate) { alert('Set the contract start and end dates first.'); return }
+    const prices = new Set(item.steps.filter((st) => !isFreeStep(st)).map((st) => `${st.listPrice}|${st.discount ?? ''}`))
+    if (prices.size > 1 && !confirm('This line has price steps. The rent-free pattern uses its first price for the whole term. Continue?')) return
+    const follows = startDate === form.startDate && endDate === form.endDate
+    const steps = amortisedRentFreeSteps({ startDate, endDate, ...paidTerms(item) }, every)
+    updateItem(itemIdx, { rentFreeEvery: follows ? every : undefined, steps })
+  }
+
+  function clearRentFree(itemIdx) {
+    const item = form.items[itemIdx]
+    const startDate = item.steps[0]?.startDate || form.startDate
+    const endDate = item.steps[item.steps.length - 1]?.endDate || form.endDate
+    updateItem(itemIdx, { rentFreeEvery: undefined, steps: [{ startDate, endDate, ...paidTerms(item) }] })
+  }
+
   function removeStep(itemIdx, stepIdx) {
     setForm((f) => ({
       ...f,
       items: f.items.map((item, i) =>
         i !== itemIdx
           ? item
-          : { ...item, steps: item.steps.filter((_, si) => si !== stepIdx) }
+          : { ...item, rentFreeEvery: undefined, steps: item.steps.filter((_, si) => si !== stepIdx) }
       ),
     }))
   }
@@ -401,8 +460,11 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
   // A contract can be prepared on one, but can't go live until it is ended.
   const officeEnds = useMemo(() => Object.fromEntries(spaces.filter((s) => s.type === 'office')
     .map((s) => [s.id, officeEndsOn(s, leases, editLease?.id)])), [spaces, leases, editLease?.id])
+  const officeMarked = useMemo(() => Object.fromEntries(spaces.filter((s) => s.type === 'office')
+    .map((s) => [s.id, officeMarkedAvailable(s, leases, editLease?.id)])), [spaces, leases, editLease?.id])
   const officeNotes = Object.fromEntries(Object.keys(officeFree).map((id) => [id,
     officeFree[id] ? `free after ${dmy(officeFree[id])}`
+      : officeFree[id] === null && officeMarked[id] ? 'potentially available — prepare only'
       : officeFree[id] === null && officeEnds[id] ? `prepare only — current contract ends ${dmy(officeEnds[id])}` : '']))
   // A new contract on a held office is saved as a pending draft. Editing an
   // existing live contract never demotes it; a draft stays one until activated.
@@ -414,7 +476,9 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
   // since) can overlap the outgoing tenant's last day.
   const officeClash = form.items.map((item) => {
     const start = item.steps?.[0]?.startDate || form.startDate
-    const free = officeFree[item.spaceId] || (officeFree[item.spaceId] === null ? officeEnds[item.spaceId] : '')
+    // A marked office is prepared for whatever date was agreed — activation
+    // is what checks the outgoing contract has ended in time.
+    const free = officeFree[item.spaceId] || (officeFree[item.spaceId] === null && !officeMarked[item.spaceId] ? officeEnds[item.spaceId] : '')
     if (!free || !start || start > free) return null
     const unit = spaces.find((s) => s.id === item.spaceId)?.unitNumber ?? 'This office'
     return `${unit} is held until ${dmy(free)} — start on ${dmy(dayAfter(free))} or later`
@@ -754,7 +818,7 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                                 const free = officeFree[s.id]
                                 const start = item.steps?.[0]?.startDate || form.startDate
                                 // Not ended yet: offered once a later start date is set.
-                                if (free === null) return !!officeEnds[s.id] && !!start && start > officeEnds[s.id]
+                                if (free === null) return officeMarked[s.id] || (!!officeEnds[s.id] && !!start && start > officeEnds[s.id])
                                 return !free || !start || start > free
                               }
                               // A VO suite number is a mailing address, so it
@@ -813,6 +877,28 @@ export default function ContractForm({ editLease, leases, tenants, spaces, templ
                         <span className="text-xs text-muted-foreground">
                           ⓘ To add a step, move back the plan's end date
                         </span>
+                        <div className="ml-auto flex items-center gap-2">
+                          {item.steps.some(isFreeStep) && (
+                            <>
+                              <span className="text-xs text-green-700">
+                                Rent-free: {item.steps.filter(isFreeStep).map((st) => monthLabel(st.startDate)).join(', ')}
+                              </span>
+                              <button type="button" onClick={() => clearRentFree(itemIdx)} aria-label="Remove rent-free incentive" className="text-xs text-muted-foreground hover:text-foreground underline">
+                                Remove
+                              </button>
+                            </>
+                          )}
+                          <select
+                            aria-label="Rent-free incentive"
+                            value=""
+                            onChange={(e) => e.target.value && applyRentFree(itemIdx, Number(e.target.value))}
+                            className="border border-input rounded-md px-2 py-1 text-xs bg-card"
+                          >
+                            <option value="">Rent-free incentive…</option>
+                            <option value="4">3 months free — 1 in every 4 (months 4, 8, 12)</option>
+                            <option value="3">4 months free — 1 in every 3 (months 3, 6, 9, 12)</option>
+                          </select>
+                        </div>
                       </div>
 
                       {/* Column headers */}

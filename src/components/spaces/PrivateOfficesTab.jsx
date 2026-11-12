@@ -7,6 +7,7 @@ import {
   FLOORS, floorLabel, StatusPill, money, Field, Modal, ic,
   officeRate, ppRate, revenueAccountFor, accountCode, isVacating, moveOutDate,
 } from './shared.jsx'
+import { officeMarkedAvailable, officeHolderIds, committedMoveOut } from '../../lib/officeAvailability.js'
 
 const PLACEMENTS = [['external', 'External'], ['internal', 'Internal']]
 // Floor order. Level 4 & 5 bill together (Xero 201); Level 2 bills separately (201.1).
@@ -151,10 +152,13 @@ export default function PrivateOfficesTab({ ctx }) {
             {sorted.map((o) => {
               const occ = occupantOf(o)
               const lease = activeLeaseFor(o.id)
-              const vacating = isVacating(lease)
+              // Leaving = served notice, or an end date it won't renew past.
+              const vacating = isVacating(lease) || !!committedMoveOut(lease)
               // Status follows occupancy: occupied when someone's in it, vacating
               // when they've given notice / are scheduled to leave, available when empty.
-              const derivedStatus = occ ? (vacating ? 'vacating' : 'occupied') : 'vacant'
+              const marked = officeMarkedAvailable(o, leases)
+              const derivedStatus = occ ? (vacating ? 'vacating' : marked ? 'potential' : 'occupied') : 'vacant'
+              const holderIds = occ ? officeHolderIds(o, leases) : []
               const leavingOn = vacating ? moveOutDate(lease) : null
               return (
                 <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted/50">
@@ -215,9 +219,27 @@ export default function PrivateOfficesTab({ ctx }) {
                   <td className="px-4 py-2.5"><StatusPill status={derivedStatus} /></td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center justify-end gap-1">
-                      {(derivedStatus === 'vacant' || derivedStatus === 'vacating') && (
+                      {/* Still occupied but expected to come up: mark it so the next
+                          contract can be prepared now. It can't be activated
+                          until the current contract is ended. */}
+                      {derivedStatus === 'occupied' && holderIds.length > 0 && (
+                        <button onClick={() => updateSpace(o.id, { availableAfterLeases: holderIds, markedAvailableAt: new Date().toISOString() })}
+                          title="Let a new contract be prepared on this office while the current one runs"
+                          aria-label={`Mark ${o.unitNumber} potentially available`}
+                          className="text-xs border border-input hover:bg-muted/50 px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap">
+                          Mark available
+                        </button>
+                      )}
+                      {derivedStatus === 'potential' && (
+                        <button onClick={() => updateSpace(o.id, { availableAfterLeases: [], markedAvailableAt: null })}
+                          aria-label={`Unmark ${o.unitNumber}`}
+                          className="text-xs text-muted-foreground hover:text-foreground underline px-1 whitespace-nowrap">
+                          Unmark
+                        </button>
+                      )}
+                      {['vacant', 'vacating', 'potential'].includes(derivedStatus) && (
                         <button onClick={() => setContractSpace(o)} className="flex items-center gap-1 text-xs text-primary-foreground bg-primary hover:bg-primary/90 px-2.5 py-1.5 rounded-md font-medium">
-                          <FileText size={12} /> {derivedStatus === 'vacating' ? 'Pre-lease' : 'Contract'}
+                          <FileText size={12} /> {derivedStatus === 'vacant' ? 'Contract' : 'Pre-lease'}
                         </button>
                       )}
                       {/* Below-list pricing needs a manager's sign-off — raise it

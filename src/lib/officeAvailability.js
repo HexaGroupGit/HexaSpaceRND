@@ -75,6 +75,21 @@ export function officeEndsOn(space, leases = [], ignoreLeaseId = null) {
   return ends.every(Boolean) ? ends.sort().pop() : null
 }
 
+// An office the team has marked "potentially available" (Spaces → Private
+// Offices) while its current contract still runs, so the next one can be
+// prepared now. The mark names the contracts it was made against, so it lapses
+// by itself once anyone else takes the office.
+export function officeMarkedAvailable(space, leases = [], ignoreLeaseId = null) {
+  const marked = space?.availableAfterLeases ?? []
+  if (!marked.length) return false
+  const holders = leases.filter((l) => l.id !== ignoreLeaseId && holdsSpace(l) && spaceIdsOf(l).includes(space.id))
+  return holders.length > 0 && holders.every((l) => l.status === 'active' && marked.includes(l.id))
+}
+
+// The live contracts holding an office — what a "potentially available" mark records.
+export const officeHolderIds = (space, leases = []) =>
+  leases.filter((l) => holdsSpace(l) && spaceIdsOf(l).includes(space.id)).map((l) => l.id)
+
 // What stops this contract going live: another company's contract on one of
 // its offices that isn't certain to have ended before it starts. A contract
 // can be prepared and signed with blockers, but not activated.
